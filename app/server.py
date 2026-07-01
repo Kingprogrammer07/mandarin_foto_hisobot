@@ -353,12 +353,61 @@ def _auth_or_403(request: Request, init_data: str = "", state_changing: bool = T
 
 
 # ---------------------------------------------------------------------------
-# Report
+# Reports (named containers; each has its own inventory, starts at 0)
+# ---------------------------------------------------------------------------
+def _require_report(report_id) -> int:
+    try:
+        rid = int(report_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="hisobot tanlanmagan")
+    if not db.report_exists(rid):
+        raise HTTPException(status_code=404, detail="hisobot topilmadi")
+    return rid
+
+
+@app.get("/api/reports")
+async def api_reports_list(request: Request):
+    _auth_or_403(request, state_changing=False)
+    return {"reports": db.list_reports(), "max": db.MAX_REPORTS}
+
+
+@app.post("/api/reports")
+async def api_reports_create(request: Request):
+    if not _rate_ok(f"report:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    _auth_or_403(request, str(body.get("init_data", "")))
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="hisobotga nom bering")
+    if len(name) > 60:
+        raise HTTPException(status_code=400, detail="nom juda uzun")
+    try:
+        rep = db.create_report(name)
+    except db.DuplicateName:
+        raise HTTPException(status_code=409, detail="bu nomli hisobot allaqachon bor")
+    return JSONResponse({"ok": True, "report": rep})
+
+
+@app.delete("/api/reports/{report_id}")
+async def api_reports_delete(request: Request, report_id: int):
+    identity = _auth_or_403(request, state_changing=True)  # cookie path requires same-origin
+    db.delete_report(report_id)
+    log.info("report %s deleted by %s", report_id, identity)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Reys hisoboti — add net weight to a report's tovar turi balance
 # ---------------------------------------------------------------------------
 @app.post("/api/report")
 async def submit_report(
     request: Request,
     init_data: str = Form(""),
+    report_id: int = Form(...),
     type: str = Form(...),
     coefficient: float = Form(...),
     coefficient_mode: str = Form(...),
@@ -369,8 +418,8 @@ async def submit_report(
         raise HTTPException(status_code=429, detail="too many requests")
 
     identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
 
-    # Validate inputs.
     tovar_turi = (type or "").strip()
     if not tovar_turi:
         raise HTTPException(status_code=400, detail="tovar turi tanlanmagan")
@@ -394,31 +443,32 @@ async def submit_report(
         content = await _read_capped(f, MAX_TOTAL_BYTES - total)
         total += len(content)
 
-    result = db.add_reys(identity, tovar_turi, weight, coefficient, net, len(photos))
-    log.info("reys by %s: %s +%s (weight=%s coef=%s photos=%d)",
-             identity, tovar_turi, net, weight, coefficient, len(photos))
-    return JSONResponse({"ok": True, "net": net, "balance": result["balance"]})
+    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photos))
+    log.info("reys by %s [r%s]: %s +%s (weight=%s coef=%s photos=%d)",
+             identity, rid, tovar_turi, net, weight, coefficient, len(photos))
+    return JSONResponse({"ok": True, "net": net, "balance": result["balance"], "inventory": result["inventory"]})
 
 
 # ---------------------------------------------------------------------------
-# Adashgan yuklar — move weight from one tovar turi to another
+# Adashgan yuklar — move weight from one tovar turi to another (same report)
 # ---------------------------------------------------------------------------
 @app.post("/api/adjust")
-async def submit_adjust(request: Request):
+async def submit_adjust(
+    request: Request,
+    init_data: str = Form(""),
+    report_id: int = Form(...),
+    from_type: str = Form(...),
+    to_type: str = Form(...),
+    weight: float = Form(...),
+    photos: list[UploadFile] = [],  # noqa: B006
+):
     if not _rate_ok(f"adjust:{_client_ip(request)}", limit=60, window=60):
         raise HTTPException(status_code=429, detail="too many requests")
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid json")
 
-    identity = _auth_or_403(request, str(body.get("init_data", "")))
-    from_type = str(body.get("from_type", "")).strip()
-    to_type = str(body.get("to_type", "")).strip()
-    try:
-        weight = float(body.get("weight"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+    identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
+    from_type = from_type.strip()
+    to_type = to_type.strip()
 
     if not from_type or not to_type:
         raise HTTPException(status_code=400, detail="ikkala tovar turini tanlang")
@@ -427,27 +477,38 @@ async def submit_adjust(request: Request):
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
 
+    if len(photos) > MAX_PHOTOS:
+        raise HTTPException(status_code=413, detail=f"max {MAX_PHOTOS} photos")
+    total = 0
+    for f in photos:
+        content = await _read_capped(f, MAX_TOTAL_BYTES - total)
+        total += len(content)
+
     try:
-        result = db.adjust(identity, from_type, to_type, weight)
+        result = db.adjust(rid, identity, from_type, to_type, weight, len(photos))
     except db.InsufficientStock as exc:
         raise HTTPException(
             status_code=409,
             detail=f"{exc.tovar_turi}da yetarli emas: {exc.have} kg mavjud",
         )
-    log.info("adjust by %s: %s -> %s %s kg", identity, from_type, to_type, weight)
+    log.info("adjust by %s [r%s]: %s -> %s %s kg photos=%d",
+             identity, rid, from_type, to_type, weight, len(photos))
     return JSONResponse({"ok": True, "balances": result["balances"]})
 
 
 @app.get("/api/inventory")
-async def api_inventory(request: Request):
+async def api_inventory(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
-    return {"inventory": db.get_inventory()}
+    rid = _require_report(report_id)
+    return {"inventory": db.get_inventory(rid)}
 
 
 @app.get("/api/activity")
-async def api_activity(request: Request, start: int | None = None, end: int | None = None):
+async def api_activity(request: Request, report_id: int | None = None,
+                       start: int | None = None, end: int | None = None):
     identity = _auth_or_403(request, state_changing=False)
-    return {"activity": db.get_activity(actor=identity, limit=500, ts_from=start, ts_to=end)}
+    rid = _require_report(report_id)
+    return {"activity": db.get_activity(rid, actor=identity, limit=500, ts_from=start, ts_to=end)}
 
 
 @app.exception_handler(Exception)

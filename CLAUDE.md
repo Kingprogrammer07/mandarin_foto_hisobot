@@ -30,11 +30,13 @@ No test suite or linter is configured yet.
   tovar turi's balance; `POST /api/adjust` (json) moves weight between two types
   (blocks/409 if the source is insufficient); `GET /api/inventory` and
   `GET /api/activity` (both read-only, auth via cookie or `X-Telegram-Init-Data`).
-- `app/db.py` — SQLite (`data/reys.db`, gitignored, WAL). Two tables:
-  `inventory` (one row per tovar turi = its running weight balance) and
-  `activity` (append-only log of every reys/adjust with actor + timestamp).
-  Both tabs share this store; `db.init()` runs at startup and seeds default types.
-  The frontend "Faolligim" screen renders `/api/activity` (filtered to the caller).
+- `app/db.py` — SQLite (`data/reys.db`, gitignored, WAL). Multi-report model:
+  `reports` (named containers, max 5, oldest auto-pruned), `inventory`
+  (per `(report_id, tovar turi)` balance — each new report starts every type at
+  0) and `activity` (per-report log). `db.init()` migrates by dropping any
+  pre-report-schema tables. `/api/reports` (CRUD) + all report/adjust/inventory/
+  activity endpoints require a `report_id`. The home screen lists reports; both
+  tabs operate inside the opened report; "Faolligim" is per-report + date-filtered.
 - `app/security.py` — Telegram `initData` HMAC validation + signed browser
   sessions. The signature scheme is exact (secret_key = HMAC(key="WebAppData",
   msg=bot_token); compare against the `hash` field). Sessions are stateless HMAC

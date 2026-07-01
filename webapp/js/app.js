@@ -10,13 +10,24 @@
   // initData is empty and MainButton is an invisible no-op. Only treat it as a
   // real Telegram client when initData is present.
   const inTelegram = !!(tg && tg.initData);
+
+  // iOS gets its own (still lightweight) motion curve; Android keeps the current feel.
+  const isIOS =
+    (tg && tg.platform === "ios") ||
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS) document.documentElement.classList.add("ios");
+
   const MAX_PHOTOS = 10;
   const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon"];
 
   // ---- App state ----
   const state = {
     activeTab: "report",
-    photos: [], // { id, file, url }
+    reportId: null,
+    reportName: "",
+    photos: [], // reys photos { id, file, url }
+    adjPhotos: [], // adashgan photos
     type: "akb",
     customTypes: [], // user-added types not yet persisted to inventory
     inventory: {}, // tovar_turi -> weight (from server)
@@ -26,6 +37,9 @@
     adjTo: "",
     adjWeightRaw: "",
   };
+
+  let remember = false;
+  try { remember = localStorage.getItem("reys-remember") === "1"; } catch (_) {}
 
   // Union of default types, inventory types, and locally-added custom types.
   function allTypes() {
@@ -52,6 +66,17 @@
     btnCamera: $("#btnCamera"),
     inGallery: $("#inGallery"),
     inCamera: $("#inCamera"),
+    camModal: $("#camModal"),
+    camVideo: $("#camVideo"),
+    camClose: $("#camClose"),
+    camFlip: $("#camFlip"),
+    camShot: $("#camShot"),
+    camCanvas: $("#camCanvas"),
+    camZoom: $("#camZoom"),
+    lightbox: $("#lightbox"),
+    lightboxImg: $("#lightboxImg"),
+    lightboxClose: $("#lightboxClose"),
+    lightboxDel: $("#lightboxDel"),
     typeSelect: $("#typeSelect"),
     typeValue: $("#typeValue"),
     typePencil: $("#typePencil"),
@@ -98,6 +123,30 @@
     passToggle: $("#passToggle"),
     loginSubmit: $("#loginSubmit"),
     loginError: $("#loginError"),
+    // reports / home
+    backHomeBtn: $("#backHomeBtn"),
+    reportName: $("#reportName"),
+    settingsBtn: $("#settingsBtn"),
+    homeScreen: $("#homeScreen"),
+    homeThemeBtn: $("#homeThemeBtn"),
+    newReportBtn: $("#newReportBtn"),
+    homeHint: $("#homeHint"),
+    reportList: $("#reportList"),
+    nameBackdrop: $("#nameBackdrop"),
+    nameSheet: $("#nameSheet"),
+    nameClose: $("#nameClose"),
+    nameInput: $("#nameInput"),
+    nameSave: $("#nameSave"),
+    nameError: $("#nameError"),
+    setBackdrop: $("#setBackdrop"),
+    setSheet: $("#setSheet"),
+    setClose: $("#setClose"),
+    rememberToggle: $("#rememberToggle"),
+    // adashgan photos
+    adjPhotoGrid: $("#adjPhotoGrid"),
+    adjPhotoCounter: $("#adjPhotoCounter"),
+    adjBtnGallery: $("#adjBtnGallery"),
+    adjBtnCamera: $("#adjBtnCamera"),
   };
 
   // ---- Theme (admin-controllable: auto / light / dark) ----
@@ -174,8 +223,19 @@
     applyTheme();
     if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
     els.saveBtn.addEventListener("click", onSave);
-    // Inside Telegram the user is authenticated immediately — load stock now.
-    if (inTelegram) loadInventory();
+    // Inside Telegram the user is authenticated immediately — go to the home list.
+    if (inTelegram) showHome();
+  }
+
+  // Show the Telegram BackButton whenever we're not at the home root.
+  function syncBackButton() {
+    if (!inTelegram || !tg.BackButton) return;
+    const overlay =
+      sheetOpen ||
+      !els.camModal.hidden || !els.lightbox.hidden || !els.activityScreen.hidden ||
+      !els.nameSheet.hidden || !els.setSheet.hidden;
+    if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
+    else tg.BackButton.hide();
   }
 
   function haptic(type) {
@@ -185,10 +245,15 @@
     }
   }
 
-  // Telegram BackButton: dismiss the topmost overlay.
+  // Telegram BackButton: dismiss the topmost overlay, else go home.
   function onBack() {
+    if (!els.lightbox.hidden) { closeLightbox(); return; }
+    if (!els.camModal.hidden) { closeCamera(); return; }
+    if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
+    if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
     if (sheetOpen) { closeSheet(); return; }
     if (!els.activityScreen.hidden) { closeActivity(); return; }
+    if (state.reportId && els.homeScreen.hidden) { showHome(); return; }
   }
 
   // ---- Tabs ----
@@ -210,59 +275,356 @@
 
   els.tabs.forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
-  // ---- Photos ----
-  function renderPhotos() {
-    els.photoGrid.innerHTML = "";
-    state.photos.forEach((p) => {
+  // ---- Photos (two independent sets: reys "photos", adashgan "adjPhotos") ----
+  let activePk = "photos"; // which set the gallery/camera currently targets
+  function photoEls(pk) {
+    return pk === "adjPhotos"
+      ? { grid: els.adjPhotoGrid, counter: els.adjPhotoCounter, bg: els.adjBtnGallery, bc: els.adjBtnCamera }
+      : { grid: els.photoGrid, counter: els.photoCounter, bg: els.btnGallery, bc: els.btnCamera };
+  }
+
+  function renderPhotos(pk) {
+    const e = photoEls(pk);
+    const arr = state[pk];
+    e.grid.innerHTML = "";
+    arr.forEach((p) => {
       const cell = document.createElement("div");
       cell.className = "thumb";
       const img = document.createElement("img");
       img.src = p.url;
       img.alt = "";
+      img.addEventListener("click", () => openLightbox(p, pk));
       const del = document.createElement("button");
       del.className = "thumb__del";
       del.type = "button";
       del.setAttribute("aria-label", "O'chirish");
       del.textContent = "×";
-      del.addEventListener("click", () => removePhoto(p.id));
+      del.addEventListener("click", () => removePhoto(p.id, pk));
       cell.append(img, del);
-      els.photoGrid.appendChild(cell);
+      e.grid.appendChild(cell);
     });
-    els.photoCounter.textContent = `${state.photos.length}/${MAX_PHOTOS}`;
-    const full = state.photos.length >= MAX_PHOTOS;
-    els.btnGallery.disabled = full;
-    els.btnCamera.disabled = full;
+    e.counter.textContent = `${arr.length}/${MAX_PHOTOS}`;
+    const full = arr.length >= MAX_PHOTOS;
+    e.bg.disabled = full;
+    e.bc.disabled = full;
   }
+  function renderAllPhotos() { renderPhotos("photos"); renderPhotos("adjPhotos"); }
 
-  function addFiles(fileList) {
+  function addFiles(fileList, pk) {
     const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
     if (!files.length) return;
-    const room = MAX_PHOTOS - state.photos.length;
-    if (room <= 0) {
-      showToast(`Maksimal ${MAX_PHOTOS} ta rasm`, true);
-      return;
-    }
+    const arr = state[pk];
+    const room = MAX_PHOTOS - arr.length;
+    if (room <= 0) { showToast(`Maksimal ${MAX_PHOTOS} ta rasm`, true); return; }
     if (files.length > room) showToast(`Faqat ${room} ta rasm qo'shildi`, true);
     files.slice(0, room).forEach((file) => {
-      state.photos.push({ id: ++photoSeq, file, url: URL.createObjectURL(file) });
+      arr.push({ id: ++photoSeq, file, url: URL.createObjectURL(file) });
     });
-    renderPhotos();
+    renderPhotos(pk);
     haptic("light");
   }
 
-  function removePhoto(id) {
-    const idx = state.photos.findIndex((p) => p.id === id);
+  function removePhoto(id, pk) {
+    const arr = state[pk];
+    const idx = arr.findIndex((p) => p.id === id);
     if (idx === -1) return;
-    URL.revokeObjectURL(state.photos[idx].url);
-    state.photos.splice(idx, 1);
-    renderPhotos();
+    URL.revokeObjectURL(arr[idx].url);
+    arr.splice(idx, 1);
+    renderPhotos(pk);
     haptic("light");
   }
 
-  els.btnGallery.addEventListener("click", () => els.inGallery.click());
-  els.btnCamera.addEventListener("click", () => els.inCamera.click());
-  els.inGallery.addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
-  els.inCamera.addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  els.btnGallery.addEventListener("click", () => { activePk = "photos"; els.inGallery.click(); });
+  els.btnCamera.addEventListener("click", () => { activePk = "photos"; openCamera(); });
+  els.adjBtnGallery.addEventListener("click", () => { activePk = "adjPhotos"; els.inGallery.click(); });
+  els.adjBtnCamera.addEventListener("click", () => { activePk = "adjPhotos"; openCamera(); });
+  els.inGallery.addEventListener("change", (e) => { addFiles(e.target.files, activePk); e.target.value = ""; });
+  els.inCamera.addEventListener("change", (e) => { addFiles(e.target.files, activePk); e.target.value = ""; });
+
+  // ---- Live camera (getUserMedia) ----
+  // The stream stays alive between shots (only the modal toggles display), so
+  // the camera permission isn't re-requested on every capture.
+  let camStream = null;
+  let camFacing = "environment";
+  let camZoom = 1; // digital zoom (works on every device)
+  const hasCamera = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+  async function startStream(facing) {
+    // Acquire the new stream BEFORE stopping the old one, so a failed flip
+    // (e.g. device has one camera) leaves the current view intact.
+    // {exact} forces the requested front/back on Android (ideal is often ignored,
+    // so the flip / front camera wouldn't actually switch); fall back if absent.
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: facing } }, audio: false,
+      });
+    } catch (e) {
+      if (e && e.name === "OverconstrainedError") {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing }, audio: false,
+        });
+      } else {
+        throw e;
+      }
+    }
+    stopStream();
+    camStream = stream;
+    camFacing = facing;
+    els.camVideo.srcObject = stream;
+    try { await els.camVideo.play(); } catch (_) {} // WebViews need an explicit play()
+    setZoom(1);
+  }
+  function stopStream() {
+    if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
+  }
+
+  function setZoom(z) {
+    camZoom = Math.max(1, Math.min(z, 5));
+    els.camVideo.style.transform = `scale(${camZoom})`;
+    els.camZoom.textContent = `${camZoom.toFixed(1)}x`;
+  }
+
+  async function openCamera() {
+    if (state[activePk].length >= MAX_PHOTOS) { showToast(`Maksimal ${MAX_PHOTOS} ta rasm`, true); return; }
+    if (!hasCamera) { els.inCamera.click(); return; } // fallback to file-input capture
+    els.camModal.hidden = false;
+    document.body.classList.add("locked");
+    syncBackButton();
+    try {
+      if (!camStream) await startStream(camFacing);
+      else { try { await els.camVideo.play(); } catch (_) {} } // resume the kept-alive stream
+    } catch (e) {
+      closeCamera();
+      const n = e && e.name;
+      if (n === "NotAllowedError" || n === "NotFoundError" || n === "NotReadableError") els.inCamera.click();
+      else showToast("Kamera ochilmadi", true);
+    }
+  }
+
+  function closeCamera() {
+    els.camModal.hidden = true;
+    document.body.classList.remove("locked");
+    syncBackButton();
+  }
+
+  function capturePhoto() {
+    const v = els.camVideo;
+    if (!v.videoWidth) return;
+    // Crop the centre region to match the on-screen digital zoom.
+    const sw = v.videoWidth / camZoom;
+    const sh = v.videoHeight / camZoom;
+    const sx = (v.videoWidth - sw) / 2;
+    const sy = (v.videoHeight - sh) / 2;
+    const canvas = els.camCanvas;
+    canvas.width = Math.round(sw);
+    canvas.height = Math.round(sh);
+    canvas.getContext("2d").drawImage(v, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    const pk = activePk;
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `cam_${blob.size}_${state[pk].length}.jpg`, { type: "image/jpeg" });
+        addFiles([file], pk);
+      }
+      closeCamera(); // hide modal, keep stream alive for the next shot
+    }, "image/jpeg", 0.92);
+  }
+
+  async function flipCamera() {
+    const next = camFacing === "environment" ? "user" : "environment";
+    try { await startStream(next); } catch (_) { showToast("Kamera almashtirilmadi", true); }
+  }
+
+  // Pinch-to-zoom.
+  let pinch = null;
+  const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  els.camModal.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) pinch = { d: touchDist(e.touches), z: camZoom };
+  }, { passive: true });
+  els.camModal.addEventListener("touchmove", (e) => {
+    if (pinch && e.touches.length === 2) setZoom(pinch.z * (touchDist(e.touches) / pinch.d));
+  }, { passive: true });
+  els.camModal.addEventListener("touchend", () => { pinch = null; });
+
+  els.camShot.addEventListener("click", capturePhoto);
+  els.camClose.addEventListener("click", closeCamera);
+  els.camFlip.addEventListener("click", flipCamera);
+  els.camZoom.addEventListener("click", () => setZoom(camZoom >= 3 ? 1 : Math.floor(camZoom) + 1));
+  window.addEventListener("pagehide", stopStream);
+
+  // ---- Photo lightbox ----
+  let lightboxId = null;
+  let lightboxPk = "photos";
+  function openLightbox(photo, pk) {
+    lightboxId = photo.id;
+    lightboxPk = pk || "photos";
+    els.lightboxImg.src = photo.url;
+    els.lightbox.hidden = false;
+    document.body.classList.add("locked");
+    syncBackButton();
+  }
+  function closeLightbox() {
+    els.lightbox.hidden = true;
+    els.lightboxImg.src = "";
+    lightboxId = null;
+    document.body.classList.remove("locked");
+    syncBackButton();
+  }
+  function deleteFromLightbox() {
+    if (lightboxId != null) removePhoto(lightboxId, lightboxPk);
+    closeLightbox();
+  }
+  els.lightbox.addEventListener("click", (e) => { if (e.target === els.lightbox) closeLightbox(); });
+  els.lightboxClose.addEventListener("click", closeLightbox);
+  els.lightboxDel.addEventListener("click", deleteFromLightbox);
+
+  // ---- Reports (home) ----
+  function confirmDialog(msg) {
+    return new Promise((resolve) => {
+      if (inTelegram && tg.showConfirm) tg.showConfirm(msg, (ok) => resolve(!!ok));
+      else resolve(window.confirm(msg));
+    });
+  }
+
+  function reportItem(rep) {
+    const li = document.createElement("li");
+    li.className = "report-item";
+    const main = document.createElement("div");
+    main.className = "report-item__main";
+    const name = document.createElement("div");
+    name.className = "report-item__name";
+    name.textContent = rep.name;
+    const sub = document.createElement("div");
+    sub.className = "report-item__sub";
+    sub.textContent = `${fmtTs(rep.created_at)} · ${rep.entries || 0} yozuv`;
+    main.append(name, sub);
+    const del = document.createElement("button");
+    del.className = "report-item__del";
+    del.type = "button";
+    del.setAttribute("aria-label", "O'chirish");
+    del.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z"/></svg>';
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteReport(rep); });
+    const go = document.createElement("span");
+    go.className = "report-item__go";
+    go.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>';
+    li.append(main, del, go);
+    li.addEventListener("click", () => openReport(rep));
+    return li;
+  }
+
+  async function loadReports() {
+    els.reportList.innerHTML = "";
+    els.homeHint.textContent = "Yuklanmoqda…";
+    try {
+      const res = await fetch("/api/reports", { headers: authHeaders() });
+      const json = await res.json().catch(() => ({}));
+      const reports = (res.ok && json.reports) || [];
+      els.homeHint.textContent = reports.length
+        ? `Saqlangan hisobotlar (${reports.length}/${json.max || 5})`
+        : "Hali hisobot yo'q. Yangi hisobot qo'shing.";
+      reports.forEach((rep) => els.reportList.appendChild(reportItem(rep)));
+    } catch (_) {
+      els.homeHint.textContent = "Yuklashda xatolik";
+    }
+  }
+
+  function showHome() {
+    state.reportId = null;
+    els.reportName.textContent = "";
+    els.homeScreen.hidden = false;
+    document.body.classList.add("locked");
+    syncBackButton(); // home is the root → no back button
+    loadReports();
+  }
+
+  function openReport(rep) {
+    state.reportId = rep.id;
+    state.reportName = rep.name;
+    els.reportName.textContent = rep.name;
+    els.homeScreen.hidden = true;
+    document.body.classList.remove("locked");
+    resetForm(true);   // each report starts everything from 0
+    resetAdjust(true);
+    setTab("report");
+    loadInventory();
+    syncBackButton();
+  }
+
+  async function deleteReport(rep) {
+    if (!(await confirmDialog(`"${rep.name}" hisoboti o'chirilsinmi?`))) return;
+    try {
+      const res = await fetch(`/api/reports/${rep.id}`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) throw new Error();
+      loadReports();
+    } catch (_) { showToast("O'chirib bo'lmadi", true); }
+  }
+
+  // Naming sheet
+  function openNameSheet() {
+    els.nameError.hidden = true;
+    els.nameInput.value = "";
+    els.nameBackdrop.hidden = false;
+    els.nameSheet.hidden = false;
+    syncBackButton();
+    setTimeout(() => els.nameInput.focus(), 80);
+  }
+  function closeNameSheet() { els.nameSheet.hidden = true; els.nameBackdrop.hidden = true; syncBackButton(); }
+  async function createReport() {
+    const name = els.nameInput.value.trim();
+    if (!name) { els.nameError.textContent = "Nom kiriting"; els.nameError.hidden = false; return; }
+    els.nameSave.disabled = true;
+    els.nameError.hidden = true;
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ init_data: inTelegram ? tg.initData : "", name }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
+      closeNameSheet();
+      openReport(json.report);
+    } catch (e) {
+      els.nameError.textContent = e.message || "Xatolik";
+      els.nameError.hidden = false;
+    } finally {
+      els.nameSave.disabled = false;
+    }
+  }
+  els.newReportBtn.addEventListener("click", openNameSheet);
+  els.nameSave.addEventListener("click", createReport);
+  els.nameClose.addEventListener("click", closeNameSheet);
+  els.nameBackdrop.addEventListener("click", closeNameSheet);
+  els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
+  els.backHomeBtn.addEventListener("click", showHome);
+  els.homeThemeBtn.addEventListener("click", cycleTheme);
+
+  // ---- Settings (remember toggle) ----
+  function openSettings() {
+    els.rememberToggle.checked = remember;
+    els.setBackdrop.hidden = false;
+    els.setSheet.hidden = false;
+    syncBackButton();
+  }
+  function closeSettings() { els.setSheet.hidden = true; els.setBackdrop.hidden = true; syncBackButton(); }
+  els.settingsBtn.addEventListener("click", openSettings);
+  els.setClose.addEventListener("click", closeSettings);
+  els.setBackdrop.addEventListener("click", closeSettings);
+  els.rememberToggle.addEventListener("change", () => {
+    remember = els.rememberToggle.checked;
+    try { localStorage.setItem("reys-remember", remember ? "1" : "0"); } catch (_) {}
+  });
+
+  // ---- Adashgan reset ----
+  function resetAdjust(full) {
+    state.adjPhotos.forEach((p) => URL.revokeObjectURL(p.url));
+    state.adjPhotos = [];
+    if (full || !remember) { state.adjFrom = ""; state.adjTo = ""; }
+    state.adjWeightRaw = "";
+    els.adjWeight.value = "";
+    renderPhotos("adjPhotos");
+    renderAdjust();
+  }
 
   // ---- Searchable select (bottom sheet), reused by several targets ----
   let sheetTarget = null; // { title, fallback, value(getter), onSelect(t), allowDelete }
@@ -282,7 +644,7 @@
     els.sheet.hidden = false; // toggling display re-triggers the slide-up animation
     els.sheetInput.value = "";
     renderSheet("");
-    if (inTelegram && tg.BackButton) tg.BackButton.show();
+    syncBackButton();
     if (focusSearch) setTimeout(() => els.sheetInput.focus(), 80);
   }
 
@@ -311,7 +673,7 @@
     els.sheet.addEventListener("transitionend", onEnd);
     pendingClose = { done, timer: setTimeout(done, 280) }; // fallback if transitionend doesn't fire
 
-    if (inTelegram && tg.BackButton) tg.BackButton.hide();
+    syncBackButton();
   }
 
   // A type is deletable only if it's a local custom addition not yet persisted
@@ -434,7 +796,11 @@
   // Escape closes the topmost overlay (hardware keyboards / desktop / browser).
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (sheetOpen) closeSheet();
+    if (!els.lightbox.hidden) closeLightbox();
+    else if (!els.camModal.hidden) closeCamera();
+    else if (!els.nameSheet.hidden) closeNameSheet();
+    else if (!els.setSheet.hidden) closeSettings();
+    else if (sheetOpen) closeSheet();
     else if (!els.activityScreen.hidden) closeActivity();
   });
 
@@ -499,8 +865,9 @@
   const fmtKg = (n) => `${(Math.round(n * 100) / 100).toLocaleString("en-US")} kg`;
 
   async function loadInventory() {
+    if (!state.reportId) return;
     try {
-      const res = await fetch("/api/inventory", { headers: authHeaders() });
+      const res = await fetch(`/api/inventory?report_id=${state.reportId}`, { headers: authHeaders() });
       if (!res.ok) return;
       const json = await res.json();
       state.inventory = json.inventory || {};
@@ -544,6 +911,7 @@
   let adjusting = false;
   async function onAdjustSave() {
     if (adjusting) return;
+    if (!state.reportId) { showToast("Hisobot tanlanmagan", true); return; }
     const weight = parseFloat(String(state.adjWeightRaw).replace(",", "."));
     if (!state.adjFrom || !state.adjTo) { showToast("Ikkala tovar turini tanlang", true); haptic("rigid"); return; }
     if (state.adjFrom === state.adjTo) { showToast("Tovar turlari bir xil bo'lmasin", true); haptic("rigid"); return; }
@@ -554,25 +922,21 @@
     const restoreText = els.adjSaveBtn.textContent;
     els.adjSaveBtn.textContent = "Saqlanmoqda…";
     try {
-      const res = await fetch("/api/adjust", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          init_data: inTelegram ? tg.initData : "",
-          from_type: state.adjFrom,
-          to_type: state.adjTo,
-          weight,
-        }),
-      });
+      const fd = new FormData();
+      fd.append("init_data", inTelegram ? tg.initData : "");
+      fd.append("report_id", String(state.reportId));
+      fd.append("from_type", state.adjFrom);
+      fd.append("to_type", state.adjTo);
+      fd.append("weight", String(weight));
+      state.adjPhotos.forEach((p, i) => fd.append("photos", p.file, p.file.name || `photo_${i}.jpg`));
+      const res = await fetch("/api/adjust", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
       state.inventory = json.balances || state.inventory;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
       showToast("Saqlandi ✓");
-      state.adjWeightRaw = "";
-      els.adjWeight.value = "";
+      resetAdjust(); // clears photos + weight (keeps from/to if "remember" on)
       renderBalances();
-      renderAdjust();
     } catch (e) {
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
       showToast(e.message || "Xatolik", true);
@@ -621,7 +985,7 @@
         sub.textContent = `og'irlik ${fmtKg(a.weight)}${coefTxt} · ${a.photos || 0} rasm`;
       } else {
         title.textContent = `Ko'chirish: ${a.from_type} → ${a.to_type}`;
-        sub.textContent = fmtKg(a.weight);
+        sub.textContent = a.photos ? `${fmtKg(a.weight)} · ${a.photos} rasm` : fmtKg(a.weight);
       }
       main.append(title, sub);
       const time = document.createElement("div");
@@ -660,7 +1024,9 @@
     els.activityList.innerHTML = '<p class="act__empty">Yuklanmoqda…</p>';
     const { start, end } = dayBounds(dateStr);
     try {
-      const res = await fetch(`/api/activity?start=${start}&end=${end}`, { headers: authHeaders() });
+      const res = await fetch(
+        `/api/activity?report_id=${state.reportId}&start=${start}&end=${end}`,
+        { headers: authHeaders() });
       const json = await res.json().catch(() => ({}));
       renderActivity((res.ok && json.activity) || []);
     } catch (_) {
@@ -669,9 +1035,10 @@
   }
 
   function openActivity() {
+    if (!state.reportId) return;
     els.activityScreen.hidden = false;
     document.body.classList.add("locked");
-    if (inTelegram && tg.BackButton) tg.BackButton.show();
+    syncBackButton();
     loadActivityFor(todayStr()); // default: today only
   }
 
@@ -681,7 +1048,7 @@
   function closeActivity() {
     els.activityScreen.hidden = true;
     document.body.classList.remove("locked");
-    if (inTelegram && tg.BackButton && !sheetOpen) tg.BackButton.hide();
+    syncBackButton();
   }
   els.activityBtn.addEventListener("click", openActivity);
   els.activityClose.addEventListener("click", closeActivity);
@@ -714,6 +1081,7 @@
   let saving = false;
   async function onSave() {
     if (saving) return;
+    if (!state.reportId) { showToast("Hisobot tanlanmagan", true); return; }
     const data = collect();
     const err = validate(data);
     if (err) {
@@ -727,6 +1095,7 @@
 
     const fd = new FormData();
     fd.append("init_data", tg ? tg.initData : "");
+    fd.append("report_id", String(state.reportId));
     fd.append("type", data.type);
     fd.append("coefficient", String(data.coefficient));
     fd.append("coefficient_mode", data.coefficient_mode);
@@ -756,18 +1125,22 @@
     els.saveBtn.textContent = busy ? "Saqlanmoqda…" : "Saqlash";
   }
 
-  function resetForm() {
+  function resetForm(full) {
     state.photos.forEach((p) => URL.revokeObjectURL(p.url));
     state.photos = [];
-    state.type = "akb";
-    state.coef = { mode: "none", value: 0 };
     state.weightRaw = "";
-    els.typeValue.textContent = "akb";
     els.weight.value = "";
-    els.coefCustom.value = "";
-    els.coefCustomWrap.hidden = true;
-    els.coefChips.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-active", i === 0));
-    renderPhotos();
+    // Keep the type + coefficient when "remember" is on (unless a full reset,
+    // e.g. opening a report — each report starts from 0).
+    if (full || !remember) {
+      state.type = "akb";
+      state.coef = { mode: "none", value: 0 };
+      els.typeValue.textContent = "akb";
+      els.coefCustom.value = "";
+      els.coefCustomWrap.hidden = true;
+      els.coefChips.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-active", i === 0));
+    }
+    renderPhotos("photos");
   }
 
   // ---- Toast ----
@@ -799,10 +1172,10 @@
     showLogin();
   }
 
-  // Browser user is authenticated → reveal the "add passkey" action + load stock.
+  // Browser user is authenticated → reveal the "add passkey" action + go home.
   function onAuthed() {
     if (!inTelegram && hasWebAuthn) els.passkeyAddBtn.hidden = false;
-    loadInventory();
+    showHome();
   }
 
   function showLoginError(msg) {
@@ -956,7 +1329,7 @@
 
   // ---- Boot ----
   initTelegram();
-  renderPhotos();
+  renderAllPhotos();
   renderAdjust();
   renderBalances();
   gateAccess();

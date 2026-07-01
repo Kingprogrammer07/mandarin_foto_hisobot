@@ -14,14 +14,18 @@
   <!-- Top bar: actions row on top, centered tabs below -->
   <header class="topbar">
     <div class="topbar__actions">
-      <span class="topbar__brand" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="m12 2 8 4v12l-8 4-8-4V6l8-4Zm0 2.2L6.5 7 12 9.8 17.5 7 12 4.2ZM6 8.7v8.1l5 2.5v-8.1L6 8.7Zm7 10.6 5-2.5V8.7l-5 2.6v8Z"/></svg>
-      </span>
+      <button type="button" class="theme-btn topbar__back" id="backHomeBtn" aria-label="Hisobotlar">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="topbar__report" id="reportName"></span>
       <button type="button" class="theme-btn" id="activityBtn" aria-label="Faolligim">
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm1-13h-2v6l5 3 .9-1.6-3.9-2.3V7Z"/></svg>
       </button>
       <button type="button" class="theme-btn" id="passkeyAddBtn" aria-label="Passkey o'rnatish" hidden>
         <svg viewBox="0 0 24 24" class="ic"><path d="M14 2a6 6 0 0 0-5.6 8.2L2 16.6V22h5.4l1.2-1.2 1.4-1.4-1.2-1.2 1.6-1.6 1.4 1.4 1.6-1.6A6 6 0 1 0 14 2Zm2.5 5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></svg>
+      </button>
+      <button type="button" class="theme-btn" id="settingsBtn" aria-label="Sozlamalar">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm8.4-2 1.8-1.4-1.8-3.1-2.1.7a6.9 6.9 0 0 0-1.4-.8L14.5 5h-3.6l-.4 2.4c-.5.2-1 .5-1.4.8l-2.1-.7-1.8 3.1L7 12l-.3 1.4-1.8 1.4 1.8 3.1 2.1-.7c.4.3.9.6 1.4.8l.4 2.4h3.6l.4-2.4c.5-.2 1-.5 1.4-.8l2.1.7 1.8-3.1L20.4 13 20.7 12Z"/></svg>
       </button>
       <button type="button" class="theme-btn" id="themeBtn" aria-label="Mavzu"></button>
     </div>
@@ -49,7 +53,7 @@
             Galereya
           </button>
           <button type="button" class="btn btn--ghost" id="btnCamera">
-            <svg viewBox="0 0 24 24" class="ic"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm0-2a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4ZM9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Z"/></svg>
+            <svg viewBox="0 0 24 24" class="ic"><path d="M9.4 3 7.6 5.1H4A2 2 0 0 0 2 7.1v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2h-3.6L14.6 3H9.4Zm2.6 5.1a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
             Kamera
           </button>
         </div>
@@ -117,6 +121,25 @@
 
     <!-- ============ TAB 2: ADASHGAN YUKLAR ============ -->
     <section class="panel" id="panel-lost" role="tabpanel" hidden>
+      <!-- Photos -->
+      <div class="field">
+        <div class="field__head">
+          <span class="field__label">Rasmlar</span>
+          <span class="counter" id="adjPhotoCounter">0/10</span>
+        </div>
+        <div class="photo-grid" id="adjPhotoGrid"></div>
+        <div class="photo-actions">
+          <button type="button" class="btn btn--ghost" id="adjBtnGallery">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2ZM8.5 11l2.5 3 3.5-4.5L19 16H5l3.5-5Z"/></svg>
+            Galereya
+          </button>
+          <button type="button" class="btn btn--ghost" id="adjBtnCamera">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M9.4 3 7.6 5.1H4A2 2 0 0 0 2 7.1v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2h-3.6L14.6 3H9.4Zm2.6 5.1a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
+            Kamera
+          </button>
+        </div>
+      </div>
+
       <!-- From type (subtract) -->
       <div class="field">
         <span class="field__label">Qaysi turdan ayirish</span>
@@ -178,6 +201,88 @@
   </div>
 
   <div class="toast" id="toast" hidden></div>
+
+  <!-- Live camera (getUserMedia). Stream stays alive between shots to avoid
+       re-prompting for permission; modal just toggles display. -->
+  <div class="cam" id="camModal" hidden>
+    <video class="cam__video" id="camVideo" autoplay playsinline muted></video>
+    <button type="button" class="cam__btn cam__close" id="camClose" aria-label="Yopish">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+    </button>
+    <button type="button" class="cam__btn cam__flip" id="camFlip" aria-label="Kamerani almashtirish">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M12 6a9 9 0 0 1 8.5 6h-2.1A7 7 0 0 0 6.7 9.3L9 11.6H3V5.6l2.2 2.2A9 9 0 0 1 12 6Zm0 12a9 9 0 0 1-8.5-6h2.1a7 7 0 0 0 11.7 2.7L15 14.4h6v6l-2.2-2.2A9 9 0 0 1 12 18Z"/></svg>
+    </button>
+    <button type="button" class="cam__zoom" id="camZoom" aria-label="Zoom">1.0x</button>
+    <button type="button" class="cam__shot" id="camShot" aria-label="Suratga olish"></button>
+    <canvas id="camCanvas" hidden></canvas>
+  </div>
+
+  <!-- Photo lightbox (tap a thumbnail to view large) -->
+  <div class="lightbox" id="lightbox" hidden>
+    <img class="lightbox__img" id="lightboxImg" alt="" />
+    <button type="button" class="lightbox__close" id="lightboxClose" aria-label="Yopish">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+    </button>
+    <button type="button" class="lightbox__del" id="lightboxDel" aria-label="O'chirish">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Zm4 2v8h1v-8h-1Zm3 0v8h1v-8h-1Z"/></svg>
+      O'chirish
+    </button>
+  </div>
+
+  <!-- Home: reports list -->
+  <div class="screen home" id="homeScreen" hidden>
+    <header class="screen__top">
+      <span class="screen__title">Hisobotlar</span>
+      <button type="button" class="theme-btn" id="homeThemeBtn" aria-label="Mavzu"></button>
+    </header>
+    <div class="screen__body">
+      <button type="button" class="btn btn--primary" id="newReportBtn">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+        Yangi hisobot qo'shish
+      </button>
+      <p class="home__hint" id="homeHint"></p>
+      <ul class="report-list" id="reportList"></ul>
+    </div>
+  </div>
+
+  <!-- New-report naming sheet -->
+  <div class="sheet-backdrop" id="nameBackdrop" hidden></div>
+  <div class="sheet" id="nameSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title">Yangi hisobot</span>
+      <button type="button" class="sheet__close" id="nameClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <input type="text" id="nameInput" class="input" placeholder="Hisobot nomi" maxlength="60"
+             autocapitalize="sentences" autocomplete="off" />
+      <button type="button" class="btn btn--primary" id="nameSave">Yaratish</button>
+      <p class="login__error" id="nameError" hidden></p>
+    </div>
+  </div>
+
+  <!-- Settings sheet -->
+  <div class="sheet-backdrop" id="setBackdrop" hidden></div>
+  <div class="sheet" id="setSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title">Sozlamalar</span>
+      <button type="button" class="sheet__close" id="setClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <label class="toggle-row">
+        <span>
+          <span class="toggle-row__title">Qiymatlarni eslab qolish</span>
+          <span class="toggle-row__sub">Saqlangach tovar turi va koeffitsient qayta tanlanadi</span>
+        </span>
+        <span class="switch"><input type="checkbox" id="rememberToggle" /><span class="switch__track"></span></span>
+      </label>
+    </div>
+  </div>
 
   <!-- Faolligim (activity log) -->
   <div class="screen" id="activityScreen" hidden>
