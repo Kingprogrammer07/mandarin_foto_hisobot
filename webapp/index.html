@@ -14,7 +14,7 @@
   <!-- Top bar: actions row on top, centered tabs below -->
   <header class="topbar">
     <div class="topbar__actions">
-      <button type="button" class="theme-btn topbar__back" id="backHomeBtn" aria-label="Hisobotlar">
+      <button type="button" class="theme-btn topbar__back" id="backHomeBtn" aria-label="Orqaga">
         <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
       </button>
       <span class="topbar__report" id="reportName"></span>
@@ -242,6 +242,38 @@
       </button>
       <p class="home__hint" id="homeHint"></p>
       <ul class="report-list" id="reportList"></ul>
+    </div>
+  </div>
+
+  <!-- Report menu: pick a section inside the opened report -->
+  <div class="screen" id="menuScreen" hidden>
+    <header class="screen__top">
+      <button type="button" class="theme-btn" id="menuBackBtn" aria-label="Hisobotlar">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="screen__title" id="menuTitle"></span>
+      <button type="button" class="theme-btn" id="menuThemeBtn" aria-label="Mavzu"></button>
+    </header>
+    <div class="screen__body">
+      <div class="menu">
+        <div class="menu-row">
+          <button type="button" class="menu-btn" id="menuTotalBtn">
+            <span class="menu-btn__ic">
+              <svg viewBox="0 0 24 24" class="ic"><path d="M12 3a3 3 0 0 0-2.8 2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4.2A3 3 0 0 0 12 3Zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm-2 5h4l2 6H8l2-6Z"/></svg>
+            </span>
+            <span class="menu-btn__label">Obshiy ves</span>
+          </button>
+          <button type="button" class="menu-xls" id="menuTotalXls" aria-label="Excel yuklash">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>
+          </button>
+        </div>
+        <button type="button" class="menu-btn menu-btn--accent" id="menuDistBtn">
+          <span class="menu-btn__ic">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M3 5h11v9H3V5Zm12 3h3l3 3v3h-6V8ZM6.5 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm11 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg>
+          </span>
+          <span class="menu-btn__label">Kargolarga tarqatish</span>
+        </button>
+      </div>
     </div>
   </div>
 

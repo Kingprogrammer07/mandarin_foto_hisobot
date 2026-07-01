@@ -132,6 +132,14 @@
     newReportBtn: $("#newReportBtn"),
     homeHint: $("#homeHint"),
     reportList: $("#reportList"),
+    // report section menu
+    menuScreen: $("#menuScreen"),
+    menuTitle: $("#menuTitle"),
+    menuBackBtn: $("#menuBackBtn"),
+    menuThemeBtn: $("#menuThemeBtn"),
+    menuTotalBtn: $("#menuTotalBtn"),
+    menuTotalXls: $("#menuTotalXls"),
+    menuDistBtn: $("#menuDistBtn"),
     nameBackdrop: $("#nameBackdrop"),
     nameSheet: $("#nameSheet"),
     nameClose: $("#nameClose"),
@@ -193,11 +201,12 @@
     if (themeMode === "auto") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", themeMode);
     root.style.colorScheme = effectiveScheme();
-    if (els.themeBtn) {
-      els.themeBtn.innerHTML = THEME_ICONS[themeMode];
-      els.themeBtn.setAttribute("aria-label", THEME_LABELS[themeMode]);
-      els.themeBtn.title = THEME_LABELS[themeMode];
-    }
+    [els.themeBtn, els.homeThemeBtn, els.menuThemeBtn].forEach((b) => {
+      if (!b) return;
+      b.innerHTML = THEME_ICONS[themeMode];
+      b.setAttribute("aria-label", THEME_LABELS[themeMode]);
+      b.title = THEME_LABELS[themeMode];
+    });
     syncTelegramChrome();
   }
 
@@ -253,7 +262,8 @@
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
     if (sheetOpen) { closeSheet(); return; }
     if (!els.activityScreen.hidden) { closeActivity(); return; }
-    if (state.reportId && els.homeScreen.hidden) { showHome(); return; }
+    if (!els.menuScreen.hidden) { showHome(); return; }          // menu → reports list
+    if (state.reportId && els.homeScreen.hidden) { showMenu(); return; } // work area → menu
   }
 
   // ---- Tabs ----
@@ -498,6 +508,12 @@
     sub.className = "report-item__sub";
     sub.textContent = `${fmtTs(rep.created_at)} · ${rep.entries || 0} yozuv`;
     main.append(name, sub);
+    const xls = document.createElement("button");
+    xls.className = "report-item__xls";
+    xls.type = "button";
+    xls.setAttribute("aria-label", "Excel yuklash");
+    xls.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>';
+    xls.addEventListener("click", (e) => { e.stopPropagation(); showToast("Excel funksiyasi tez orada", false); });
     const del = document.createElement("button");
     del.className = "report-item__del";
     del.type = "button";
@@ -507,7 +523,7 @@
     const go = document.createElement("span");
     go.className = "report-item__go";
     go.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>';
-    li.append(main, del, go);
+    li.append(main, xls, del, go);
     li.addEventListener("click", () => openReport(rep));
     return li;
   }
@@ -531,22 +547,40 @@
   function showHome() {
     state.reportId = null;
     els.reportName.textContent = "";
+    els.menuScreen.hidden = true;
     els.homeScreen.hidden = false;
     document.body.classList.add("locked");
     syncBackButton(); // home is the root → no back button
     loadReports();
   }
 
+  // Opening a report lands on its section menu (Obshiy ves / Kargolarga
+  // tarqatish), not straight into the reys/adashgan work area.
   function openReport(rep) {
     state.reportId = rep.id;
     state.reportName = rep.name;
     els.reportName.textContent = rep.name;
-    els.homeScreen.hidden = true;
-    document.body.classList.remove("locked");
     resetForm(true);   // each report starts everything from 0
     resetAdjust(true);
     setTab("report");
     loadInventory();
+    els.homeScreen.hidden = true;
+    showMenu();
+  }
+
+  // Report section menu (overlay over the work area).
+  function showMenu() {
+    els.menuTitle.textContent = state.reportName;
+    els.menuScreen.hidden = false;
+    document.body.classList.add("locked");
+    syncBackButton();
+  }
+
+  // "Kargolarga tarqatish" → reveal the reys/adashgan tab work area.
+  function openWork() {
+    els.menuScreen.hidden = true;
+    document.body.classList.remove("locked");
+    setTab("report");
     syncBackButton();
   }
 
@@ -596,8 +630,15 @@
   els.nameClose.addEventListener("click", closeNameSheet);
   els.nameBackdrop.addEventListener("click", closeNameSheet);
   els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
-  els.backHomeBtn.addEventListener("click", showHome);
+  els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
   els.homeThemeBtn.addEventListener("click", cycleTheme);
+
+  // ---- Report section menu ----
+  els.menuBackBtn.addEventListener("click", showHome);
+  els.menuThemeBtn.addEventListener("click", cycleTheme);
+  els.menuDistBtn.addEventListener("click", openWork);
+  els.menuTotalBtn.addEventListener("click", () => showToast("Obshiy ves tez orada", false));
+  els.menuTotalXls.addEventListener("click", () => showToast("Excel funksiyasi tez orada", false));
 
   // ---- Settings (remember toggle) ----
   function openSettings() {
@@ -802,6 +843,7 @@
     else if (!els.setSheet.hidden) closeSettings();
     else if (sheetOpen) closeSheet();
     else if (!els.activityScreen.hidden) closeActivity();
+    else if (!els.menuScreen.hidden) showHome();
   });
 
   // Swipe-down on the grip to dismiss.
