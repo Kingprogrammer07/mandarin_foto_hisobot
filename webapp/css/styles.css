@@ -1,0 +1,597 @@
+/* ===========================================================
+   Theme tokens
+   - Inside Telegram: --tg-theme-* drive everything (follows the
+     user's Telegram light/dark theme automatically).
+   - Outside Telegram (browser): the --fb-* fallbacks below follow
+     the OS via prefers-color-scheme.
+   =========================================================== */
+:root {
+  color-scheme: light dark;
+
+  /* Light fallbacks */
+  --fb-bg: #ffffff;
+  --fb-secondary: #eef1f5;
+  --fb-section: #ffffff;
+  --fb-text: #0f1419;
+  --fb-hint: #64707b; /* 5.06:1 on white (WCAG AA for small text) */
+  --fb-link: #2f86eb;
+  --fb-accent: #2f86eb;
+  --fb-accent-text: #ffffff;
+  --fb-separator: rgba(0, 0, 0, 0.08);
+  --fb-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 8px rgba(0, 0, 0, 0.04);
+  --fb-destructive: #e5484d;
+  --fb-fill: rgba(120, 130, 145, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fb-bg: #17181c;
+    --fb-secondary: #0e0f12;
+    --fb-section: #1e2026;
+    --fb-text: #f1f2f4;
+    --fb-hint: #8a929e;
+    --fb-link: #6ab3f3;
+    --fb-accent: #3e8eed;
+    --fb-accent-text: #ffffff;
+    --fb-separator: rgba(255, 255, 255, 0.1);
+    --fb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --fb-destructive: #ff6b6b;
+    --fb-fill: rgba(140, 150, 165, 0.16);
+  }
+}
+
+:root {
+  --bg: var(--tg-theme-bg-color, var(--fb-bg));
+  --secondary-bg: var(--tg-theme-secondary-bg-color, var(--fb-secondary));
+  --section-bg: var(--tg-theme-section-bg-color, var(--fb-section));
+  --text: var(--tg-theme-text-color, var(--fb-text));
+  --hint: var(--tg-theme-hint-color, var(--fb-hint));
+  --link: var(--tg-theme-link-color, var(--fb-link));
+  --accent: var(--tg-theme-button-color, var(--fb-accent));
+  --accent-text: var(--tg-theme-button-text-color, var(--fb-accent-text));
+  --separator: var(--tg-theme-section-separator-color, var(--fb-separator));
+  --destructive: var(--tg-theme-destructive-text-color, var(--fb-destructive));
+  --shadow: var(--fb-shadow);
+  --fill: var(--fb-fill);
+
+  --radius: 16px;
+  --radius-sm: 11px;
+  --tap: 46px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ----- Admin-forced theme (overrides Telegram + OS) ----- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff; --secondary-bg: #eef1f5; --section-bg: #ffffff;
+  --text: #0f1419; --hint: #64707b; --link: #2f86eb;
+  --accent: #2f86eb; --accent-text: #ffffff;
+  --separator: rgba(0, 0, 0, 0.08); --destructive: #e5484d;
+  --fill: rgba(120, 130, 145, 0.12);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 8px rgba(0, 0, 0, 0.04);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17181c; --secondary-bg: #0e0f12; --section-bg: #1e2026;
+  --text: #f1f2f4; --hint: #8a929e; --link: #6ab3f3;
+  --accent: #3e8eed; --accent-text: #ffffff;
+  --separator: rgba(255, 255, 255, 0.1); --destructive: #ff6b6b;
+  --fill: rgba(140, 150, 165, 0.16);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* Visually hidden but still in layout — keeps `capture` working on file inputs
+   (display:none would make some WebViews ignore the camera hint). */
+.file-input {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  opacity: 0;
+}
+
+/* Remove the 300ms tap delay on interactive controls. */
+button, .tab, .chip, .select, .icon-btn, .input, label { touch-action: manipulation; }
+
+/* Keyboard focus rings (a11y) — only for keyboard nav, not touch/mouse. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.input:focus-visible { outline: none; } /* inputs already show an accent border */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+body { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ---------- Top bar: actions row on top, centered tabs below ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--secondary-bg); /* solid fallback: stays opaque/legible everywhere */
+}
+/* Translucent blur only where the blur can actually hide scrolled content. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar {
+    background: color-mix(in srgb, var(--secondary-bg) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px);
+    -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  }
+}
+.topbar__actions { display: flex; align-items: center; gap: 6px; }
+.topbar__brand { margin-right: auto; display: inline-flex; align-items: center; color: var(--accent); padding-left: 4px; }
+.topbar__brand svg { width: 26px; height: 26px; fill: currentColor; }
+.tabs { display: flex; gap: 6px; justify-content: center; }
+.theme-btn {
+  width: var(--tap); height: var(--tap); flex: none;
+  border: 0; border-radius: var(--radius-sm);
+  background: var(--section-bg);
+  color: var(--text);
+  display: grid; place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.08s var(--ease);
+}
+.theme-btn:active { transform: scale(0.95); }
+.theme-btn .ic { width: 22px; height: 22px; }
+.theme-btn[hidden] { display: none; } /* author display:grid would beat [hidden] */
+.tab {
+  flex: 0 1 auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--hint);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 22px;
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.18s var(--ease), background 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.tab.is-active {
+  color: var(--text);
+  background: var(--section-bg);
+  box-shadow: var(--shadow);
+}
+.tab:active { transform: scale(0.985); }
+
+/* ---------- Content ---------- */
+.content { padding: 10px 14px 28px; }
+.panel { display: none; }
+.panel.is-active { display: block; animation: panelIn 0.22s var(--ease); }
+@keyframes panelIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.field {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.field__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.field__label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.field__head .field__label { margin-bottom: 0; }
+.counter { font-size: 13px; color: var(--hint); font-variant-numeric: tabular-nums; }
+
+/* ---------- Photos ---------- */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.photo-grid:empty { display: none; }
+.thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--fill);
+  animation: thumbIn 0.2s var(--ease);
+}
+@keyframes thumbIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb__del {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 22px; height: 22px;
+  border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 16px; line-height: 1;
+  display: grid; place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.thumb__del:active { transform: scale(0.9); }
+
+.photo-actions { display: flex; gap: 8px; }
+.btn {
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  min-height: var(--tap);
+  padding: 0 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: opacity 0.15s, transform 0.08s var(--ease), background 0.15s;
+}
+.btn:active { transform: scale(0.97); }
+.btn[disabled] { opacity: 0.4; pointer-events: none; }
+.btn--ghost { flex: 1; background: var(--fill); color: var(--text); }
+.btn--ghost:active { background: color-mix(in srgb, var(--fill) 60%, var(--separator)); }
+.btn--primary { width: 100%; background: var(--accent); color: var(--accent-text); box-shadow: var(--shadow); }
+.save-btn { margin-top: 4px; }
+.ic { width: 20px; height: 20px; fill: currentColor; flex: none; }
+
+/* ---------- Select ---------- */
+.select-row { display: flex; gap: 8px; }
+.select {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--tap);
+  padding: 0 14px;
+  background: var(--fill);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.select:active { background: color-mix(in srgb, var(--fill) 60%, var(--separator)); }
+.select__value { font-weight: 600; }
+.select__chev { width: 22px; height: 22px; fill: var(--hint); }
+.icon-btn {
+  width: var(--tap); height: var(--tap);
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  color: var(--link);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.08s var(--ease);
+}
+.icon-btn:active { transform: scale(0.95); }
+
+/* ---------- Chips ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  appearance: none;
+  border: 1.5px solid transparent;
+  background: var(--fill);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.08s var(--ease);
+}
+.chip:active { transform: scale(0.96); }
+.chip.is-active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.custom-coef { margin-top: 12px; animation: panelIn 0.18s var(--ease); }
+
+/* ---------- Inputs ---------- */
+.input {
+  width: 100%;
+  appearance: none;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  color: var(--text);
+  font-size: 16px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input::placeholder { color: var(--hint); }
+.input:focus { border-color: var(--accent); }
+.input-suffix { position: relative; display: flex; align-items: center; }
+.input-suffix .input { padding-right: 46px; }
+.suffix { position: absolute; right: 14px; color: var(--hint); font-weight: 600; pointer-events: none; }
+
+/* ---------- Empty state (tab 2) ---------- */
+.empty { text-align: center; padding: 72px 24px; color: var(--hint); }
+.empty__ic { width: 56px; height: 56px; fill: var(--hint); opacity: 0.45; }
+.empty__title { font-size: 18px; font-weight: 700; color: var(--text); margin: 16px 0 4px; }
+.empty__sub { font-size: 14px; margin: 0; }
+
+/* ---------- Bottom sheet ---------- */
+.sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 40;
+  animation: fade 0.2s ease;
+}
+.sheet-backdrop.is-closing { animation: fadeOut 0.2s ease forwards; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  background: var(--bg);
+  border-radius: 18px 18px 0 0;
+  padding: 0 14px calc(14px + env(safe-area-inset-bottom));
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.25);
+  animation: slideUp 0.26s var(--ease);
+  touch-action: none;
+}
+/* The author display:flex above would otherwise beat the [hidden] UA rule,
+   leaving the sheet permanently visible over the form. Restore hiding. */
+.sheet[hidden], .sheet-backdrop[hidden] { display: none; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.sheet__grip { padding: 8px 0 4px; display: grid; place-items: center; cursor: grab; }
+.sheet__handle { width: 38px; height: 4px; border-radius: 2px; background: var(--hint); opacity: 0.4; }
+.sheet__top { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 10px; }
+.sheet__title { font-size: 16px; font-weight: 700; color: var(--text); }
+.sheet__close {
+  width: 32px; height: 32px;
+  border: 0; border-radius: 50%;
+  background: var(--fill);
+  color: var(--hint);
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.sheet__close:active { transform: scale(0.92); }
+.sheet__close .ic { width: 16px; height: 16px; }
+
+.sheet__search {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--fill);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+.sheet__search .ic { fill: var(--hint); }
+.sheet__input {
+  flex: 1; border: 0; background: transparent;
+  color: var(--text); font-size: 16px;
+  min-height: var(--tap); outline: none;
+}
+.sheet__input::placeholder { color: var(--hint); }
+.sheet__list { list-style: none; margin: 0; padding: 4px 0 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.sheet__item {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.sheet__item:active { background: var(--fill); }
+.sheet__item.is-selected { color: var(--accent); font-weight: 700; }
+.sheet__item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet__item__right { display: flex; align-items: center; gap: 4px; flex: none; }
+.sheet__item .check { width: 20px; height: 20px; fill: var(--accent); flex: none; }
+.sheet__item--add { color: var(--link); font-weight: 600; }
+.sheet__del {
+  width: 30px; height: 30px;
+  border: 0; border-radius: 50%;
+  background: transparent;
+  color: var(--hint);
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.sheet__del:active { background: var(--fill); }
+.sheet__del .ic { width: 17px; height: 17px; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(20, 20, 22, 0.94);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 88%;
+  text-align: center;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  animation: toastIn 0.2s var(--ease);
+}
+.toast--err { background: var(--destructive); }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------- Touch targets: expand small icon buttons to >=44px hit area
+   (visual size stays compact; invisible ::after enlarges the tappable zone) ---------- */
+.thumb__del, .sheet__close, .sheet__del { position: relative; }
+.thumb__del::after { content: ""; position: absolute; inset: -11px; }
+.sheet__close::after { content: ""; position: absolute; inset: -8px; }
+.sheet__del::after { content: ""; position: absolute; inset: -7px; }
+
+/* ---------- Login screen (browser only) ---------- */
+.login {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  padding-top: max(24px, env(safe-area-inset-top));
+  background: var(--secondary-bg);
+}
+.login__card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px 24px;
+  text-align: center;
+}
+.login__logo { width: 56px; height: 56px; margin: 0 auto 16px; color: var(--accent); }
+.login__logo svg { width: 100%; height: 100%; fill: currentColor; }
+.login__title { font-size: 22px; font-weight: 700; margin: 0 0 6px; color: var(--text); }
+.login__sub { font-size: 14px; color: var(--hint); margin: 0 0 24px; line-height: 1.5; }
+.login__passkey { margin-top: 8px; }
+.login__passkey .btn { width: 100%; }
+.login__or {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--hint); font-size: 13px; margin: 14px 0 2px;
+}
+.login__or::before, .login__or::after {
+  content: ""; flex: 1; height: 1px; background: var(--separator);
+}
+.login__form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; text-align: left; }
+.login__form .input-suffix .input { padding-right: 48px; }
+.login__form .btn { margin-top: 4px; }
+.pass-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px; height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hint);
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.pass-toggle.is-on { color: var(--accent); }
+.pass-toggle .ic { width: 20px; height: 20px; }
+.login__error { color: var(--destructive); font-size: 13px; margin: 16px 0 0; }
+/* display:grid above would beat the [hidden] UA rule — restore hiding so the
+   overlay actually disappears after login (and stays hidden inside Telegram). */
+.login[hidden] { display: none; }
+body.locked { overflow: hidden; }
+
+/* ---------- Adashgan yuklar (tab 2) ---------- */
+.select__value--muted { color: var(--hint); font-weight: 500; }
+.bal-line { margin: 8px 2px 0; font-size: 13px; color: var(--hint); min-height: 16px; }
+.bal-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.transfer-arrow { display: grid; place-items: center; margin: -4px 0 8px; color: var(--accent); }
+.transfer-arrow svg { width: 26px; height: 26px; }
+.balances { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.balances:empty::after { content: "Ma'lumot yo'q"; color: var(--hint); font-size: 14px; }
+.bal-cell {
+  background: var(--fill);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.bal-cell__name { font-size: 12px; color: var(--hint); text-transform: uppercase; letter-spacing: .3px; }
+.bal-cell__val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.bal-cell__val span { font-size: 12px; font-weight: 500; color: var(--hint); }
+
+/* ---------- Full-screen overlay (Faolligim) ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--secondary-bg);
+  display: flex;
+  flex-direction: column;
+  animation: panelIn 0.2s var(--ease);
+}
+.screen[hidden] { display: none; }
+.screen__top {
+  position: sticky; top: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--secondary-bg);
+  border-bottom: 1px solid var(--separator);
+}
+.screen__title { font-size: 18px; font-weight: 700; color: var(--text); }
+.screen__body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 14px calc(24px + env(safe-area-inset-bottom)); }
+
+/* Date filter bar (Faolligim) */
+.filter-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--secondary-bg);
+  border-bottom: 1px solid var(--separator);
+}
+.filter-nav {
+  width: 40px; height: 40px; flex: none;
+  border: 0; border-radius: var(--radius-sm);
+  background: var(--section-bg); color: var(--text);
+  display: grid; place-items: center; cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.filter-nav:active { transform: scale(0.95); }
+.filter-nav[disabled] { opacity: 0.4; pointer-events: none; }
+.filter-date {
+  appearance: none;
+  border: 0; border-radius: var(--radius-sm);
+  background: var(--section-bg); color: var(--text);
+  font-size: 15px; font-weight: 600;
+  min-height: 40px; padding: 0 14px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  font-family: inherit;
+}
+.filter-date::-webkit-calendar-picker-indicator { filter: var(--cal-invert, none); opacity: .6; }
+
+.act {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--section-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+}
+.act__icon { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; }
+.act__icon svg { width: 20px; height: 20px; fill: #fff; }
+.act__icon--reys { background: var(--accent); }
+.act__icon--adjust { background: #e0891b; }
+.act__main { flex: 1; min-width: 0; }
+.act__title { font-size: 15px; font-weight: 600; color: var(--text); }
+.act__sub { font-size: 13px; color: var(--hint); margin-top: 2px; }
+.act__time { font-size: 12px; color: var(--hint); white-space: nowrap; flex: none; font-variant-numeric: tabular-nums; }
+.act__empty { text-align: center; color: var(--hint); padding: 48px 16px; font-size: 14px; }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
