@@ -7,3 +7,6 @@ venv/
 .idea/
 .vscode/
 *.log
+.codex_tmp_spreadsheet/
+~$*.xlsx
+*.xlsx

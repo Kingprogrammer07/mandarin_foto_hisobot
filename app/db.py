@@ -20,7 +20,7 @@ from . import config
 _DB = config.DATA_DIR / "reys.db"
 _LOCK = threading.Lock()
 
-DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon"]
+DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"]
 MAX_REPORTS = 5
 
 

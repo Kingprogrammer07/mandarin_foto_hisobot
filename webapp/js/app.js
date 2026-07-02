@@ -179,6 +179,7 @@
     menuTotalBtn: $("#menuTotalBtn"),
     menuTotalXls: $("#menuTotalXls"),
     menuDistBtn: $("#menuDistBtn"),
+    menuDistXls: $("#menuDistXls"),
     // Obshiy ves submenu
     obshiyScreen: $("#obshiyScreen"),
     obshiyBackBtn: $("#obshiyBackBtn"),
@@ -1478,9 +1479,44 @@
   els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
 
+  function filenameFromDisposition(header) {
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(header || "");
+    if (m) {
+      try { return decodeURIComponent(m[1]); } catch (_) {}
+    }
+    return `${state.reportName || "Hisobot"} KARGOLARGA TARQATISH.xlsx`;
+  }
+
+  async function downloadKargoExcel() {
+    if (!state.reportId) return;
+    els.menuDistXls.disabled = true;
+    try {
+      const res = await fetch(`/api/export/kargo?report_id=${state.reportId}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || "Excel yuklab bo'lmadi");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filenameFromDisposition(res.headers.get("content-disposition"));
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Excel tayyor");
+    } catch (e) {
+      showToast(e.message || "Excel yuklab bo'lmadi", true);
+    } finally {
+      els.menuDistXls.disabled = false;
+    }
+  }
+
   // ---- Report section menu ----
   els.menuBackBtn.addEventListener("click", showHome);
   els.menuDistBtn.addEventListener("click", openWork);
+  els.menuDistXls.addEventListener("click", downloadKargoExcel);
   els.menuTotalBtn.addEventListener("click", showObshiy);
   els.menuTotalXls.addEventListener("click", () => showToast("Excel funksiyasi tez orada", false));
 

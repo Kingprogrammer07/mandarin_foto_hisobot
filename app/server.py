@@ -11,10 +11,10 @@ import json as _json
 import logging
 import math
 import time
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from webauthn import (
     generate_authentication_options,
@@ -31,7 +31,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import config, db, outbox, passkeys
+from . import config, db, excel_export, outbox, passkeys
 from .security import (
     InitDataError,
     authenticate_admin,
@@ -626,6 +626,27 @@ async def api_entries(request: Request, report_id: int | None = None, kind: str 
     rid = _require_report(report_id)
     action = "adjust" if kind == "adjust" else "reys"
     return {"entries": db.list_entries(rid, action)}
+
+
+@app.get("/api/export/kargo")
+async def api_export_kargo(request: Request, report_id: int | None = None):
+    _auth_or_403(request, state_changing=False)
+    rid = _require_report(report_id)
+    try:
+        content, filename = excel_export.build_kargo_excel(rid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="excel namunasi topilmadi")
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @app.post("/api/send-bulk")
