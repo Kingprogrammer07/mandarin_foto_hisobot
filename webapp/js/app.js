@@ -974,11 +974,15 @@
   let viewerSection = "top"; // which SECTIONS list the viewer is showing
   let entryUrls = []; // object URLs created for the current render; revoked on re-render
   let selectedEntryIds = new Set();
+  let entriesFocusId = null;
+  let editReturn = null;
   function clearEntryUrls() { entryUrls.forEach((u) => URL.revokeObjectURL(u)); entryUrls = []; }
+  function entriesScroller() { return els.entriesList ? els.entriesList.parentElement : null; }
 
-  function openEntries(section) {
+  function openEntries(section, focusId) {
     viewerSection = section || state.formSection;
-    entriesPage = 0;
+    entriesFocusId = focusId == null ? null : String(focusId);
+    if (!entriesFocusId) entriesPage = 0;
     selectedEntryIds = new Set();
     els.entriesTitle.textContent = SECTIONS[viewerSection].title + " — yuklanganlar";
     els.entriesScreen.hidden = false;
@@ -995,10 +999,32 @@
     syncLock(); // form screen may still be open beneath; work area isn't locked
     syncBackButton();
   }
+  function rememberEditReturn(entry) {
+    if (!isBulkSection() || !entry || entry.id == null) { editReturn = null; return; }
+    editReturn = {
+      section: viewerSection,
+      entryId: String(entry.id),
+      page: entriesPage,
+      scrollTop: entriesScroller() ? entriesScroller().scrollTop : 0,
+    };
+  }
+  function returnToEditedEntry(section, entry) {
+    const entryId = entry && entry.id != null ? String(entry.id) : (editReturn && editReturn.entryId);
+    const targetSection = section || (editReturn && editReturn.section);
+    if (!targetSection || !entryId) return;
+    if (editReturn && editReturn.section === targetSection) entriesPage = editReturn.page || 0;
+    openEntries(targetSection, entryId);
+    editReturn = null;
+  }
   function renderEntries() {
     const list = state.entries[viewerSection];
     const liveIds = new Set(list.filter((e) => e.synced && e.id != null).map((e) => String(e.id)));
     selectedEntryIds = new Set([...selectedEntryIds].filter((id) => liveIds.has(id)));
+    const ordered = list.slice().reverse(); // newest first
+    if (entriesFocusId) {
+      const focusIdx = ordered.findIndex((e) => String(e.id || e.localId) === entriesFocusId);
+      if (focusIdx !== -1) entriesPage = Math.floor(focusIdx / ENTRIES_PAGE);
+    }
     const pages = Math.max(1, Math.ceil(list.length / ENTRIES_PAGE));
     entriesPage = Math.min(Math.max(entriesPage, 0), pages - 1);
     clearEntryUrls();
@@ -1012,13 +1038,22 @@
       els.entriesPager.hidden = true;
       return;
     }
-    const ordered = list.slice().reverse(); // newest first
     const start = entriesPage * ENTRIES_PAGE;
     ordered.slice(start, start + ENTRIES_PAGE).forEach((e) => els.entriesList.appendChild(entryCard(e)));
     els.entriesPager.hidden = pages <= 1;
     els.entriesPageLabel.textContent = `${entriesPage + 1}/${pages}`;
     els.entriesPrev.disabled = entriesPage <= 0;
     els.entriesNext.disabled = entriesPage >= pages - 1;
+    if (entriesFocusId) {
+      const safeId = window.CSS && CSS.escape ? CSS.escape(entriesFocusId) : entriesFocusId.replace(/"/g, '\\"');
+      const target = els.entriesList.querySelector(`[data-entry-id="${safeId}"]`);
+      if (target) {
+        target.classList.add("is-focus");
+        setTimeout(() => { try { target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (_) {} }, 80);
+        setTimeout(() => target.classList.remove("is-focus"), 1600);
+        entriesFocusId = null;
+      }
+    }
   }
 
   let sendingBulk = false;
@@ -1119,6 +1154,8 @@
     const card = document.createElement("div");
     const selected = e.synced && e.id != null && selectedEntryIds.has(String(e.id));
     card.className = "entry-card" + (e.sendStatus === "sent" ? " is-sent" : "") + (selected ? " is-selected" : "");
+    const entryKey = e.id != null ? e.id : e.localId;
+    if (entryKey != null) card.dataset.entryId = String(entryKey);
 
     const head = document.createElement("div");
     head.className = "entry-card__head";
@@ -1263,6 +1300,7 @@
   function startEditReys(entry) {
     if (saving) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
     if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
+    rememberEditReturn(entry);
     editingReys = entry;
     resetForm(true);
     state.type = entry.type;
@@ -1282,6 +1320,7 @@
   function startEditAdjust(entry) {
     if (adjusting) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
     if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
+    rememberEditReturn(entry);
     editingAdj = entry;
     resetAdjust(true);
     state.adjFrom = entry.from;
@@ -1660,8 +1699,8 @@
   // ---- Shared Obshiy-ves form ----
   els.topBackBtn.addEventListener("click", formBack);
   els.topViewBtn.addEventListener("click", () => openEntries(state.formSection));
-  els.reysViewBtn.addEventListener("click", () => openEntries("reys"));
-  els.adjViewBtn.addEventListener("click", () => openEntries("adjust"));
+  els.reysViewBtn.addEventListener("click", () => openEntries("reys", editingReys && editingReys.id));
+  els.adjViewBtn.addEventListener("click", () => openEntries("adjust", editingAdj && editingAdj.id));
   els.topBtnGallery.addEventListener("click", () => { activePk = "topPhotos"; els.inGallery.click(); });
   els.topBtnCamera.addEventListener("click", () => { activePk = "topPhotos"; openCamera(); });
   // Keep the focused input above the on-screen keyboard (it was covering the
@@ -2083,6 +2122,7 @@
       updateViewCount();
       if (stillCurrent) resetAdjust(); // clears photos + weight (keeps from/to if "remember" on)
       renderBalances();
+      returnToEditedEntry("adjust", editing);
     } catch (e) {
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
       showToast(e.message || "Xatolik", true);
@@ -2290,6 +2330,7 @@
       updateViewCount();
       if (stillCurrent) resetForm();
       loadInventory();
+      returnToEditedEntry("reys", editing);
     } catch (e) {
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
       showToast(e.message || "Xatolik", true);

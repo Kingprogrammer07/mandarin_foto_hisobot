@@ -36,11 +36,10 @@ def _entry_expr_and_value(entry: dict) -> tuple[str, float]:
     weight = _num(entry.get("weight"))
     coef = _num(entry.get("coefficient"))
     net = _num(entry.get("net"))
-    if net:
-        return _formula_num(net), net
     if coef > 0:
-        net = round(weight - coef, 4)
-        return _formula_num(net), net
+        if not net:
+            net = round(weight - coef, 4)
+        return f"{_formula_num(weight)}-{_formula_num(coef)}", net
     return _formula_num(net), net
 
 

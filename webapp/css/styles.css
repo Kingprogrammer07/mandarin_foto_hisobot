@@ -862,6 +862,9 @@ body.locked { overflow: hidden; }
   border: 1px solid var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow);
 }
+.entry-card.is-focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent), var(--shadow);
+}
 .entry-card__head { display: flex; align-items: center; gap: 10px; }
 .entry-card__pick {
   width: 32px; height: 32px; flex: none;
