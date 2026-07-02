@@ -46,6 +46,7 @@
     topWeightRaw: "",
     topCodeFree: false, // pencil unlocked → karobka kodi accepts any character
     topFast: false, // fast-mode capture loop
+    reysFast: false, // kargolarga tarqatish fast-mode capture loop
     formSection: "top", // which SECTIONS entry the form is currently editing
     entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] }, // saved rows (client-side until backend)
     type: "akb",
@@ -61,6 +62,7 @@
   let remember = false;
   try { remember = localStorage.getItem("reys-remember") === "1"; } catch (_) {}
   try { state.topFast = localStorage.getItem("reys-top-fast") === "1"; } catch (_) {}
+  try { state.reysFast = localStorage.getItem("reys-fast") === "1"; } catch (_) {}
 
   // iOS numeric keyboards can emit a comma as the decimal separator — normalize
   // to a dot and drop stray chars / extra dots so parseFloat works.
@@ -124,6 +126,7 @@
     coefCustomWrap: $("#coefCustomWrap"),
     coefCustom: $("#coefCustom"),
     weight: $("#weight"),
+    weightQuickSave: $("#weightQuickSave"),
     saveBtn: $("#saveBtn"),
     // adashgan yuklar (tab 2)
     adjFromSelect: $("#adjFromSelect"),
@@ -211,6 +214,7 @@
     entriesActions: $("#entriesActions"),
     entriesSendUnsentBtn: $("#entriesSendUnsentBtn"),
     entriesResendSentBtn: $("#entriesResendSentBtn"),
+    entriesSendSelectedBtn: $("#entriesSendSelectedBtn"),
     entriesPager: $("#entriesPager"),
     entriesPrev: $("#entriesPrev"),
     entriesNext: $("#entriesNext"),
@@ -230,6 +234,7 @@
     setSheet: $("#setSheet"),
     setClose: $("#setClose"),
     rememberToggle: $("#rememberToggle"),
+    reysFastToggle: $("#reysFastToggle"),
     // adashgan photos
     adjPhotoGrid: $("#adjPhotoGrid"),
     adjPhotoCounter: $("#adjPhotoCounter"),
@@ -311,6 +316,7 @@
     applyTheme();
     document.querySelectorAll(".js-theme").forEach((b) => b.addEventListener("click", cycleTheme));
     els.saveBtn.addEventListener("click", onSave);
+    if (els.weightQuickSave) els.weightQuickSave.addEventListener("click", onSave);
     // Inside Telegram the user is authenticated immediately — go to the home list.
     if (inTelegram) showHome();
   }
@@ -433,6 +439,12 @@
     });
     renderPhotos(pk);
     haptic("light");
+    if (pk === "photos" && state.reysFast) {
+      setTimeout(() => { try { els.weight.focus(); } catch (_) {} }, 60);
+    }
+    if (pk === "topPhotos" && state.topFast) {
+      setTimeout(() => { try { els.topCode.focus(); } catch (_) {} }, 60);
+    }
   }
 
   function removePhoto(id, pk) {
@@ -538,10 +550,6 @@
         addFiles([file], pk);
       }
       closeCamera(); // hide modal, keep stream alive for the next shot
-      // Fast mode: jump straight to the karobka kodi input after each shot.
-      if (pk === "topPhotos" && state.topFast) {
-        setTimeout(() => { try { els.topCode.focus(); } catch (_) {} }, 60);
-      }
     }, "image/jpeg", 0.92);
   }
 
@@ -965,11 +973,13 @@
   let entriesPage = 0;
   let viewerSection = "top"; // which SECTIONS list the viewer is showing
   let entryUrls = []; // object URLs created for the current render; revoked on re-render
+  let selectedEntryIds = new Set();
   function clearEntryUrls() { entryUrls.forEach((u) => URL.revokeObjectURL(u)); entryUrls = []; }
 
   function openEntries(section) {
     viewerSection = section || state.formSection;
     entriesPage = 0;
+    selectedEntryIds = new Set();
     els.entriesTitle.textContent = SECTIONS[viewerSection].title + " — yuklanganlar";
     els.entriesScreen.hidden = false;
     document.body.classList.add("locked");
@@ -979,6 +989,7 @@
   }
   function closeEntries() {
     clearEntryUrls();
+    selectedEntryIds = new Set();
     els.entriesScreen.hidden = true;
     els.entriesActions.hidden = true;
     syncLock(); // form screen may still be open beneath; work area isn't locked
@@ -986,6 +997,8 @@
   }
   function renderEntries() {
     const list = state.entries[viewerSection];
+    const liveIds = new Set(list.filter((e) => e.synced && e.id != null).map((e) => String(e.id)));
+    selectedEntryIds = new Set([...selectedEntryIds].filter((id) => liveIds.has(id)));
     const pages = Math.max(1, Math.ceil(list.length / ENTRIES_PAGE));
     entriesPage = Math.min(Math.max(entriesPage, 0), pages - 1);
     clearEntryUrls();
@@ -1020,8 +1033,10 @@
     if (!show) return;
     const unsent = list.filter(canSendUnsent).length;
     const sent = list.filter(canResendSent).length;
+    const selected = list.filter((e) => e.synced && e.id != null && selectedEntryIds.has(String(e.id))).length;
     els.entriesSendUnsentBtn.disabled = sendingBulk || unsent === 0;
     els.entriesResendSentBtn.disabled = sendingBulk || sent === 0;
+    els.entriesSendSelectedBtn.disabled = sendingBulk || selected === 0;
     els.entriesSendUnsentBtn.textContent = sendingBulk
       ? "Yuborishga tayyorlanmoqda..."
       : unsent
@@ -1030,6 +1045,9 @@
     els.entriesResendSentBtn.textContent = sent
       ? `Yuborilganlarni qayta yuborish (${sent})`
       : "Qayta yuboriladigan yo'q";
+    els.entriesSendSelectedBtn.textContent = selected
+      ? `Tanlanganlarni yuborish (${selected})`
+      : "Tanlangan yo'q";
   }
 
   async function sendEntriesBulk(mode) {
@@ -1063,13 +1081,62 @@
     }
   }
 
+  async function sendEntriesSelected() {
+    if (sendingBulk || !isBulkSection()) return;
+    const list = state.entries[viewerSection];
+    const targets = list.filter((e) => e.synced && e.id != null && selectedEntryIds.has(String(e.id)));
+    if (!targets.length) return;
+    sendingBulk = true;
+    renderBulkSendState(list);
+    try {
+      const res = await fetch("/api/send-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          init_data: inTelegram ? tg.initData : "",
+          report_id: state.reportId,
+          kind: viewerSection,
+          mode: "sent",
+          entry_ids: targets.map((e) => e.id),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Yuborib bo'lmadi");
+      targets.forEach((e) => { e.sendStatus = "pending"; });
+      selectedEntryIds = new Set();
+      showToast(`${json.queued || targets.length} ta tanlangan yozuv yuborishga qo'shildi`);
+      renderEntries();
+    } catch (e) {
+      showToast(e.message || "Yuborib bo'lmadi", true);
+    } finally {
+      sendingBulk = false;
+      renderBulkSendState(state.entries[viewerSection]);
+    }
+  }
+
   function entryCard(e) {
     const files = e.files || [];
     const card = document.createElement("div");
-    card.className = "entry-card" + (e.sendStatus === "sent" ? " is-sent" : "");
+    const selected = e.synced && e.id != null && selectedEntryIds.has(String(e.id));
+    card.className = "entry-card" + (e.sendStatus === "sent" ? " is-sent" : "") + (selected ? " is-selected" : "");
 
     const head = document.createElement("div");
     head.className = "entry-card__head";
+    if (isBulkSection() && e.synced && e.id != null) {
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "entry-card__pick" + (selected ? " is-on" : "");
+      pick.setAttribute("aria-label", selected ? "Tanlovdan olish" : "Tanlash");
+      pick.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-8.1 13.3-4.2-4.2 1.4-1.4 2.8 2.8 5.6-5.6 1.4 1.4-7 7Z"/></svg>';
+      pick.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = String(e.id);
+        if (selectedEntryIds.has(id)) selectedEntryIds.delete(id);
+        else selectedEntryIds.add(id);
+        renderEntries();
+      });
+      head.appendChild(pick);
+    }
     const code = document.createElement("div");
     code.className = "entry-card__code";
     // Label by entry shape: transfer "from → to", reys tovar turi, or karobka kodi.
@@ -1125,6 +1192,12 @@
               : "";
     sub.textContent = `${coefTxt}${fmtTs(e.ts / 1000)} · ${files.length} rasm`;
     foot.append(thumbs, sub);
+    if (e.editedAt) {
+      const editedBadge = document.createElement("span");
+      editedBadge.className = "entry-status entry-status--edited";
+      editedBadge.textContent = "tahrirlangan";
+      foot.appendChild(editedBadge);
+    }
     if (statusTxt) {
       statusBadge.textContent = statusTxt;
       statusBadge.classList.toggle("entry-status--sent", e.sendStatus === "sent");
@@ -1394,7 +1467,14 @@
 
   // ---- Load saved entries from the server (history survives a reload) ----
   function serverEntry(kind, r, files) {
-    const base = { id: r.id, files, ts: (r.ts || 0) * 1000, sendStatus: r.send_status || null, synced: true };
+    const base = {
+      id: r.id,
+      files,
+      ts: (r.ts || 0) * 1000,
+      editedAt: r.edited_at ? r.edited_at * 1000 : null,
+      sendStatus: r.send_status || null,
+      synced: true,
+    };
     if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };
     const coef = Number(r.coefficient) || 0;
     return { ...base, type: r.tovar_turi, coefMode: coef ? "fixed" : "none", coefficient: coef, weight: r.weight, net: r.net };
@@ -1547,6 +1627,7 @@
   els.entriesNext.addEventListener("click", () => { entriesPage += 1; renderEntries(); });
   els.entriesSendUnsentBtn.addEventListener("click", () => sendEntriesBulk("unsent"));
   els.entriesResendSentBtn.addEventListener("click", () => sendEntriesBulk("sent"));
+  els.entriesSendSelectedBtn.addEventListener("click", sendEntriesSelected);
   els.entryActBackdrop.addEventListener("click", closeEntryActions);
   els.entryEditBtn.addEventListener("click", () => { const e = actionEntry; closeEntryActions(); if (e) startEditEntry(e); });
   els.entryDeleteBtn.addEventListener("click", async () => {
@@ -1580,6 +1661,7 @@
   // ---- Settings (remember toggle) ----
   function openSettings() {
     els.rememberToggle.checked = remember;
+    if (els.reysFastToggle) els.reysFastToggle.checked = state.reysFast;
     els.setBackdrop.hidden = false;
     els.setSheet.hidden = false;
     syncBackButton();
@@ -1591,6 +1673,10 @@
   els.rememberToggle.addEventListener("change", () => {
     remember = els.rememberToggle.checked;
     try { localStorage.setItem("reys-remember", remember ? "1" : "0"); } catch (_) {}
+  });
+  if (els.reysFastToggle) els.reysFastToggle.addEventListener("change", () => {
+    state.reysFast = els.reysFastToggle.checked;
+    try { localStorage.setItem("reys-fast", state.reysFast ? "1" : "0"); } catch (_) {}
   });
 
   // ---- Adashgan reset ----
@@ -1940,7 +2026,7 @@
       if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
       state.inventory = json.balances || state.inventory;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-      Object.assign(editing, { from, to, weight });
+      Object.assign(editing, { from, to, weight, editedAt: Date.now() });
       const stillCurrent = editingAdj === editing;
       if (stillCurrent) editingAdj = null; // may have been cancelled/replaced mid-flight
       showToast("Yangilandi ✓");
@@ -2116,6 +2202,7 @@
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         showToast("Saqlandi ✓");
         resetForm();
+        if (state.reysFast) { activePk = "photos"; openCamera(); }
       } catch (e) {
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
         showToast(e.message || "Xatolik", true);
@@ -2143,6 +2230,7 @@
       Object.assign(editing, {
         type: data.type, coefMode: data.coefficient_mode,
         coefficient: data.coefficient, weight: data.weight,
+        editedAt: Date.now(),
       });
       // Only clear if the edit session still belongs to this request (it may
       // have been cancelled/replaced while the PUT was in flight).
@@ -2163,6 +2251,7 @@
 
   function setBusy(busy) {
     els.saveBtn.disabled = busy;
+    if (els.weightQuickSave) els.weightQuickSave.disabled = busy;
     els.saveBtn.textContent = busy ? "Saqlanmoqda…" : (editingReys ? "Yangilash" : "Saqlash");
   }
 

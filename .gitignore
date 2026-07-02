@@ -9,4 +9,3 @@ venv/
 *.log
 .codex_tmp_spreadsheet/
 ~$*.xlsx
-*.xlsx

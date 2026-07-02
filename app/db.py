@@ -1,6 +1,7 @@
 """SQLite store. Multi-report model.
 
-- `reports`: named report containers (max 5; oldest auto-pruned).
+- `reports`: named report containers. Rows are soft-deleted only; no automatic
+  pruning removes report data.
 - `inventory`: running weight balance per (report, tovar turi). Each new report
   starts every type at 0.
 - `activity`: append-only log of every reys/adjust, scoped to a report.
@@ -21,7 +22,7 @@ _DB = config.DATA_DIR / "reys.db"
 _LOCK = threading.Lock()
 
 DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"]
-MAX_REPORTS = 5
+MAX_REPORTS = 9999
 
 
 class InsufficientStock(Exception):
@@ -63,21 +64,48 @@ def _db():
             conn.close()
 
 
+def _columns(c: sqlite3.Connection, table: str) -> set[str]:
+    return {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+
+
+def _add_column(c: sqlite3.Connection, table: str, name: str, decl: str) -> None:
+    if name not in _columns(c, table):
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
+def _backfill_photo_blobs(c: sqlite3.Connection) -> None:
+    rows = c.execute(
+        "SELECT entry_id, idx FROM entry_photos WHERE data IS NULL ORDER BY entry_id, idx"
+    ).fetchall()
+    for r in rows:
+        p = _entry_dir(r["entry_id"]) / str(r["idx"])
+        if p.exists():
+            try:
+                c.execute(
+                    "UPDATE entry_photos SET data = ? WHERE entry_id = ? AND idx = ?",
+                    (p.read_bytes(), r["entry_id"], r["idx"]),
+                )
+            except OSError:
+                pass
+
+
 def init() -> None:
     with _db() as c:
         # Migration: the pre-multi-report schema had global inventory/activity
-        # (no report_id). Those rows can't map to the per-report model, so drop
-        # the incompatible tables and recreate them fresh.
+        # (no report_id). Keep those rows under a backup table name instead of
+        # dropping them; cargo/photo data must never disappear silently.
         for tbl in ("inventory", "activity"):
             cols = {r[1] for r in c.execute(f"PRAGMA table_info({tbl})")}
             if cols and "report_id" not in cols:
-                c.execute(f"DROP TABLE {tbl}")
+                backup = f"{tbl}_legacy_{int(time.time())}"
+                c.execute(f"ALTER TABLE {tbl} RENAME TO {backup}")
 
         c.execute(
             """CREATE TABLE IF NOT EXISTS reports(
                  id         INTEGER PRIMARY KEY AUTOINCREMENT,
                  name       TEXT NOT NULL UNIQUE,
-                 created_at INTEGER NOT NULL)"""
+                 created_at INTEGER NOT NULL,
+                 deleted_at INTEGER)"""
         )
         c.execute(
             """CREATE TABLE IF NOT EXISTS inventory(
@@ -100,8 +128,13 @@ def init() -> None:
                  weight      REAL,
                  coefficient REAL,
                  net         REAL,
-                 photos      INTEGER)"""
+                 photos      INTEGER,
+                 edited_at   INTEGER,
+                 deleted_at  INTEGER)"""
         )
+        _add_column(c, "reports", "deleted_at", "INTEGER")
+        _add_column(c, "activity", "edited_at", "INTEGER")
+        _add_column(c, "activity", "deleted_at", "INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_report ON activity(report_id, id)")
 
         # Photos persisted to disk (data/photos/<entry_id>/<idx>); this table
@@ -111,8 +144,19 @@ def init() -> None:
                  entry_id INTEGER NOT NULL,
                  idx      INTEGER NOT NULL,
                  mime     TEXT NOT NULL,
+                 data     BLOB,
+                 telegram_file_id TEXT,
+                 telegram_unique_id TEXT,
+                 telegram_message_id INTEGER,
+                 telegram_sent_at INTEGER,
                  PRIMARY KEY (entry_id, idx))"""
         )
+        _add_column(c, "entry_photos", "data", "BLOB")
+        _add_column(c, "entry_photos", "telegram_file_id", "TEXT")
+        _add_column(c, "entry_photos", "telegram_unique_id", "TEXT")
+        _add_column(c, "entry_photos", "telegram_message_id", "INTEGER")
+        _add_column(c, "entry_photos", "telegram_sent_at", "INTEGER")
+        _backfill_photo_blobs(c)
         # Durable outbox for the Telegram channel forward. A pending row survives
         # a process restart; the send worker drains it with retry/backoff.
         c.execute(
@@ -140,16 +184,12 @@ def init() -> None:
 # Reports
 # --------------------------------------------------------------------------
 def _prune(c: sqlite3.Connection) -> None:
-    """Keep only the newest MAX_REPORTS reports; drop the rest + their data."""
-    old = [
-        r["id"] for r in c.execute(
-            "SELECT id FROM reports ORDER BY id DESC LIMIT -1 OFFSET ?", (MAX_REPORTS,)
-        )
-    ]
-    for rid in old:
-        c.execute("DELETE FROM inventory WHERE report_id = ?", (rid,))
-        c.execute("DELETE FROM activity WHERE report_id = ?", (rid,))
-        c.execute("DELETE FROM reports WHERE id = ?", (rid,))
+    """Intentionally keep all reports.
+
+    Earlier builds auto-pruned old reports. That is too risky for cargo/photo
+    data, so this hook remains as a no-op migration point.
+    """
+    return
 
 
 def create_report(name: str) -> dict:
@@ -176,22 +216,31 @@ def list_reports() -> list[dict]:
     with _db() as c:
         rows = c.execute(
             """SELECT r.id, r.name, r.created_at,
-                      (SELECT COUNT(*) FROM activity a WHERE a.report_id = r.id) AS entries
-               FROM reports r ORDER BY r.id DESC"""
+                      (SELECT COUNT(*) FROM activity a
+                       WHERE a.report_id = r.id AND a.deleted_at IS NULL) AS entries
+               FROM reports r WHERE r.deleted_at IS NULL ORDER BY r.id DESC"""
         )
         return [dict(r) for r in rows]
 
 
 def report_exists(report_id: int) -> bool:
     with _db() as c:
-        return c.execute("SELECT 1 FROM reports WHERE id = ?", (report_id,)).fetchone() is not None
+        return c.execute(
+            "SELECT 1 FROM reports WHERE id = ? AND deleted_at IS NULL", (report_id,)
+        ).fetchone() is not None
 
 
 def delete_report(report_id: int) -> None:
+    now = int(time.time())
     with _db() as c:
-        c.execute("DELETE FROM inventory WHERE report_id = ?", (report_id,))
-        c.execute("DELETE FROM activity WHERE report_id = ?", (report_id,))
-        c.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+        c.execute("UPDATE reports SET deleted_at = ? WHERE id = ?", (now, report_id))
+        c.execute(
+            """UPDATE send_queue
+               SET status = 'canceled', last_error = 'report soft-deleted'
+               WHERE entry_id IN (SELECT id FROM activity WHERE report_id = ?)
+                 AND status = 'pending'""",
+            (report_id,),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -276,7 +325,7 @@ _EPS = 1e-9  # float compensation slack: don't 409 on rounding dust
 
 def _get_entry(c: sqlite3.Connection, report_id: int, entry_id: int, action: str):
     row = c.execute(
-        "SELECT * FROM activity WHERE id = ? AND report_id = ? AND action = ?",
+        "SELECT * FROM activity WHERE id = ? AND report_id = ? AND action = ? AND deleted_at IS NULL",
         (entry_id, report_id, action),
     ).fetchone()
     if row is None:
@@ -309,6 +358,7 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
               coefficient: float, net: float) -> dict:
     if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net)):
         raise ValueError("non-finite value")
+    now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, "reys")
         deltas: dict[str, float] = {}
@@ -316,8 +366,8 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
         deltas[tovar_turi] = deltas.get(tovar_turi, 0) + net
         balances = _apply_balances(c, report_id, deltas)
         c.execute(
-            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ? WHERE id = ?",
-            (tovar_turi, weight, coefficient, net, entry_id),
+            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, edited_at = ? WHERE id = ?",
+            (tovar_turi, weight, coefficient, net, now, entry_id),
         )
         return {"balance": balances.get(tovar_turi, 0), "inventory": balances}
 
@@ -326,6 +376,7 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
                 weight: float) -> dict:
     if not (math.isfinite(weight) and weight > 0):
         raise ValueError("non-finite value")
+    now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, "adjust")
         deltas: dict[str, float] = {}
@@ -335,18 +386,23 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
             deltas[t] = deltas.get(t, 0) + d
         balances = _apply_balances(c, report_id, deltas)
         c.execute(
-            "UPDATE activity SET from_type = ?, to_type = ?, weight = ? WHERE id = ?",
-            (from_type, to_type, weight, entry_id),
+            "UPDATE activity SET from_type = ?, to_type = ?, weight = ?, edited_at = ? WHERE id = ?",
+            (from_type, to_type, weight, now, entry_id),
         )
         return {"balances": balances}
 
 
 def delete_entry(report_id: int, entry_id: int) -> dict:
-    """Delete a reys/adjust entry and undo its inventory effect (also removes its
-    photos + any pending channel-send job)."""
+    """Soft-delete a reys/adjust entry and undo its inventory effect.
+
+    The activity row, photo blobs, disk files, and Telegram file_id metadata stay
+    in storage for audit/recovery.
+    """
+    now = int(time.time())
     with _db() as c:
         row = c.execute(
-            "SELECT * FROM activity WHERE id = ? AND report_id = ?", (entry_id, report_id)
+            "SELECT * FROM activity WHERE id = ? AND report_id = ? AND deleted_at IS NULL",
+            (entry_id, report_id),
         ).fetchone()
         if row is None:
             raise ActivityNotFound(entry_id)
@@ -355,17 +411,19 @@ def delete_entry(report_id: int, entry_id: int) -> dict:
         else:  # adjust: give the weight back to from_type, take it from to_type
             deltas = {row["from_type"]: row["weight"] or 0, row["to_type"]: -(row["weight"] or 0)}
         balances = _apply_balances(c, report_id, deltas)
-        c.execute("DELETE FROM activity WHERE id = ?", (entry_id,))
-        c.execute("DELETE FROM entry_photos WHERE entry_id = ?", (entry_id,))
-        c.execute("DELETE FROM send_queue WHERE entry_id = ?", (entry_id,))
-        _rmtree_photos(entry_id)
+        c.execute("UPDATE activity SET deleted_at = ? WHERE id = ?", (now, entry_id))
+        c.execute(
+            "UPDATE send_queue SET status = 'canceled', last_error = 'entry soft-deleted' "
+            "WHERE entry_id = ? AND status = 'pending'",
+            (entry_id,),
+        )
         return {"balances": balances}
 
 
 def get_activity(report_id: int, actor: str | None = None, limit: int = 500,
                  ts_from: int | None = None, ts_to: int | None = None) -> list[dict]:
     limit = max(1, min(int(limit), 1000))
-    q = "SELECT * FROM activity WHERE report_id = ?"
+    q = "SELECT * FROM activity WHERE report_id = ? AND deleted_at IS NULL"
     params: list = [report_id]
     if actor:
         q += " AND actor = ?"
@@ -411,13 +469,19 @@ def save_photos(entry_id: int, photos: list) -> None:
     d = _entry_dir(entry_id)
     d.mkdir(parents=True, exist_ok=True)
     with _db() as c:
-        c.execute("DELETE FROM entry_photos WHERE entry_id = ?", (entry_id,))
         for idx, (data, mime) in enumerate(photos):
-            (d / str(idx)).write_bytes(data)
             c.execute(
-                "INSERT INTO entry_photos(entry_id, idx, mime) VALUES(?, ?, ?)",
-                (entry_id, idx, mime or "image/jpeg"),
+                """INSERT INTO entry_photos(entry_id, idx, mime, data)
+                   VALUES(?, ?, ?, ?)
+                   ON CONFLICT(entry_id, idx) DO UPDATE SET
+                     mime = excluded.mime,
+                     data = excluded.data""",
+                (entry_id, idx, mime or "image/jpeg", data),
             )
+            try:
+                (d / str(idx)).write_bytes(data)
+            except OSError:
+                pass
 
 
 def photo_idxs(entry_id: int) -> list[int]:
@@ -430,14 +494,34 @@ def photo_file(entry_id: int, idx: int):
     """Return (path, mime) for one photo, or None if absent."""
     with _db() as c:
         row = c.execute(
-            "SELECT mime FROM entry_photos WHERE entry_id = ? AND idx = ?", (entry_id, idx)
+            "SELECT mime, data FROM entry_photos WHERE entry_id = ? AND idx = ?",
+            (entry_id, idx),
         ).fetchone()
     if row is None:
         return None
     p = _entry_dir(entry_id) / str(idx)
     if not p.exists():
-        return None
+        data = row["data"]
+        if data is None:
+            return None
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            p.write_bytes(data)
+        except OSError:
+            return None
     return p, row["mime"]
+
+
+def photo_data(entry_id: int, idx: int):
+    """Return (bytes, mime) for one photo directly from SQLite, or None."""
+    with _db() as c:
+        row = c.execute(
+            "SELECT data, mime FROM entry_photos WHERE entry_id = ? AND idx = ?",
+            (entry_id, idx),
+        ).fetchone()
+    if row is None or row["data"] is None:
+        return None
+    return row["data"], row["mime"]
 
 
 def photo_blobs(entry_id: int) -> list:
@@ -451,7 +535,30 @@ def photo_blobs(entry_id: int) -> list:
         p = _entry_dir(entry_id) / str(r["idx"])
         if p.exists():
             out.append((p.read_bytes(), r["mime"]))
+            continue
+        with _db() as c:
+            blob = c.execute(
+                "SELECT data FROM entry_photos WHERE entry_id = ? AND idx = ?",
+                (entry_id, r["idx"]),
+            ).fetchone()
+        if blob and blob["data"] is not None:
+            out.append((blob["data"], r["mime"]))
     return out
+
+
+def mark_photo_telegram(entry_id: int, idx: int, file_id: str | None,
+                        unique_id: str | None, message_id: int | None) -> None:
+    now = int(time.time())
+    with _db() as c:
+        c.execute(
+            """UPDATE entry_photos
+               SET telegram_file_id = ?,
+                   telegram_unique_id = ?,
+                   telegram_message_id = ?,
+                   telegram_sent_at = ?
+               WHERE entry_id = ? AND idx = ?""",
+            (file_id, unique_id, message_id, now, entry_id, idx),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -459,7 +566,9 @@ def photo_blobs(entry_id: int) -> list:
 # --------------------------------------------------------------------------
 def get_entry_any(entry_id: int) -> dict | None:
     with _db() as c:
-        row = c.execute("SELECT * FROM activity WHERE id = ?", (entry_id,)).fetchone()
+        row = c.execute(
+            "SELECT * FROM activity WHERE id = ? AND deleted_at IS NULL", (entry_id,)
+        ).fetchone()
     return dict(row) if row else None
 
 
@@ -474,16 +583,21 @@ def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
     limit = max(1, min(int(limit), 2000))
     with _db() as c:
         rows = c.execute(
-            "SELECT * FROM activity WHERE report_id = ? AND action = ? ORDER BY id DESC LIMIT ?",
+            """SELECT * FROM activity
+               WHERE report_id = ? AND action = ? AND deleted_at IS NULL
+               ORDER BY id DESC LIMIT ?""",
             (report_id, action, limit),
         ).fetchall()
         out = []
         for r in rows:
-            idxs = [p["idx"] for p in c.execute(
-                "SELECT idx FROM entry_photos WHERE entry_id = ? ORDER BY idx", (r["id"],))]
+            photos = [dict(p) for p in c.execute(
+                "SELECT idx, telegram_file_id FROM entry_photos WHERE entry_id = ? ORDER BY idx",
+                (r["id"],),
+            )]
             sq = c.execute("SELECT status FROM send_queue WHERE entry_id = ?", (r["id"],)).fetchone()
             d = dict(r)
-            d["photo_idxs"] = idxs
+            d["photo_idxs"] = [p["idx"] for p in photos]
+            d["photo_file_ids"] = [p["telegram_file_id"] for p in photos]
             d["send_status"] = sq["status"] if sq else None
             out.append(d)
     return out
@@ -516,9 +630,42 @@ def enqueue_bulk_send(report_id: int, action: str, mode: str = "unsent") -> int:
                FROM activity a
                LEFT JOIN send_queue q ON q.entry_id = a.id
                WHERE a.report_id = ? AND a.action = ?
+                 AND a.deleted_at IS NULL
                  AND {status_filter}
                ORDER BY a.id""".format(status_filter=status_filter),
             (report_id, action),
+        ).fetchall()
+        for r in rows:
+            c.execute(
+                "INSERT OR REPLACE INTO send_queue(entry_id, status, attempts, next_at, last_error, created_at) "
+                "VALUES(?, 'pending', 0, 0, NULL, ?)",
+                (r["id"], now),
+            )
+    return len(rows)
+
+
+def enqueue_selected_send(report_id: int, action: str, entry_ids: list[int]) -> int:
+    ids = []
+    seen = set()
+    for raw in entry_ids:
+        try:
+            eid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if eid > 0 and eid not in seen:
+            seen.add(eid)
+            ids.append(eid)
+    if not ids:
+        return 0
+    now = int(time.time())
+    placeholders = ",".join("?" for _ in ids)
+    with _db() as c:
+        rows = c.execute(
+            f"""SELECT id FROM activity
+                WHERE report_id = ? AND action = ? AND deleted_at IS NULL
+                  AND id IN ({placeholders})
+                ORDER BY id""",
+            [report_id, action, *ids],
         ).fetchall()
         for r in rows:
             c.execute(
@@ -541,6 +688,14 @@ def next_send_job(now: int) -> dict | None:
 def mark_sent(entry_id: int) -> None:
     with _db() as c:
         c.execute("UPDATE send_queue SET status = 'sent', last_error = NULL WHERE entry_id = ?", (entry_id,))
+
+
+def mark_send_canceled(entry_id: int, error: str = "entry unavailable") -> None:
+    with _db() as c:
+        c.execute(
+            "UPDATE send_queue SET status = 'canceled', last_error = ? WHERE entry_id = ?",
+            ((error or "")[:500], entry_id),
+        )
 
 
 def mark_send_retry(entry_id: int, attempts: int, next_at: int, error: str) -> None:

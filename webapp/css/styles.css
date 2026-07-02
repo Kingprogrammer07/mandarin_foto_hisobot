@@ -335,7 +335,29 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .input--pin::placeholder { letter-spacing: normal; font-weight: 400; }
 .input-suffix { position: relative; display: flex; align-items: center; }
 .input-suffix .input { padding-right: 46px; }
+.input-suffix--save .input { padding-right: 86px; }
 .suffix { position: absolute; right: 14px; color: var(--hint); font-weight: 600; pointer-events: none; }
+.suffix-save {
+  position: absolute;
+  right: 6px;
+  height: 36px;
+  min-width: 72px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 14%, var(--fill));
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s var(--ease), background 0.15s, opacity 0.15s;
+}
+.suffix-save .ic { width: 16px; height: 16px; fill: currentColor; }
+.suffix-save:active { transform: scale(0.97); background: color-mix(in srgb, var(--accent) 22%, var(--fill)); }
+.suffix-save:disabled { opacity: 0.55; cursor: default; transform: none; }
 
 /* ---------- Empty state (tab 2) ---------- */
 .empty { text-align: center; padding: 72px 24px; color: var(--hint); }
@@ -836,7 +858,19 @@ body.locked { overflow: hidden; }
   border: 1px solid color-mix(in srgb, #1c9b5e 42%, var(--separator));
   background: color-mix(in srgb, var(--section-bg) 90%, #1c9b5e);
 }
+.entry-card.is-selected {
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow);
+}
 .entry-card__head { display: flex; align-items: center; gap: 10px; }
+.entry-card__pick {
+  width: 32px; height: 32px; flex: none;
+  border: 0; border-radius: 50%;
+  background: var(--fill); color: var(--hint);
+  display: grid; place-items: center; cursor: pointer;
+}
+.entry-card__pick.is-on { background: var(--accent); color: var(--accent-text); }
+.entry-card__pick .ic { width: 18px; height: 18px; fill: currentColor; }
 .entry-card__code { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; color: var(--text); word-break: break-all; }
 .entry-card__val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; flex: none; }
 .entry-card__val span { font-size: 12px; font-weight: 500; color: var(--hint); }
@@ -882,6 +916,10 @@ body.locked { overflow: hidden; }
 .entry-status--sent {
   color: #0d6b3c;
   background: color-mix(in srgb, #21c878 18%, var(--section-bg));
+}
+.entry-status--edited {
+  color: #a76309;
+  background: color-mix(in srgb, #e0891b 18%, var(--section-bg));
 }
 .entry-status--pending {
   color: var(--accent);

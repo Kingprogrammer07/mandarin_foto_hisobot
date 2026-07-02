@@ -41,7 +41,8 @@ def _entry_value(entry: dict):
 
 
 def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
-    from openpyxl import load_workbook
+    from openpyxl import Workbook, load_workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
     report_name = db.report_name(report_id) or "Hisobot"
@@ -58,10 +59,25 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
         if tovar_turi not in default_set and tovar_turi not in custom_types:
             custom_types.append(tovar_turi)
 
-    if not TEMPLATE.exists():
-        raise FileNotFoundError(f"Excel template not found: {TEMPLATE}")
+    if TEMPLATE.exists():
+        wb = load_workbook(TEMPLATE)
+    else:
+        wb = Workbook()
+        ws0 = wb.active
+        thin = Side(style="thin", color="000000")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        for r, tovar_turi in enumerate(db.DEFAULT_TYPES, start=1):
+            ws0.cell(r, 1).value = tovar_turi
+            ws0.cell(r, 1).fill = PatternFill("solid", fgColor="FFFF00")
+            ws0.cell(r, 1).font = Font(bold=True)
+            ws0.cell(r, 1).alignment = Alignment(horizontal="center", vertical="center")
+            ws0.cell(r, 1).border = border
+            ws0.cell(r, 2).number_format = "0.00"
+            ws0.cell(r, 2).border = border
+        ws0.column_dimensions["A"].width = 18
+        for col in range(2, 30):
+            ws0.column_dimensions[get_column_letter(col)].width = 12
 
-    wb = load_workbook(TEMPLATE)
     ws = wb.active
     ws.title = _safe_sheet_name(report_name)
 

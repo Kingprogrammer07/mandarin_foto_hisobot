@@ -63,10 +63,24 @@ def _caption(entry: dict, report_name: str) -> str:
     return f"{head}\n\n{body}"
 
 
+def _remember_telegram_photo(entry_id: int, idx: int, message) -> None:
+    photos = getattr(message, "photo", None) or []
+    if not photos:
+        return
+    photo = photos[-1]
+    db.mark_photo_telegram(
+        entry_id,
+        idx,
+        getattr(photo, "file_id", None),
+        getattr(photo, "file_unique_id", None),
+        getattr(message, "message_id", None),
+    )
+
+
 async def _send_one(entry_id: int) -> None:
     entry = db.get_entry_any(entry_id)
     if entry is None:
-        db.mark_sent(entry_id)  # entry was deleted → nothing to send, drop it
+        db.mark_send_canceled(entry_id)
         return
     caption = _caption(entry, db.report_name(entry["report_id"]) or "")
     blobs = db.photo_blobs(entry_id)
@@ -76,7 +90,8 @@ async def _send_one(entry_id: int) -> None:
         await _bot.send_message(chat, caption)
     elif len(blobs) == 1:
         data, _mime = blobs[0]
-        await _bot.send_photo(chat, BufferedInputFile(data, filename="photo.jpg"), caption=caption)
+        msg = await _bot.send_photo(chat, BufferedInputFile(data, filename="photo.jpg"), caption=caption)
+        _remember_telegram_photo(entry_id, 0, msg)
     else:
         media = [
             InputMediaPhoto(
@@ -85,7 +100,9 @@ async def _send_one(entry_id: int) -> None:
             )
             for i, (data, _mime) in enumerate(blobs)
         ]
-        await _bot.send_media_group(chat, media)
+        messages = await _bot.send_media_group(chat, media)
+        for i, msg in enumerate(messages or []):
+            _remember_telegram_photo(entry_id, i, msg)
 
 
 async def worker() -> None:

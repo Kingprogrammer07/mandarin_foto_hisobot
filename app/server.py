@@ -14,7 +14,7 @@ import time
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from webauthn import (
     generate_authentication_options,
@@ -636,6 +636,12 @@ async def api_export_kargo(request: Request, report_id: int | None = None):
         content, filename = excel_export.build_kargo_excel(rid)
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="excel namunasi topilmadi")
+    except ModuleNotFoundError as exc:
+        log.exception("excel export dependency missing")
+        raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("excel export failed: report_id=%s", rid)
+        raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
     headers = {
         "Content-Disposition": (
             "attachment; "
@@ -664,9 +670,15 @@ async def api_send_bulk(request: Request):
     mode = str(body.get("mode", "unsent"))
     if mode not in ("unsent", "sent"):
         raise HTTPException(status_code=400, detail="send mode noto'g'ri")
-    count = db.enqueue_bulk_send(rid, action, mode=mode)
+    entry_ids = body.get("entry_ids")
+    if entry_ids is not None:
+        if not isinstance(entry_ids, list):
+            raise HTTPException(status_code=400, detail="entry_ids noto'g'ri")
+        count = db.enqueue_selected_send(rid, action, entry_ids)
+    else:
+        count = db.enqueue_bulk_send(rid, action, mode=mode)
     outbox.notify()
-    log.info("bulk channel send queued by %s [r%s %s %s]: %s entries", identity, rid, action, mode, count)
+    log.info("channel send queued by %s [r%s %s %s]: %s entries", identity, rid, action, mode, count)
     return {"ok": True, "queued": count}
 
 
@@ -676,11 +688,16 @@ async def api_entry_photo(request: Request, entry_id: int, idx: int):
     X-Telegram-Init-Data header — the client fetches these as blobs."""
     _auth_or_403(request, state_changing=False)
     res = db.photo_file(entry_id, idx)
-    if res is None:
+    if res is not None:
+        path, mime = res
+        return FileResponse(str(path), media_type=mime,
+                            headers={"Cache-Control": "private, max-age=86400"})
+    blob = db.photo_data(entry_id, idx)
+    if blob is None:
         raise HTTPException(status_code=404, detail="rasm topilmadi")
-    path, mime = res
-    return FileResponse(str(path), media_type=mime,
-                        headers={"Cache-Control": "private, max-age=86400"})
+    data, mime = blob
+    return Response(content=data, media_type=mime,
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/inventory")
