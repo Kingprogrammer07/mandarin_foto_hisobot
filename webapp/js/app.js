@@ -21,6 +21,16 @@
   const MAX_PHOTOS = 10;
   const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon"];
 
+  // Obshiy ves sub-sections that share one photo+code+weight form. `codeRequired`
+  // toggles whether karobka kodi is mandatory (Bizda qoladigan lets it be blank).
+  const SECTIONS = {
+    top: { title: "Top", codeRequired: true },
+    topchiqgan: { title: "Topdan chiqgan", codeRequired: false },
+    bizda: { title: "Bizda qoladigan", codeRequired: false },
+    chiqgan: { title: "Bizdan chiqgan", codeRequired: false },
+  };
+  const ENTRIES_PAGE = 6;
+
   // ---- App state ----
   const state = {
     activeTab: "report",
@@ -28,6 +38,12 @@
     reportName: "",
     photos: [], // reys photos { id, file, url }
     adjPhotos: [], // adashgan photos
+    topPhotos: [], // shared Obshiy-ves form photos (one section open at a time)
+    topWeightRaw: "",
+    topCodeFree: false, // pencil unlocked → karobka kodi accepts any character
+    topFast: false, // fast-mode capture loop
+    formSection: "top", // which SECTIONS entry the form is currently editing
+    entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [] }, // saved rows (client-side until backend)
     type: "akb",
     customTypes: [], // user-added types not yet persisted to inventory
     inventory: {}, // tovar_turi -> weight (from server)
@@ -40,6 +56,16 @@
 
   let remember = false;
   try { remember = localStorage.getItem("reys-remember") === "1"; } catch (_) {}
+  try { state.topFast = localStorage.getItem("reys-top-fast") === "1"; } catch (_) {}
+
+  // iOS numeric keyboards can emit a comma as the decimal separator — normalize
+  // to a dot and drop stray chars / extra dots so parseFloat works.
+  function cleanDecimal(v) {
+    v = String(v == null ? "" : v).replace(/,/g, ".").replace(/[^\d.]/g, "");
+    const i = v.indexOf(".");
+    if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, "");
+    return v;
+  }
 
   // Union of default types, inventory types, and locally-added custom types.
   function allTypes() {
@@ -136,10 +162,46 @@
     menuScreen: $("#menuScreen"),
     menuTitle: $("#menuTitle"),
     menuBackBtn: $("#menuBackBtn"),
-    menuThemeBtn: $("#menuThemeBtn"),
     menuTotalBtn: $("#menuTotalBtn"),
     menuTotalXls: $("#menuTotalXls"),
     menuDistBtn: $("#menuDistBtn"),
+    // Obshiy ves submenu
+    obshiyScreen: $("#obshiyScreen"),
+    obshiyBackBtn: $("#obshiyBackBtn"),
+    obshiyTopBtn: $("#obshiyTopBtn"),
+    obshiyTopChiqganBtn: $("#obshiyTopChiqganBtn"),
+    obshiyBizdaBtn: $("#obshiyBizdaBtn"),
+    obshiyChiqganBtn: $("#obshiyChiqganBtn"),
+    // Shared Obshiy-ves form (Top / Bizda qoladigan / Bizdan chiqgan)
+    topScreen: $("#topScreen"),
+    topTitle: $("#topTitle"),
+    topBackBtn: $("#topBackBtn"),
+    topViewBtn: $("#topViewBtn"),
+    topViewCount: $("#topViewCount"),
+    topPhotoGrid: $("#topPhotoGrid"),
+    topPhotoCounter: $("#topPhotoCounter"),
+    topBtnGallery: $("#topBtnGallery"),
+    topBtnCamera: $("#topBtnCamera"),
+    topCodeLabel: $("#topCodeLabel"),
+    topCode: $("#topCode"),
+    topCodePencil: $("#topCodePencil"),
+    topWeight: $("#topWeight"),
+    topFast: $("#topFast"),
+    topSave: $("#topSave"),
+    // Saved-entries viewer
+    entriesScreen: $("#entriesScreen"),
+    entriesBackBtn: $("#entriesBackBtn"),
+    entriesTitle: $("#entriesTitle"),
+    entriesList: $("#entriesList"),
+    entriesPager: $("#entriesPager"),
+    entriesPrev: $("#entriesPrev"),
+    entriesNext: $("#entriesNext"),
+    entriesPageLabel: $("#entriesPageLabel"),
+    // entry actions (kebab menu)
+    entryActBackdrop: $("#entryActBackdrop"),
+    entryActSheet: $("#entryActSheet"),
+    entryEditBtn: $("#entryEditBtn"),
+    entryDeleteBtn: $("#entryDeleteBtn"),
     nameBackdrop: $("#nameBackdrop"),
     nameSheet: $("#nameSheet"),
     nameClose: $("#nameClose"),
@@ -201,8 +263,7 @@
     if (themeMode === "auto") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", themeMode);
     root.style.colorScheme = effectiveScheme();
-    [els.themeBtn, els.homeThemeBtn, els.menuThemeBtn].forEach((b) => {
-      if (!b) return;
+    document.querySelectorAll(".js-theme").forEach((b) => {
       b.innerHTML = THEME_ICONS[themeMode];
       b.setAttribute("aria-label", THEME_LABELS[themeMode]);
       b.title = THEME_LABELS[themeMode];
@@ -230,7 +291,7 @@
       if (tg.BackButton) tg.BackButton.onClick(onBack);
     }
     applyTheme();
-    if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
+    document.querySelectorAll(".js-theme").forEach((b) => b.addEventListener("click", cycleTheme));
     els.saveBtn.addEventListener("click", onSave);
     // Inside Telegram the user is authenticated immediately — go to the home list.
     if (inTelegram) showHome();
@@ -242,10 +303,26 @@
     const overlay =
       sheetOpen ||
       !els.camModal.hidden || !els.lightbox.hidden || !els.activityScreen.hidden ||
+      !els.entriesScreen.hidden || !els.entryActSheet.hidden ||
       !els.nameSheet.hidden || !els.setSheet.hidden;
     if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
     else tg.BackButton.hide();
   }
+
+  // `body.locked` (overflow:hidden) must stay on while ANY full-screen overlay or
+  // sheet is open. It's a plain class (not ref-counted), so closing one layer
+  // (lightbox/camera) must recompute it, not blindly drop it — otherwise the page
+  // scroll-unlocks behind a still-open .screen and rubber-bands on iOS.
+  function anyOverlayOpen() {
+    return (
+      sheetOpen ||
+      !els.homeScreen.hidden || !els.menuScreen.hidden || !els.obshiyScreen.hidden ||
+      !els.topScreen.hidden || !els.entriesScreen.hidden || !els.activityScreen.hidden ||
+      !els.camModal.hidden || !els.lightbox.hidden ||
+      !els.nameSheet.hidden || !els.setSheet.hidden || !els.entryActSheet.hidden
+    );
+  }
+  function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
 
   function haptic(type) {
     if (tg && tg.HapticFeedback) {
@@ -258,10 +335,14 @@
   function onBack() {
     if (!els.lightbox.hidden) { closeLightbox(); return; }
     if (!els.camModal.hidden) { closeCamera(); return; }
+    if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
     if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
     if (sheetOpen) { closeSheet(); return; }
     if (!els.activityScreen.hidden) { closeActivity(); return; }
+    if (!els.entriesScreen.hidden) { closeEntries(); return; }   // viewer → form
+    if (!els.topScreen.hidden) { formBack(); return; }           // form → Obshiy submenu
+    if (!els.obshiyScreen.hidden) { showMenu(); return; }        // Obshiy → report menu
     if (!els.menuScreen.hidden) { showHome(); return; }          // menu → reports list
     if (state.reportId && els.homeScreen.hidden) { showMenu(); return; } // work area → menu
   }
@@ -288,9 +369,11 @@
   // ---- Photos (two independent sets: reys "photos", adashgan "adjPhotos") ----
   let activePk = "photos"; // which set the gallery/camera currently targets
   function photoEls(pk) {
-    return pk === "adjPhotos"
-      ? { grid: els.adjPhotoGrid, counter: els.adjPhotoCounter, bg: els.adjBtnGallery, bc: els.adjBtnCamera }
-      : { grid: els.photoGrid, counter: els.photoCounter, bg: els.btnGallery, bc: els.btnCamera };
+    if (pk === "adjPhotos")
+      return { grid: els.adjPhotoGrid, counter: els.adjPhotoCounter, bg: els.adjBtnGallery, bc: els.adjBtnCamera };
+    if (pk === "topPhotos")
+      return { grid: els.topPhotoGrid, counter: els.topPhotoCounter, bg: els.topBtnGallery, bc: els.topBtnCamera };
+    return { grid: els.photoGrid, counter: els.photoCounter, bg: els.btnGallery, bc: els.btnCamera };
   }
 
   function renderPhotos(pk) {
@@ -318,7 +401,7 @@
     e.bg.disabled = full;
     e.bc.disabled = full;
   }
-  function renderAllPhotos() { renderPhotos("photos"); renderPhotos("adjPhotos"); }
+  function renderAllPhotos() { renderPhotos("photos"); renderPhotos("adjPhotos"); renderPhotos("topPhotos"); }
 
   function addFiles(fileList, pk) {
     const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
@@ -414,7 +497,7 @@
 
   function closeCamera() {
     els.camModal.hidden = true;
-    document.body.classList.remove("locked");
+    syncLock(); // keep the lock if the top form / a .screen is still open behind
     syncBackButton();
   }
 
@@ -437,6 +520,10 @@
         addFiles([file], pk);
       }
       closeCamera(); // hide modal, keep stream alive for the next shot
+      // Fast mode: jump straight to the karobka kodi input after each shot.
+      if (pk === "topPhotos" && state.topFast) {
+        setTimeout(() => { try { els.topCode.focus(); } catch (_) {} }, 60);
+      }
     }, "image/jpeg", 0.92);
   }
 
@@ -465,10 +552,23 @@
   // ---- Photo lightbox ----
   let lightboxId = null;
   let lightboxPk = "photos";
+  let lightboxTempUrl = null; // ephemeral URL when viewing a saved-entry photo
   function openLightbox(photo, pk) {
     lightboxId = photo.id;
     lightboxPk = pk || "photos";
+    lightboxTempUrl = null;
+    els.lightboxDel.hidden = false; // form photos are deletable from the lightbox
     els.lightboxImg.src = photo.url;
+    els.lightbox.hidden = false;
+    document.body.classList.add("locked");
+    syncBackButton();
+  }
+  // View-only: a saved-entry photo (a File with no persistent object URL).
+  function viewEntryPhoto(file) {
+    lightboxId = null;
+    lightboxTempUrl = URL.createObjectURL(file);
+    els.lightboxDel.hidden = true; // no delete here — edit/delete live in the kebab
+    els.lightboxImg.src = lightboxTempUrl;
     els.lightbox.hidden = false;
     document.body.classList.add("locked");
     syncBackButton();
@@ -477,7 +577,9 @@
     els.lightbox.hidden = true;
     els.lightboxImg.src = "";
     lightboxId = null;
-    document.body.classList.remove("locked");
+    if (lightboxTempUrl) { URL.revokeObjectURL(lightboxTempUrl); lightboxTempUrl = null; }
+    els.lightboxDel.hidden = false;
+    syncLock(); // keep the lock if a .screen (entries viewer / top form) is still open
     syncBackButton();
   }
   function deleteFromLightbox() {
@@ -547,11 +649,20 @@
   function showHome() {
     state.reportId = null;
     els.reportName.textContent = "";
-    els.menuScreen.hidden = true;
+    showScreen(null);          // hide menu / obshiy / top
     els.homeScreen.hidden = false;
     document.body.classList.add("locked");
     syncBackButton(); // home is the root → no back button
     loadReports();
+  }
+
+  // Only one report-level screen is visible at a time: 'menu' | 'obshiy' |
+  // 'top' (or null to reveal the work area behind them).
+  function showScreen(which) {
+    els.menuScreen.hidden = which !== "menu";
+    els.obshiyScreen.hidden = which !== "obshiy";
+    els.topScreen.hidden = which !== "top";
+    els.entriesScreen.hidden = true; // leaf overlay — drop it on any nav change
   }
 
   // Opening a report lands on its section menu (Obshiy ves / Kargolarga
@@ -562,26 +673,261 @@
     els.reportName.textContent = rep.name;
     resetForm(true);   // each report starts everything from 0
     resetAdjust(true);
+    resetTop(true);
+    clearEntries();
     setTab("report");
     loadInventory();
     els.homeScreen.hidden = true;
     showMenu();
   }
 
-  // Report section menu (overlay over the work area).
+  // Report section menu (Obshiy ves / Kargolarga tarqatish).
   function showMenu() {
     els.menuTitle.textContent = state.reportName;
-    els.menuScreen.hidden = false;
+    showScreen("menu");
     document.body.classList.add("locked");
     syncBackButton();
   }
 
+  // Obshiy ves → Top / Bizda qoladigan / Adashgan yuklar.
+  function showObshiy() {
+    showScreen("obshiy");
+    document.body.classList.add("locked");
+    syncBackButton();
+  }
+
+  // Obshiy ves → one of the shared-form sections (Top / Bizda qoladigan /
+  // Bizdan chiqgan). They differ only by title + whether karobka kodi is required.
+  function openForm(section) {
+    state.formSection = section;
+    const cfg = SECTIONS[section];
+    els.topTitle.textContent = cfg.title;
+    els.topCodeLabel.textContent = cfg.codeRequired ? "Karobka kodi" : "Karobka kodi (ixtiyoriy)";
+    els.topCode.placeholder = cfg.codeRequired ? "Masalan: 12345" : "Ixtiyoriy";
+    resetTop(true);
+    els.topFast.checked = state.topFast;
+    updateViewCount();
+    showScreen("top");
+    document.body.classList.add("locked");
+    syncBackButton();
+  }
+
+  function updateViewCount() {
+    els.topViewCount.textContent = String(state.entries[state.formSection].length);
+  }
+
   // "Kargolarga tarqatish" → reveal the reys/adashgan tab work area.
   function openWork() {
-    els.menuScreen.hidden = true;
+    showScreen(null);
     document.body.classList.remove("locked");
     setTab("report");
     syncBackButton();
+  }
+
+  function resetTop(full) {
+    state.topPhotos.forEach((p) => URL.revokeObjectURL(p.url));
+    state.topPhotos = [];
+    els.topCode.value = "";
+    state.topWeightRaw = "";
+    els.topWeight.value = "";
+    renderPhotos("topPhotos");
+    if (full) {
+      // Opening a report resets the free-text unlock back to numeric-only;
+      // fast mode is a persisted workflow preference, so it's kept.
+      state.topCodeFree = false;
+      els.topCodePencil.classList.remove("is-on");
+      els.topCode.inputMode = "numeric";
+    }
+  }
+
+  let savingTop = false;
+  let editingEntry = null; // the entry currently being edited (null = creating)
+  function onFormSave() {
+    if (savingTop) return;
+    const cfg = SECTIONS[state.formSection];
+    const code = els.topCode.value.trim();
+    const weight = parseFloat(cleanDecimal(state.topWeightRaw));
+    if (cfg.codeRequired && !code) { showToast("Karobka kodini kiriting", true); haptic("rigid"); return; }
+    if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); haptic("rigid"); return; }
+
+    savingTop = true;
+    els.topSave.disabled = true;
+    // Entries hold the actual File objects (so photos can be viewed later);
+    // object URLs are created on demand at render time. Backend isn't wired yet.
+    const files = state.topPhotos.map((p) => p.file);
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+    if (editingEntry) {
+      editingEntry.code = code;
+      editingEntry.weight = weight;
+      editingEntry.files = files;
+      editingEntry = null;
+      els.topSave.textContent = "Saqlash";
+      showToast("Yangilandi ✓");
+      resetTop(false);
+      updateViewCount();
+      savingTop = false;
+      els.topSave.disabled = false;
+      return; // no fast-mode camera reopen while editing
+    }
+    state.entries[state.formSection].push({ code, weight, files, ts: Date.now() });
+    updateViewCount();
+    showToast("Saqlandi ✓");
+    resetTop(false);
+    savingTop = false;
+    els.topSave.disabled = false;
+    // Fast mode: reopen the camera immediately for the next box.
+    if (state.topFast) { activePk = "topPhotos"; openCamera(); }
+  }
+
+  // Leaving the form: drop any in-progress edit and go back to the submenu.
+  function formBack() {
+    editingEntry = null;
+    els.topSave.textContent = "Saqlash";
+    showObshiy();
+  }
+
+  // Free all session entries + their in-flight URLs (each report starts empty).
+  function clearEntries() {
+    clearEntryUrls();
+    editingEntry = null;
+    actionEntry = null;
+    els.topSave.textContent = "Saqlash";
+    state.entries = { top: [], topchiqgan: [], bizda: [], chiqgan: [] };
+  }
+
+  // ---- Saved-entries viewer (cards, paginated) ----
+  let entriesPage = 0;
+  let entryUrls = []; // object URLs created for the current render; revoked on re-render
+  function clearEntryUrls() { entryUrls.forEach((u) => URL.revokeObjectURL(u)); entryUrls = []; }
+
+  function openEntries() {
+    entriesPage = 0;
+    els.entriesTitle.textContent = SECTIONS[state.formSection].title + " — yuklanganlar";
+    els.entriesScreen.hidden = false;
+    document.body.classList.add("locked");
+    renderEntries();
+    syncBackButton();
+  }
+  function closeEntries() {
+    clearEntryUrls();
+    els.entriesScreen.hidden = true;
+    syncBackButton(); // Top form stays visible underneath
+  }
+  function renderEntries() {
+    const list = state.entries[state.formSection];
+    const pages = Math.max(1, Math.ceil(list.length / ENTRIES_PAGE));
+    entriesPage = Math.min(Math.max(entriesPage, 0), pages - 1);
+    clearEntryUrls();
+    els.entriesList.innerHTML = "";
+    if (!list.length) {
+      const p = document.createElement("p");
+      p.className = "entries__empty";
+      p.textContent = "Hali yozuv yo'q";
+      els.entriesList.appendChild(p);
+      els.entriesPager.hidden = true;
+      return;
+    }
+    const ordered = list.slice().reverse(); // newest first
+    const start = entriesPage * ENTRIES_PAGE;
+    ordered.slice(start, start + ENTRIES_PAGE).forEach((e) => els.entriesList.appendChild(entryCard(e)));
+    els.entriesPager.hidden = pages <= 1;
+    els.entriesPageLabel.textContent = `${entriesPage + 1}/${pages}`;
+    els.entriesPrev.disabled = entriesPage <= 0;
+    els.entriesNext.disabled = entriesPage >= pages - 1;
+  }
+
+  function entryCard(e) {
+    const files = e.files || [];
+    const card = document.createElement("div");
+    card.className = "entry-card";
+
+    const head = document.createElement("div");
+    head.className = "entry-card__head";
+    const code = document.createElement("div");
+    code.className = "entry-card__code";
+    code.textContent = e.code || "—";
+    const val = document.createElement("div");
+    val.className = "entry-card__val";
+    val.innerHTML = `${(Math.round(Number(e.weight) * 100) / 100).toLocaleString("en-US")}<span> kg</span>`;
+    const menu = document.createElement("button");
+    menu.className = "entry-card__menu";
+    menu.type = "button";
+    menu.setAttribute("aria-label", "Amallar");
+    menu.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>';
+    menu.addEventListener("click", (ev) => { ev.stopPropagation(); openEntryActions(e); });
+    head.append(code, val, menu);
+    card.appendChild(head);
+
+    const foot = document.createElement("div");
+    foot.className = "entry-card__foot";
+    const thumbs = document.createElement("div");
+    thumbs.className = "entry-card__thumbs";
+    files.slice(0, 5).forEach((f) => {
+      const url = URL.createObjectURL(f);
+      entryUrls.push(url);
+      const img = document.createElement("img");
+      img.className = "entry-thumb";
+      img.src = url;
+      img.alt = "";
+      img.addEventListener("click", () => viewEntryPhoto(f));
+      thumbs.appendChild(img);
+    });
+    if (files.length > 5) {
+      const more = document.createElement("span");
+      more.className = "entry-more";
+      more.textContent = `+${files.length - 5}`;
+      thumbs.appendChild(more);
+    }
+    const sub = document.createElement("div");
+    sub.className = "entry-card__sub";
+    sub.textContent = `${fmtTs(e.ts / 1000)} · ${files.length} rasm`;
+    foot.append(thumbs, sub);
+    card.appendChild(foot);
+    return card;
+  }
+
+  // ---- Entry actions (kebab → edit / delete) ----
+  let actionEntry = null;
+  function openEntryActions(entry) {
+    actionEntry = entry;
+    els.entryActBackdrop.hidden = false;
+    els.entryActSheet.hidden = false;
+    syncBackButton();
+  }
+  function closeEntryActions() {
+    els.entryActSheet.hidden = true;
+    els.entryActBackdrop.hidden = true;
+    syncBackButton();
+  }
+  function startEditEntry(entry) {
+    editingEntry = entry;
+    resetTop(false); // clear the form (revokes any current form-photo URLs)
+    // Numeric-only unless the saved code contains non-digits → unlock free text.
+    state.topCodeFree = false;
+    els.topCodePencil.classList.remove("is-on");
+    els.topCode.inputMode = "numeric";
+    if (entry.code && /\D/.test(entry.code)) {
+      state.topCodeFree = true;
+      els.topCodePencil.classList.add("is-on");
+      els.topCode.inputMode = "text";
+    }
+    (entry.files || []).forEach((f) => state.topPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    renderPhotos("topPhotos");
+    els.topCode.value = entry.code || "";
+    els.topWeight.value = String(entry.weight);
+    state.topWeightRaw = String(entry.weight);
+    els.topSave.textContent = "Yangilash";
+    closeEntries(); // reveal the form (still under the entries screen)
+  }
+  function deleteEntry(entry) {
+    const list = state.entries[state.formSection];
+    const i = list.indexOf(entry);
+    if (i === -1) return;
+    list.splice(i, 1);
+    if (editingEntry === entry) { editingEntry = null; els.topSave.textContent = "Saqlash"; }
+    updateViewCount();
+    renderEntries();
+    haptic("light");
   }
 
   async function deleteReport(rep) {
@@ -631,14 +977,65 @@
   els.nameBackdrop.addEventListener("click", closeNameSheet);
   els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
-  els.homeThemeBtn.addEventListener("click", cycleTheme);
 
   // ---- Report section menu ----
   els.menuBackBtn.addEventListener("click", showHome);
-  els.menuThemeBtn.addEventListener("click", cycleTheme);
   els.menuDistBtn.addEventListener("click", openWork);
-  els.menuTotalBtn.addEventListener("click", () => showToast("Obshiy ves tez orada", false));
+  els.menuTotalBtn.addEventListener("click", showObshiy);
   els.menuTotalXls.addEventListener("click", () => showToast("Excel funksiyasi tez orada", false));
+
+  // ---- Obshiy ves submenu ----
+  els.obshiyBackBtn.addEventListener("click", showMenu);
+  els.obshiyTopBtn.addEventListener("click", () => openForm("top"));
+  els.obshiyTopChiqganBtn.addEventListener("click", () => openForm("topchiqgan"));
+  els.obshiyBizdaBtn.addEventListener("click", () => openForm("bizda"));
+  els.obshiyChiqganBtn.addEventListener("click", () => openForm("chiqgan"));
+
+  // ---- Shared Obshiy-ves form ----
+  els.topBackBtn.addEventListener("click", formBack);
+  els.topViewBtn.addEventListener("click", openEntries);
+  els.topBtnGallery.addEventListener("click", () => { activePk = "topPhotos"; els.inGallery.click(); });
+  els.topBtnCamera.addEventListener("click", () => { activePk = "topPhotos"; openCamera(); });
+  // Keep the focused input above the on-screen keyboard (it was covering the
+  // weight field). Runs after the keyboard's open animation.
+  [els.topCode, els.topWeight].forEach((inp) => {
+    inp.addEventListener("focus", () => {
+      setTimeout(() => { try { inp.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (_) {} }, 250);
+    });
+  });
+  // ---- Saved-entries viewer ----
+  els.entriesBackBtn.addEventListener("click", closeEntries);
+  els.entriesPrev.addEventListener("click", () => { entriesPage -= 1; renderEntries(); });
+  els.entriesNext.addEventListener("click", () => { entriesPage += 1; renderEntries(); });
+  els.entryActBackdrop.addEventListener("click", closeEntryActions);
+  els.entryEditBtn.addEventListener("click", () => { const e = actionEntry; closeEntryActions(); if (e) startEditEntry(e); });
+  els.entryDeleteBtn.addEventListener("click", async () => {
+    const e = actionEntry;
+    closeEntryActions();
+    if (e && (await confirmDialog("Ushbu yozuv o'chirilsinmi?"))) deleteEntry(e);
+  });
+  els.topCode.addEventListener("input", (e) => {
+    if (!state.topCodeFree) e.target.value = e.target.value.replace(/\D/g, "");
+  });
+  els.topCodePencil.addEventListener("click", () => {
+    state.topCodeFree = !state.topCodeFree;
+    els.topCodePencil.classList.toggle("is-on", state.topCodeFree);
+    els.topCode.inputMode = state.topCodeFree ? "text" : "numeric";
+    els.topCode.setAttribute("aria-label", state.topCodeFree ? "Karobka kodi (erkin)" : "Karobka kodi (raqam)");
+    if (!state.topCodeFree) els.topCode.value = els.topCode.value.replace(/\D/g, "");
+    els.topCode.focus();
+    haptic("select");
+  });
+  els.topWeight.addEventListener("input", (e) => {
+    const v = cleanDecimal(e.target.value);
+    if (v !== e.target.value) e.target.value = v;
+    state.topWeightRaw = v;
+  });
+  els.topFast.addEventListener("change", () => {
+    state.topFast = els.topFast.checked;
+    try { localStorage.setItem("reys-top-fast", state.topFast ? "1" : "0"); } catch (_) {}
+  });
+  els.topSave.addEventListener("click", onFormSave);
 
   // ---- Settings (remember toggle) ----
   function openSettings() {
@@ -839,10 +1236,14 @@
     if (e.key !== "Escape") return;
     if (!els.lightbox.hidden) closeLightbox();
     else if (!els.camModal.hidden) closeCamera();
+    else if (!els.entryActSheet.hidden) closeEntryActions();
     else if (!els.nameSheet.hidden) closeNameSheet();
     else if (!els.setSheet.hidden) closeSettings();
     else if (sheetOpen) closeSheet();
     else if (!els.activityScreen.hidden) closeActivity();
+    else if (!els.entriesScreen.hidden) closeEntries();
+    else if (!els.topScreen.hidden) formBack();
+    else if (!els.obshiyScreen.hidden) showMenu();
     else if (!els.menuScreen.hidden) showHome();
   });
 
@@ -1327,10 +1728,8 @@
     if (loggingIn) return;
     const username = els.loginUser.value.trim();
     const password = els.loginPass.value;
-    if (!username || !password) {
-      showLoginError("Foydalanuvchi nomi va parolni kiriting");
-      return;
-    }
+    if (!username) { showLoginError("Foydalanuvchi nomini kiriting"); return; }
+    if (!/^\d{4}$/.test(password)) { showLoginError("4 xonali PIN kiriting"); return; }
     loggingIn = true;
     els.loginError.hidden = true;
     els.loginSubmit.disabled = true;
@@ -1366,6 +1765,11 @@
 
   if (els.loginForm) els.loginForm.addEventListener("submit", onLoginSubmit);
   if (els.passToggle) els.passToggle.addEventListener("click", togglePassword);
+  // PIN: digits only, max 4.
+  if (els.loginPass) els.loginPass.addEventListener("input", (e) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+    if (v !== e.target.value) e.target.value = v;
+  });
   if (els.passkeyLoginBtn) els.passkeyLoginBtn.addEventListener("click", loginWithPasskey);
   if (els.passkeyAddBtn) els.passkeyAddBtn.addEventListener("click", registerPasskey);
 

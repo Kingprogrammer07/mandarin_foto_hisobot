@@ -27,7 +27,7 @@
       <button type="button" class="theme-btn" id="settingsBtn" aria-label="Sozlamalar">
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm8.4-2 1.8-1.4-1.8-3.1-2.1.7a6.9 6.9 0 0 0-1.4-.8L14.5 5h-3.6l-.4 2.4c-.5.2-1 .5-1.4.8l-2.1-.7-1.8 3.1L7 12l-.3 1.4-1.8 1.4 1.8 3.1 2.1-.7c.4.3.9.6 1.4.8l.4 2.4h3.6l.4-2.4c.5-.2 1-.5 1.4-.8l2.1.7 1.8-3.1L20.4 13 20.7 12Z"/></svg>
       </button>
-      <button type="button" class="theme-btn" id="themeBtn" aria-label="Mavzu"></button>
+      <button type="button" class="theme-btn js-theme" id="themeBtn" aria-label="Mavzu"></button>
     </div>
     <nav class="tabs" role="tablist" aria-label="Bo'limlar">
       <button class="tab is-active" role="tab" data-tab="report" aria-selected="true">Reys hisoboti</button>
@@ -233,7 +233,7 @@
   <div class="screen home" id="homeScreen" hidden>
     <header class="screen__top">
       <span class="screen__title">Hisobotlar</span>
-      <button type="button" class="theme-btn" id="homeThemeBtn" aria-label="Mavzu"></button>
+      <button type="button" class="theme-btn js-theme" id="homeThemeBtn" aria-label="Mavzu"></button>
     </header>
     <div class="screen__body">
       <button type="button" class="btn btn--primary" id="newReportBtn">
@@ -252,7 +252,7 @@
         <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
       </button>
       <span class="screen__title" id="menuTitle"></span>
-      <button type="button" class="theme-btn" id="menuThemeBtn" aria-label="Mavzu"></button>
+      <button type="button" class="theme-btn js-theme" id="menuThemeBtn" aria-label="Mavzu"></button>
     </header>
     <div class="screen__body">
       <div class="menu">
@@ -274,6 +274,138 @@
           <span class="menu-btn__label">Kargolarga tarqatish</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Obshiy ves submenu: Top / Bizda qoladigan / Bizdan chiqgan -->
+  <div class="screen" id="obshiyScreen" hidden>
+    <header class="screen__top">
+      <button type="button" class="theme-btn" id="obshiyBackBtn" aria-label="Orqaga">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="screen__title">Obshiy ves</span>
+      <button type="button" class="theme-btn js-theme" id="obshiyThemeBtn" aria-label="Mavzu"></button>
+    </header>
+    <div class="screen__body">
+      <div class="menu">
+        <button type="button" class="menu-btn" id="obshiyTopBtn">
+          <span class="menu-btn__ic">
+            <svg viewBox="0 0 24 24" class="ic"><path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 21.4l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3Z"/></svg>
+          </span>
+          <span class="menu-btn__label">Top</span>
+        </button>
+        <button type="button" class="menu-btn" id="obshiyTopChiqganBtn">
+          <span class="menu-btn__ic">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 8 7h3v7h2V7h3l-4-4ZM5 19h14v2H5z"/></svg>
+          </span>
+          <span class="menu-btn__label">Topdan chiqgan</span>
+        </button>
+        <button type="button" class="menu-btn" id="obshiyBizdaBtn">
+          <span class="menu-btn__ic">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M12 2 3 6v12l9 4 9-4V6l-9-4Zm0 2.2 6.5 2.9L12 10 5.5 7.1 12 4.2ZM5 8.5l6 2.7v7.6l-6-2.7V8.5Zm14 0v7.6l-6 2.7v-7.6l6-2.7Z"/></svg>
+          </span>
+          <span class="menu-btn__label">Bizda qoladigan</span>
+        </button>
+        <button type="button" class="menu-btn" id="obshiyChiqganBtn">
+          <span class="menu-btn__ic">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M14 4l6 6-6 6v-4H5v-4h9V4Z"/></svg>
+          </span>
+          <span class="menu-btn__label">Bizdan chiqgan</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Obshiy ves → Top / Bizda qoladigan / Bizdan chiqgan (shared form) -->
+  <div class="screen" id="topScreen" hidden>
+    <header class="screen__top">
+      <button type="button" class="theme-btn" id="topBackBtn" aria-label="Orqaga">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="screen__title" id="topTitle">Top</span>
+      <button type="button" class="theme-btn js-theme" id="topThemeBtn" aria-label="Mavzu"></button>
+    </header>
+    <div class="screen__body">
+      <!-- Photos -->
+      <div class="field">
+        <div class="field__head">
+          <span class="field__label">Rasmlar</span>
+          <span class="counter" id="topPhotoCounter">0/10</span>
+        </div>
+        <button type="button" class="btn btn--ghost view-btn" id="topViewBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16v2H4V5Zm0 4h16v2H4V9Zm0 4h10v2H4v-2Zm0 4h10v2H4v-2Z"/></svg>
+          Yuklanganlar
+          <span class="view-badge" id="topViewCount">0</span>
+        </button>
+        <div class="photo-grid" id="topPhotoGrid"></div>
+        <div class="photo-actions">
+          <button type="button" class="btn btn--ghost" id="topBtnGallery">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2ZM8.5 11l2.5 3 3.5-4.5L19 16H5l3.5-5Z"/></svg>
+            Galereya
+          </button>
+          <button type="button" class="btn btn--ghost" id="topBtnCamera">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M9.4 3 7.6 5.1H4A2 2 0 0 0 2 7.1v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2h-3.6L14.6 3H9.4Zm2.6 5.1a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
+            Kamera
+          </button>
+        </div>
+      </div>
+
+      <!-- Karobka kodi (numeric; pencil unlocks free text) -->
+      <div class="field">
+        <span class="field__label" id="topCodeLabel">Karobka kodi</span>
+        <div class="select-row">
+          <input type="text" inputmode="numeric" class="input" id="topCode"
+                 placeholder="Masalan: 12345" autocomplete="off" autocapitalize="off" />
+          <button type="button" class="icon-btn" id="topCodePencil" aria-label="Erkin kiritish">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Weight -->
+      <div class="field">
+        <label class="field__label" for="topWeight">Og'irlik</label>
+        <div class="input-suffix">
+          <input type="text" inputmode="decimal" class="input" id="topWeight" placeholder="0" />
+          <span class="suffix">kg</span>
+        </div>
+      </div>
+
+      <!-- Fast mode -->
+      <div class="field">
+        <label class="toggle-row">
+          <span>
+            <span class="toggle-row__title">Fast mode</span>
+            <span class="toggle-row__sub">Rasmdan so'ng kodga fokus, saqlagach kamera ochiladi</span>
+          </span>
+          <span class="switch"><input type="checkbox" id="topFast" /><span class="switch__track"></span></span>
+        </label>
+      </div>
+
+      <button type="button" class="btn btn--primary save-btn" id="topSave">Saqlash</button>
+    </div>
+  </div>
+
+  <!-- Saved entries viewer (Top / Bizda qoladigan / Bizdan chiqgan), paginated -->
+  <div class="screen" id="entriesScreen" hidden>
+    <header class="screen__top">
+      <button type="button" class="theme-btn" id="entriesBackBtn" aria-label="Orqaga">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="screen__title" id="entriesTitle">Yuklanganlar</span>
+      <button type="button" class="theme-btn js-theme" id="entriesThemeBtn" aria-label="Mavzu"></button>
+    </header>
+    <div class="screen__body">
+      <div class="entries" id="entriesList"></div>
+    </div>
+    <div class="pager" id="entriesPager" hidden>
+      <button type="button" class="filter-nav" id="entriesPrev" aria-label="Oldingi">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m15 6-6 6 6 6 1.4-1.4L11.8 12l4.6-4.6z"/></svg>
+      </button>
+      <span class="pager__label" id="entriesPageLabel">1/1</span>
+      <button type="button" class="filter-nav" id="entriesNext" aria-label="Keyingi">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>
+      </button>
     </div>
   </div>
 
@@ -313,6 +445,22 @@
         </span>
         <span class="switch"><input type="checkbox" id="rememberToggle" /><span class="switch__track"></span></span>
       </label>
+    </div>
+  </div>
+
+  <!-- Entry actions (edit / delete) for a saved row -->
+  <div class="sheet-backdrop" id="entryActBackdrop" hidden></div>
+  <div class="sheet" id="entryActSheet" hidden role="dialog" aria-modal="true" aria-label="Amallar">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__pad">
+      <button type="button" class="act-item" id="entryEditBtn">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/></svg>
+        Tahrirlash
+      </button>
+      <button type="button" class="act-item act-item--danger" id="entryDeleteBtn">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z"/></svg>
+        O'chirish
+      </button>
     </div>
   </div>
 
@@ -360,10 +508,12 @@
         />
         <div class="input-suffix">
           <input
-            type="password" id="loginPass" class="input"
-            placeholder="Parol" autocomplete="current-password" required
+            type="password" id="loginPass" class="input input--pin"
+            placeholder="4 xonali PIN" autocomplete="current-password"
+            inputmode="numeric" maxlength="4" pattern="[0-9]{4}"
+            aria-label="4 xonali PIN kod" required
           />
-          <button type="button" class="pass-toggle" id="passToggle" aria-label="Parolni ko'rsatish">
+          <button type="button" class="pass-toggle" id="passToggle" aria-label="PINni ko'rsatish">
             <svg viewBox="0 0 24 24" class="ic"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/></svg>
           </button>
         </div>

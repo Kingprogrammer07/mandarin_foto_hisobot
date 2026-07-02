@@ -287,6 +287,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   transition: background 0.15s, transform 0.08s var(--ease);
 }
 .icon-btn:active { transform: scale(0.95); }
+.icon-btn.is-on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+/* An input sitting in a select-row (e.g. karobka kodi + pencil) must flex, not
+   grab its full 100% width and shove the pencil off-row. */
+.select-row .input { flex: 1; min-width: 0; }
 
 /* ---------- Chips ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -327,6 +331,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 }
 .input::placeholder { color: var(--hint); }
 .input:focus { border-color: var(--accent); }
+.input--pin { letter-spacing: 0.45em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.input--pin::placeholder { letter-spacing: normal; font-weight: 400; }
 .input-suffix { position: relative; display: flex; align-items: center; }
 .input-suffix .input { padding-right: 46px; }
 .suffix { position: absolute; right: 14px; color: var(--hint); font-weight: 600; pointer-events: none; }
@@ -752,10 +758,74 @@ body.locked { overflow: hidden; }
 .menu-xls:active { transform: scale(0.96); }
 .menu-xls .ic { width: 24px; height: 24px; }
 
+/* ---------- "Yuklanganlar" (view saved entries) button + count badge ---------- */
+.view-btn { width: 100%; margin-bottom: 12px; }
+.view-badge {
+  min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 11px;
+  background: var(--accent); color: var(--accent-text);
+  font-size: 12px; font-weight: 700;
+  display: inline-grid; place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Saved-entries viewer (cards + pagination) ---------- */
+.entries { display: flex; flex-direction: column; gap: 8px; }
+.entry-card {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--section-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  animation: thumbIn 0.18s var(--ease);
+}
+.entry-card__head { display: flex; align-items: center; gap: 10px; }
+.entry-card__code { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; color: var(--text); word-break: break-all; }
+.entry-card__val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; flex: none; }
+.entry-card__val span { font-size: 12px; font-weight: 500; color: var(--hint); }
+.entry-card__menu {
+  width: 32px; height: 32px; flex: none;
+  border: 0; border-radius: 50%;
+  background: transparent; color: var(--hint);
+  display: grid; place-items: center; cursor: pointer;
+  position: relative;
+}
+.entry-card__menu::after { content: ""; position: absolute; inset: -6px; }
+.entry-card__menu:active { background: var(--fill); }
+.entry-card__menu .ic { width: 20px; height: 20px; }
+.entry-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.entry-card__thumbs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.entry-card__thumbs:empty { display: none; }
+.entry-thumb { width: 40px; height: 40px; flex: none; border-radius: 8px; object-fit: cover; cursor: zoom-in; background: var(--fill); }
+.entry-more { font-size: 12px; font-weight: 600; color: var(--hint); flex: none; }
+.entry-card__sub { font-size: 12px; color: var(--hint); white-space: nowrap; flex: none; }
+
+/* Entry actions (kebab bottom sheet) */
+.act-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: var(--tap);
+  padding: 0 14px; border: 0; border-radius: var(--radius-sm);
+  background: var(--fill); color: var(--text);
+  font-size: 16px; font-weight: 600; cursor: pointer;
+  transition: background 0.12s;
+}
+.act-item:active { background: color-mix(in srgb, var(--fill) 60%, var(--separator)); }
+.act-item .ic { width: 20px; height: 20px; }
+.act-item--danger { color: var(--destructive); }
+.entries__empty { text-align: center; color: var(--hint); padding: 48px 16px; font-size: 14px; }
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: var(--secondary-bg);
+  border-top: 1px solid var(--separator);
+}
+.pager[hidden] { display: none; }
+.pager__label { font-size: 14px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; min-width: 48px; text-align: center; }
+
 /* ---------- Sheet padding + toggle ---------- */
 /* Name/settings sheets sit above the home screen (z 90). */
-#nameSheet, #setSheet { z-index: 96; }
-#nameBackdrop, #setBackdrop { z-index: 95; }
+#nameSheet, #setSheet, #entryActSheet { z-index: 96; }
+#nameBackdrop, #setBackdrop, #entryActBackdrop { z-index: 95; }
 .sheet__pad { padding: 4px 2px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
 .toggle-row__title { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
