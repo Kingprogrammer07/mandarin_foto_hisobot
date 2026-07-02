@@ -1338,14 +1338,29 @@
   // later from the Yuklanganlar bulk button.
   const IDB_NAME = "reys-outbox", IDB_STORE = "outbox";
   let _idb = null;
+  let _idbLastError = "";
   function idbOpen() {
     return new Promise((resolve) => {
       if (_idb) return resolve(_idb);
+      if (!("indexedDB" in window)) {
+        _idbLastError = "indexedDB unavailable";
+        return resolve(null);
+      }
       let req;
-      try { req = indexedDB.open(IDB_NAME, 1); } catch (_) { return resolve(null); }
+      try { req = indexedDB.open(IDB_NAME, 1); } catch (e) {
+        _idbLastError = e && e.message ? e.message : "indexedDB open failed";
+        return resolve(null);
+      }
       req.onupgradeneeded = () => { try { req.result.createObjectStore(IDB_STORE, { keyPath: "localId" }); } catch (_) {} };
       req.onsuccess = () => { _idb = req.result; resolve(_idb); };
-      req.onerror = () => resolve(null);
+      req.onerror = () => {
+        _idbLastError = (req.error && req.error.message) || "indexedDB open error";
+        resolve(null);
+      };
+      req.onblocked = () => {
+        _idbLastError = "indexedDB blocked";
+        resolve(null);
+      };
     });
   }
   function idbReq(mode, fn) {
@@ -1357,9 +1372,18 @@
         const r = fn(tx.objectStore(IDB_STORE));
         if (r) r.onsuccess = () => { out = r.result; };
         tx.oncomplete = () => resolve(out);
-        tx.onerror = () => resolve(null);
-        tx.onabort = () => resolve(null);
-      } catch (_) { resolve(null); }
+        tx.onerror = () => {
+          _idbLastError = (tx.error && tx.error.message) || "indexedDB transaction error";
+          resolve(null);
+        };
+        tx.onabort = () => {
+          _idbLastError = (tx.error && tx.error.message) || "indexedDB transaction aborted";
+          resolve(null);
+        };
+      } catch (e) {
+        _idbLastError = e && e.message ? e.message : "indexedDB request failed";
+        resolve(null);
+      }
     }));
   }
   const idbPut = (item) => idbReq("readwrite", (s) => s.put(item));
@@ -1388,6 +1412,30 @@
     return null;
   }
 
+  async function uploadCreateRaw(item) {
+    const fd = new FormData();
+    fd.append("init_data", inTelegram ? tg.initData : "");
+    fd.append("report_id", String(item.reportId));
+    Object.entries(item.fields).forEach(([k, v]) => fd.append(k, String(v)));
+    (item.blobs || []).forEach((b, i) => fd.append("photos", b, (b && b.name) || `photo_${i}.jpg`));
+    const path = item.kind === "adjust" ? "/api/adjust" : "/api/report";
+    const res = await fetch(path, { method: "POST", body: fd });
+    const json = await res.json().catch(() => ({}));
+    return { res, json };
+  }
+
+  function markEntrySynced(entry, item, json) {
+    entry.id = json.entry_id;
+    entry.pending = false;
+    entry.synced = true;
+    entry.sendStatus = null;
+    if (item.reportId === state.reportId) {
+      state.inventory = json.inventory || json.balances || state.inventory;
+      renderBalances();
+      renderAdjust();
+    }
+  }
+
   function refreshViewer(kind) {
     updateViewCount();
     if (!els.entriesScreen.hidden && viewerSection === kind) renderEntries();
@@ -1397,8 +1445,21 @@
   async function enqueueCreate(kind, fields, files) {
     const item = { localId: uid(), kind, reportId: state.reportId, fields, blobs: files, ts: Date.now() };
     const storedKey = await idbPut(item);
-    if (storedKey == null) throw new Error("Qurilmada vaqtincha saqlab bo'lmadi");
     const entry = outboxEntry(item);
+    if (storedKey == null) {
+      try {
+        const { res, json } = await uploadCreateRaw(item);
+        if (!res.ok || !json.ok) throw new Error(json.detail || "Serverga saqlab bo'lmadi");
+        markEntrySynced(entry, item, json);
+        state.entries[kind].push(entry);
+        updateViewCount();
+        refreshViewer(kind);
+        return entry;
+      } catch (e) {
+        const detail = _idbLastError ? ` (${_idbLastError})` : "";
+        throw new Error((e && e.message ? e.message : "Serverga saqlab bo'lmadi") + `. Qurilmada vaqtincha saqlab bo'lmadi${detail}`);
+      }
+    }
     state.entries[kind].push(entry);
     updateViewCount();
     trySync(item, entry); // fire-and-forget; retry loop is the safety net
@@ -1413,14 +1474,7 @@
     _syncingLocalIds.add(item.localId);
     if (entry) entry.syncing = true;
     try {
-      const fd = new FormData();
-      fd.append("init_data", inTelegram ? tg.initData : "");
-      fd.append("report_id", String(item.reportId));
-      Object.entries(item.fields).forEach(([k, v]) => fd.append(k, String(v)));
-      (item.blobs || []).forEach((b, i) => fd.append("photos", b, (b && b.name) || `photo_${i}.jpg`));
-      const path = item.kind === "adjust" ? "/api/adjust" : "/api/report";
-      const res = await fetch(path, { method: "POST", body: fd });
-      const json = await res.json().catch(() => ({}));
+      const { res, json } = await uploadCreateRaw(item);
       if (!res.ok || !json.ok) {
         // 4xx (not 429) = permanent rejection → stop retrying, surface it.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
@@ -1432,11 +1486,7 @@
         return; // 5xx/429/other → keep pending for retry
       }
       await idbDelete(item.localId); // uploaded → server owns it now
-      if (entry) { entry.id = json.entry_id; entry.pending = false; entry.synced = true; entry.sendStatus = null; }
-      if (item.reportId === state.reportId) {
-        state.inventory = json.inventory || json.balances || state.inventory;
-        renderBalances(); renderAdjust();
-      }
+      if (entry) markEntrySynced(entry, item, json);
       refreshViewer(item.kind);
     } catch (_) {
       if (entry) entry.pending = true; // network error → retry loop will pick it up
