@@ -32,12 +32,80 @@ def _formula_num(v) -> str:
     return f"{_num(v):.10g}"
 
 
-def _entry_value(entry: dict):
+def _entry_expr_and_value(entry: dict) -> tuple[str, float]:
     weight = _num(entry.get("weight"))
     coef = _num(entry.get("coefficient"))
+    net = _num(entry.get("net"))
+    if net:
+        return _formula_num(net), net
     if coef > 0:
-        return f"={_formula_num(weight)}-{_formula_num(coef)}"
-    return _num(entry.get("net"))
+        net = round(weight - coef, 4)
+        return _formula_num(net), net
+    return _formula_num(net), net
+
+
+def _slot_value(slot: dict) -> float:
+    return round(float(slot.get("value") or 0) + sum(float(x) for x in slot.get("deltas", [])), 4)
+
+
+def _slot_cell_value(slot: dict):
+    expr = str(slot["expr"])
+    deltas = list(slot.get("deltas") or [])
+    if not deltas and not slot.get("force_formula"):
+        return _num(slot.get("value"))
+    parts = [expr]
+    for delta in deltas:
+        n = _formula_num(abs(delta))
+        parts.append(("-" if delta < 0 else "+") + n)
+    return "=" + "".join(parts)
+
+
+def _append_reys(slots: dict[str, list[dict]], entry: dict) -> None:
+    tovar_turi = str(entry.get("tovar_turi") or "").strip()
+    if not tovar_turi:
+        return
+    expr, value = _entry_expr_and_value(entry)
+    slots.setdefault(tovar_turi, []).append({
+        "expr": expr,
+        "value": value,
+        "deltas": [],
+        "force_formula": str(expr) != _formula_num(value),
+    })
+
+
+def _apply_adjust(slots: dict[str, list[dict]], entry: dict) -> None:
+    from_type = str(entry.get("from_type") or "").strip()
+    to_type = str(entry.get("to_type") or "").strip()
+    weight = _num(entry.get("weight"))
+    if not from_type or not to_type or weight <= 0:
+        return
+
+    slots.setdefault(to_type, []).append({
+        "expr": _formula_num(weight),
+        "value": weight,
+        "deltas": [],
+        "force_formula": False,
+    })
+
+    remaining = weight
+    source = slots.setdefault(from_type, [])
+    for slot in reversed(source):
+        if remaining <= 0:
+            break
+        available = max(0.0, _slot_value(slot))
+        if available <= 0:
+            continue
+        take = min(available, remaining)
+        slot.setdefault("deltas", []).append(-take)
+        slot["force_formula"] = True
+        remaining = round(remaining - take, 4)
+    if remaining > 0:
+        source.append({
+            "expr": "0",
+            "value": 0.0,
+            "deltas": [-remaining],
+            "force_formula": True,
+        })
 
 
 def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
@@ -47,17 +115,23 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
 
     report_name = db.report_name(report_id) or "Hisobot"
     entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
+    adjusts = list(reversed(db.list_entries(report_id, "adjust", limit=2000)))
 
-    grouped: dict[str, list[dict]] = {}
+    slots: dict[str, list[dict]] = {}
     custom_types: list[str] = []
     default_set = set(db.DEFAULT_TYPES)
     for entry in entries:
         tovar_turi = str(entry.get("tovar_turi") or "").strip()
         if not tovar_turi:
             continue
-        grouped.setdefault(tovar_turi, []).append(entry)
+        _append_reys(slots, entry)
         if tovar_turi not in default_set and tovar_turi not in custom_types:
             custom_types.append(tovar_turi)
+    for entry in adjusts:
+        _apply_adjust(slots, entry)
+        for tovar_turi in (str(entry.get("from_type") or "").strip(), str(entry.get("to_type") or "").strip()):
+            if tovar_turi and tovar_turi not in default_set and tovar_turi not in custom_types:
+                custom_types.append(tovar_turi)
 
     if TEMPLATE.exists():
         wb = load_workbook(TEMPLATE)
@@ -100,7 +174,7 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
             data_rows.append((row, tovar_turi, True))
             row += 1
 
-    max_entries = max([len(grouped.get(t, [])) for _, t, _ in data_rows] + [1])
+    max_entries = max([len(slots.get(t, [])) for _, t, _ in data_rows] + [1])
     max_col = max(2, 1 + max_entries)
     total_start = (data_rows[-1][0] if data_rows else 1) + 6
     total_end = total_start + len(data_rows) - 1
@@ -120,9 +194,9 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
         cell.value = tovar_turi
         cell._style = copy(custom_label_style if is_custom else label_style)
         cell.fill = copy(label_fill)
-        for idx, entry in enumerate(grouped.get(tovar_turi, []), start=2):
+        for idx, slot in enumerate(slots.get(tovar_turi, []), start=2):
             val_cell = ws.cell(data_row, idx)
-            val_cell.value = _entry_value(entry)
+            val_cell.value = _slot_cell_value(slot)
             val_cell._style = copy(value_style)
             val_cell.number_format = value_num_format
 
@@ -140,6 +214,7 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
         total_row += 1
 
     ws.sheet_view.showGridLines = True
+    wb.calculation.calcMode = "auto"
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
 
