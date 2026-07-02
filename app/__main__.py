@@ -9,7 +9,7 @@ import logging
 
 import uvicorn
 
-from . import config
+from . import config, outbox
 from .bot import build_bot, dp
 from .server import app
 
@@ -24,6 +24,8 @@ async def main() -> None:
     config.require_config()
 
     bot = build_bot()
+    # Hand the bot to the durable channel-send worker (started at server startup).
+    outbox.set_bot(bot)
 
     server = uvicorn.Server(
         uvicorn.Config(app, host=config.HOST, port=config.PORT, log_level="info")

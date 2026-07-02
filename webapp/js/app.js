@@ -19,15 +19,19 @@
   if (isIOS) document.documentElement.classList.add("ios");
 
   const MAX_PHOTOS = 10;
-  const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon"];
+  const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"];
 
   // Obshiy ves sub-sections that share one photo+code+weight form. `codeRequired`
   // toggles whether karobka kodi is mandatory (Bizda qoladigan lets it be blank).
+  // Obshiy-ves shared-form sections + the two backend-wired work-area tabs.
+  // `codeRequired` only applies to the shared form; reys/adjust have their own forms.
   const SECTIONS = {
     top: { title: "Top", codeRequired: true },
     topchiqgan: { title: "Topdan chiqgan", codeRequired: false },
     bizda: { title: "Bizda qoladigan", codeRequired: false },
     chiqgan: { title: "Bizdan chiqgan", codeRequired: false },
+    reys: { title: "Reys hisoboti" },
+    adjust: { title: "Adashgan yuklar" },
   };
   const ENTRIES_PAGE = 6;
 
@@ -43,7 +47,7 @@
     topCodeFree: false, // pencil unlocked → karobka kodi accepts any character
     topFast: false, // fast-mode capture loop
     formSection: "top", // which SECTIONS entry the form is currently editing
-    entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [] }, // saved rows (client-side until backend)
+    entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] }, // saved rows (client-side until backend)
     type: "akb",
     customTypes: [], // user-added types not yet persisted to inventory
     inventory: {}, // tovar_turi -> weight (from server)
@@ -103,6 +107,16 @@
     lightboxImg: $("#lightboxImg"),
     lightboxClose: $("#lightboxClose"),
     lightboxDel: $("#lightboxDel"),
+    lightboxPrev: $("#lightboxPrev"),
+    lightboxNext: $("#lightboxNext"),
+    lightboxCount: $("#lightboxCount"),
+    lightboxCaption: $("#lightboxCaption"),
+    lightboxCapMain: $("#lightboxCapMain"),
+    lightboxCapSub: $("#lightboxCapSub"),
+    reysViewBtn: $("#reysViewBtn"),
+    reysViewCount: $("#reysViewCount"),
+    adjViewBtn: $("#adjViewBtn"),
+    adjViewCount: $("#adjViewCount"),
     typeSelect: $("#typeSelect"),
     typeValue: $("#typeValue"),
     typePencil: $("#typePencil"),
@@ -193,6 +207,9 @@
     entriesBackBtn: $("#entriesBackBtn"),
     entriesTitle: $("#entriesTitle"),
     entriesList: $("#entriesList"),
+    entriesActions: $("#entriesActions"),
+    entriesSendUnsentBtn: $("#entriesSendUnsentBtn"),
+    entriesResendSentBtn: $("#entriesResendSentBtn"),
     entriesPager: $("#entriesPager"),
     entriesPrev: $("#entriesPrev"),
     entriesNext: $("#entriesNext"),
@@ -549,46 +566,173 @@
   els.camZoom.addEventListener("click", () => setZoom(camZoom >= 3 ? 1 : Math.floor(camZoom) + 1));
   window.addEventListener("pagehide", stopStream);
 
-  // ---- Photo lightbox ----
-  let lightboxId = null;
-  let lightboxPk = "photos";
-  let lightboxTempUrl = null; // ephemeral URL when viewing a saved-entry photo
+  // ---- Photo lightbox (Telegram-like: prev/next arrows, counter, caption) ----
+  // Two sources: 'form' pages through a live form photo set (deletable, has
+  // persistent object URLs) and 'entry' pages through a saved entry's Files
+  // (view-only + caption; one ephemeral URL at a time).
+  let lb = null; // { mode: 'form'|'entry', pk?, section?, entry?, files?, caption?, i }
+  let lbTempUrl = null;
+
+  function lbItems() { return lb.mode === "form" ? state[lb.pk] : lb.files; }
+
+  // Two-line caption: bold summary + dim meta. Reys shows the arithmetic the
+  // admin asked for: "AKB 100 - 0.94 = 99.06 kg".
+  function entryCaption(e) {
+    const n2 = (v) => String(Math.round(Number(v) * 100) / 100);
+    let main;
+    if (e.from && e.to) {
+      main = `${e.from.toUpperCase()} → ${e.to.toUpperCase()} · ${fmtKg(e.weight)}`;
+    } else if (e.type) {
+      const coef = Number(e.coefficient) || 0;
+      main = coef
+        ? `${e.type.toUpperCase()} ${n2(e.weight)} - ${n2(coef)} = ${fmtKg(e.weight - coef)}`
+        : `${e.type.toUpperCase()} ${fmtKg(e.weight)}`;
+    } else {
+      main = `${e.code || "—"} · ${fmtKg(e.weight)}`;
+    }
+    return { main, sub: `${fmtTs(e.ts / 1000)} · ${(e.files || []).length} rasm` };
+  }
+
+  function lbShow() {
+    const items = lbItems();
+    if (!items.length) { closeLightbox(); return; }
+    lb.i = Math.min(Math.max(lb.i, 0), items.length - 1);
+    if (lbTempUrl) { URL.revokeObjectURL(lbTempUrl); lbTempUrl = null; }
+    if (lb.mode === "form") {
+      els.lightboxImg.src = items[lb.i].url;
+    } else {
+      lbTempUrl = URL.createObjectURL(items[lb.i]);
+      els.lightboxImg.src = lbTempUrl;
+    }
+    const many = items.length > 1;
+    const canPrev = lb.i > 0 || hasEntryNeighbor(-1);
+    const canNext = lb.i < items.length - 1 || hasEntryNeighbor(1);
+    const canPage = many || canPrev || canNext;
+    els.lightboxCount.hidden = !canPage;
+    els.lightboxCount.textContent = `${lb.i + 1}/${items.length}`;
+    els.lightboxPrev.hidden = !canPage;
+    els.lightboxNext.hidden = !canPage;
+    els.lightboxPrev.disabled = !canPrev;
+    els.lightboxNext.disabled = !canNext;
+    const cap = lb.mode === "entry" ? lb.caption : null;
+    els.lightboxCaption.hidden = !cap;
+    els.lightboxCapMain.textContent = cap ? cap.main : "";
+    els.lightboxCapSub.textContent = cap ? cap.sub : "";
+  }
+
   function openLightbox(photo, pk) {
-    lightboxId = photo.id;
-    lightboxPk = pk || "photos";
-    lightboxTempUrl = null;
-    els.lightboxDel.hidden = false; // form photos are deletable from the lightbox
-    els.lightboxImg.src = photo.url;
+    const arr = state[pk || "photos"];
+    lb = { mode: "form", pk: pk || "photos", i: Math.max(0, arr.findIndex((p) => p.id === photo.id)) };
+    els.lightboxDel.hidden = false;
+    lbShow();
     els.lightbox.hidden = false;
     document.body.classList.add("locked");
     syncBackButton();
   }
-  // View-only: a saved-entry photo (a File with no persistent object URL).
-  function viewEntryPhoto(file) {
-    lightboxId = null;
-    lightboxTempUrl = URL.createObjectURL(file);
-    els.lightboxDel.hidden = true; // no delete here — edit/delete live in the kebab
-    els.lightboxImg.src = lightboxTempUrl;
+
+  function viewEntryPhotos(entry, startIndex) {
+    lb = {
+      mode: "entry",
+      section: viewerSection,
+      entry,
+      files: entry.files || [],
+      caption: entryCaption(entry),
+      i: startIndex || 0,
+    };
+    els.lightboxDel.hidden = true; // view-only — edit/delete live in the kebab menu
+    lbShow();
     els.lightbox.hidden = false;
     document.body.classList.add("locked");
     syncBackButton();
   }
+
+  function entryOrder(section) {
+    return (state.entries[section] || []).slice().reverse().filter((e) => (e.files || []).length);
+  }
+
+  function hasEntryNeighbor(d) {
+    if (!lb || lb.mode !== "entry") return false;
+    const order = entryOrder(lb.section);
+    const cur = order.indexOf(lb.entry);
+    return cur >= 0 && !!order[cur + (d > 0 ? 1 : -1)];
+  }
+
+  function setLightboxEntry(entry, index) {
+    lb.entry = entry;
+    lb.files = entry.files || [];
+    lb.caption = entryCaption(entry);
+    lb.i = Math.min(Math.max(index || 0, 0), Math.max(lb.files.length - 1, 0));
+  }
+
+  function lbNav(d) {
+    if (!lb) return;
+    const ni = lb.i + d;
+    const items = lbItems();
+    if (ni >= 0 && ni < items.length) {
+      lb.i = ni;
+    } else if (lb.mode === "entry") {
+      const order = entryOrder(lb.section);
+      const cur = order.indexOf(lb.entry);
+      const next = order[cur + (d > 0 ? 1 : -1)];
+      if (!next) return;
+      const nextFiles = next.files || [];
+      setLightboxEntry(next, d > 0 ? 0 : nextFiles.length - 1);
+    } else {
+      return;
+    }
+    lbShow();
+    haptic("select");
+  }
+
   function closeLightbox() {
     els.lightbox.hidden = true;
     els.lightboxImg.src = "";
-    lightboxId = null;
-    if (lightboxTempUrl) { URL.revokeObjectURL(lightboxTempUrl); lightboxTempUrl = null; }
+    if (lbTempUrl) { URL.revokeObjectURL(lbTempUrl); lbTempUrl = null; }
+    lb = null;
     els.lightboxDel.hidden = false;
     syncLock(); // keep the lock if a .screen (entries viewer / top form) is still open
     syncBackButton();
   }
+
   function deleteFromLightbox() {
-    if (lightboxId != null) removePhoto(lightboxId, lightboxPk);
-    closeLightbox();
+    if (!lb || lb.mode !== "form") return;
+    const cur = state[lb.pk][lb.i];
+    if (cur) removePhoto(cur.id, lb.pk);
+    if (!state[lb.pk].length) closeLightbox();
+    else lbShow(); // index clamps to the shortened list
   }
+
+  // Swipe left/right to page (Telegram-style). The .lightbox has
+  // touch-action:none so the WebView can't consume the pan before touchend;
+  // the last touchmove position is tracked because some WebViews report a
+  // stale/зero delta in touchend's changedTouches after a suppressed pan.
+  let lbTouch = null; // { x, y, lx, ly }
+  els.lightbox.addEventListener("touchstart", (e) => {
+    lbTouch = e.touches.length === 1
+      ? { x: e.touches[0].clientX, y: e.touches[0].clientY, lx: e.touches[0].clientX, ly: e.touches[0].clientY }
+      : null; // multi-touch is not a swipe
+  }, { passive: true });
+  els.lightbox.addEventListener("touchmove", (e) => {
+    if (lbTouch && e.touches.length === 1) {
+      lbTouch.lx = e.touches[0].clientX;
+      lbTouch.ly = e.touches[0].clientY;
+    }
+  }, { passive: true });
+  els.lightbox.addEventListener("touchend", () => {
+    if (!lbTouch) return;
+    const dx = lbTouch.lx - lbTouch.x;
+    const dy = lbTouch.ly - lbTouch.y;
+    lbTouch = null;
+    // Mostly-horizontal, decisive swipe → page; ignore taps and vertical pans.
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) lbNav(dx > 0 ? -1 : 1);
+  }, { passive: true });
+  els.lightbox.addEventListener("touchcancel", () => { lbTouch = null; });
+
   els.lightbox.addEventListener("click", (e) => { if (e.target === els.lightbox) closeLightbox(); });
   els.lightboxClose.addEventListener("click", closeLightbox);
   els.lightboxDel.addEventListener("click", deleteFromLightbox);
+  els.lightboxPrev.addEventListener("click", () => lbNav(-1));
+  els.lightboxNext.addEventListener("click", () => lbNav(1));
 
   // ---- Reports (home) ----
   function confirmDialog(msg) {
@@ -647,6 +791,7 @@
   }
 
   function showHome() {
+    startOutboxLoop();
     state.reportId = null;
     els.reportName.textContent = "";
     showScreen(null);          // hide menu / obshiy / top
@@ -677,12 +822,24 @@
     clearEntries();
     setTab("report");
     loadInventory();
+    loadEntries("reys");
+    loadEntries("adjust");
+    syncOutbox();
     els.homeScreen.hidden = true;
     showMenu();
   }
 
+  // Leaving the work area cancels any pending reys/adjust edit — otherwise the
+  // next save (meant as a NEW record) would silently PUT over the old entry.
+  function cancelWorkEdits() {
+    if (editingReys) { editingReys = null; resetForm(); }
+    if (editingAdj) { editingAdj = null; resetAdjust(); }
+    els.saveBtn.textContent = "Saqlash";
+  }
+
   // Report section menu (Obshiy ves / Kargolarga tarqatish).
   function showMenu() {
+    cancelWorkEdits();
     els.menuTitle.textContent = state.reportName;
     showScreen("menu");
     document.body.classList.add("locked");
@@ -714,6 +871,8 @@
 
   function updateViewCount() {
     els.topViewCount.textContent = String(state.entries[state.formSection].length);
+    els.reysViewCount.textContent = String(state.entries.reys.length);
+    els.adjViewCount.textContent = String(state.entries.adjust.length);
   }
 
   // "Kargolarga tarqatish" → reveal the reys/adashgan tab work area.
@@ -741,7 +900,9 @@
   }
 
   let savingTop = false;
-  let editingEntry = null; // the entry currently being edited (null = creating)
+  let editingEntry = null; // shared-form entry being edited (null = creating)
+  let editingReys = null;  // reys-tab entry being edited (backend PUT on save)
+  let editingAdj = null;   // adashgan-tab entry being edited (backend PUT on save)
   function onFormSave() {
     if (savingTop) return;
     const cfg = SECTIONS[state.formSection];
@@ -790,35 +951,45 @@
   function clearEntries() {
     clearEntryUrls();
     editingEntry = null;
+    editingReys = null;
+    editingAdj = null;
     actionEntry = null;
     els.topSave.textContent = "Saqlash";
-    state.entries = { top: [], topchiqgan: [], bizda: [], chiqgan: [] };
+    els.saveBtn.textContent = "Saqlash";
+    state.entries = { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] };
+    updateViewCount();
   }
 
   // ---- Saved-entries viewer (cards, paginated) ----
   let entriesPage = 0;
+  let viewerSection = "top"; // which SECTIONS list the viewer is showing
   let entryUrls = []; // object URLs created for the current render; revoked on re-render
   function clearEntryUrls() { entryUrls.forEach((u) => URL.revokeObjectURL(u)); entryUrls = []; }
 
-  function openEntries() {
+  function openEntries(section) {
+    viewerSection = section || state.formSection;
     entriesPage = 0;
-    els.entriesTitle.textContent = SECTIONS[state.formSection].title + " — yuklanganlar";
+    els.entriesTitle.textContent = SECTIONS[viewerSection].title + " — yuklanganlar";
     els.entriesScreen.hidden = false;
     document.body.classList.add("locked");
     renderEntries();
+    if (viewerSection === "reys" || viewerSection === "adjust") loadEntries(viewerSection);
     syncBackButton();
   }
   function closeEntries() {
     clearEntryUrls();
     els.entriesScreen.hidden = true;
-    syncBackButton(); // Top form stays visible underneath
+    els.entriesActions.hidden = true;
+    syncLock(); // form screen may still be open beneath; work area isn't locked
+    syncBackButton();
   }
   function renderEntries() {
-    const list = state.entries[state.formSection];
+    const list = state.entries[viewerSection];
     const pages = Math.max(1, Math.ceil(list.length / ENTRIES_PAGE));
     entriesPage = Math.min(Math.max(entriesPage, 0), pages - 1);
     clearEntryUrls();
     els.entriesList.innerHTML = "";
+    renderBulkSendState(list);
     if (!list.length) {
       const p = document.createElement("p");
       p.className = "entries__empty";
@@ -836,16 +1007,72 @@
     els.entriesNext.disabled = entriesPage >= pages - 1;
   }
 
+  let sendingBulk = false;
+  function isBulkSection() { return viewerSection === "reys" || viewerSection === "adjust"; }
+  function canSendUnsent(e) {
+    return e.synced && e.id != null && !e.pending && e.sendStatus !== "pending" && e.sendStatus !== "sent";
+  }
+  function canResendSent(e) { return e.synced && e.id != null && e.sendStatus === "sent"; }
+  function renderBulkSendState(list) {
+    const show = isBulkSection();
+    els.entriesActions.hidden = !show;
+    if (!show) return;
+    const unsent = list.filter(canSendUnsent).length;
+    const sent = list.filter(canResendSent).length;
+    els.entriesSendUnsentBtn.disabled = sendingBulk || unsent === 0;
+    els.entriesResendSentBtn.disabled = sendingBulk || sent === 0;
+    els.entriesSendUnsentBtn.textContent = sendingBulk
+      ? "Yuborishga tayyorlanmoqda..."
+      : unsent
+        ? `Yuborilmaganlarni yuborish (${unsent})`
+        : "Yuborilmagan yo'q";
+    els.entriesResendSentBtn.textContent = sent
+      ? `Yuborilganlarni qayta yuborish (${sent})`
+      : "Qayta yuboriladigan yo'q";
+  }
+
+  async function sendEntriesBulk(mode) {
+    if (sendingBulk || !isBulkSection()) return;
+    const list = state.entries[viewerSection];
+    const targets = list.filter(mode === "sent" ? canResendSent : canSendUnsent);
+    if (!targets.length) return;
+    sendingBulk = true;
+    renderBulkSendState(list);
+    try {
+      const res = await fetch("/api/send-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          init_data: inTelegram ? tg.initData : "",
+          report_id: state.reportId,
+          kind: viewerSection,
+          mode,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Yuborib bo'lmadi");
+      targets.forEach((e) => { e.sendStatus = "pending"; });
+      showToast(`${json.queued || targets.length} ta yozuv kanalga yuborishga qo'shildi`);
+      renderEntries();
+    } catch (e) {
+      showToast(e.message || "Yuborib bo'lmadi", true);
+    } finally {
+      sendingBulk = false;
+      renderBulkSendState(state.entries[viewerSection]);
+    }
+  }
+
   function entryCard(e) {
     const files = e.files || [];
     const card = document.createElement("div");
-    card.className = "entry-card";
+    card.className = "entry-card" + (e.sendStatus === "sent" ? " is-sent" : "");
 
     const head = document.createElement("div");
     head.className = "entry-card__head";
     const code = document.createElement("div");
     code.className = "entry-card__code";
-    code.textContent = e.code || "—";
+    // Label by entry shape: transfer "from → to", reys tovar turi, or karobka kodi.
+    code.textContent = e.from && e.to ? `${e.from} → ${e.to}` : (e.type || e.code || "—");
     const val = document.createElement("div");
     val.className = "entry-card__val";
     val.innerHTML = `${(Math.round(Number(e.weight) * 100) / 100).toLocaleString("en-US")}<span> kg</span>`;
@@ -862,26 +1089,47 @@
     foot.className = "entry-card__foot";
     const thumbs = document.createElement("div");
     thumbs.className = "entry-card__thumbs";
-    files.slice(0, 5).forEach((f) => {
+    files.slice(0, 5).forEach((f, idx) => {
       const url = URL.createObjectURL(f);
       entryUrls.push(url);
       const img = document.createElement("img");
       img.className = "entry-thumb";
       img.src = url;
       img.alt = "";
-      img.addEventListener("click", () => viewEntryPhoto(f));
+      img.addEventListener("click", () => viewEntryPhotos(e, idx));
       thumbs.appendChild(img);
     });
     if (files.length > 5) {
       const more = document.createElement("span");
       more.className = "entry-more";
       more.textContent = `+${files.length - 5}`;
+      more.addEventListener("click", () => viewEntryPhotos(e, 5));
       thumbs.appendChild(more);
     }
     const sub = document.createElement("div");
     sub.className = "entry-card__sub";
-    sub.textContent = `${fmtTs(e.ts / 1000)} · ${files.length} rasm`;
+    const coefTxt = e.type && e.coefficient ? `koef ${e.coefficient} · ` : "";
+    const statusBadge = document.createElement("span");
+    statusBadge.className = "entry-status";
+    const statusTxt = e.error
+      ? `xato: ${e.error}`
+      : e.pending || e.syncing
+        ? "yuklanmoqda"
+        : e.sendStatus === "pending"
+          ? "kanal kutilmoqda"
+          : e.sendStatus === "sent"
+            ? "yuborilgan"
+            : isBulkSection() && e.synced
+              ? "yuborilmagan"
+              : "";
+    sub.textContent = `${coefTxt}${fmtTs(e.ts / 1000)} · ${files.length} rasm`;
     foot.append(thumbs, sub);
+    if (statusTxt) {
+      statusBadge.textContent = statusTxt;
+      statusBadge.classList.toggle("entry-status--sent", e.sendStatus === "sent");
+      statusBadge.classList.toggle("entry-status--pending", e.pending || e.syncing || e.sendStatus === "pending");
+      foot.appendChild(statusBadge);
+    }
     card.appendChild(foot);
     return card;
   }
@@ -900,6 +1148,8 @@
     syncBackButton();
   }
   function startEditEntry(entry) {
+    if (viewerSection === "reys") { startEditReys(entry); return; }
+    if (viewerSection === "adjust") { startEditAdjust(entry); return; }
     editingEntry = entry;
     resetTop(false); // clear the form (revokes any current form-photo URLs)
     // Numeric-only unless the saved code contains non-digits → unlock free text.
@@ -919,15 +1169,265 @@
     els.topSave.textContent = "Yangilash";
     closeEntries(); // reveal the form (still under the entries screen)
   }
-  function deleteEntry(entry) {
-    const list = state.entries[state.formSection];
+
+  // Restore a coefficient into the chips row (none / fixed 0.94 / fixed 1.22 /
+  // custom). A fixed value with no matching chip falls back to custom.
+  function setCoefUI(mode, value) {
+    const chips = [...els.coefChips.querySelectorAll(".chip")];
+    let target = null;
+    if (mode === "none") target = chips.find((c) => c.dataset.mode === "none");
+    else if (mode === "fixed") target = chips.find((c) => c.dataset.mode === "fixed" && parseFloat(c.dataset.value) === value);
+    if (!target) { mode = "custom"; target = chips.find((c) => c.dataset.mode === "custom"); }
+    chips.forEach((c) => c.classList.toggle("is-active", c === target));
+    state.coef = { mode, value: mode === "none" ? 0 : value };
+    els.coefCustomWrap.hidden = mode !== "custom";
+    els.coefCustom.value = mode === "custom" ? String(value) : "";
+  }
+
+  // Edit a saved reys entry: load it into tab 1; save PUTs to the backend
+  // (inventory delta is compensated server-side).
+  function startEditReys(entry) {
+    if (saving) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
+    if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
+    editingReys = entry;
+    resetForm(true);
+    state.type = entry.type;
+    els.typeValue.textContent = entry.type;
+    setCoefUI(entry.coefMode || "none", entry.coefficient || 0);
+    els.weight.value = String(entry.weight);
+    state.weightRaw = String(entry.weight);
+    (entry.files || []).forEach((f) => state.photos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    renderPhotos("photos");
+    els.saveBtn.textContent = "Yangilash";
+    closeEntries();
+    setTab("report");
+  }
+
+  // Edit a saved transfer: load it into tab 2; save PUTs to the backend
+  // (old transfer reversed, new one applied).
+  function startEditAdjust(entry) {
+    if (adjusting) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
+    if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
+    editingAdj = entry;
+    resetAdjust(true);
+    state.adjFrom = entry.from;
+    state.adjTo = entry.to;
+    els.adjWeight.value = String(entry.weight);
+    state.adjWeightRaw = String(entry.weight);
+    (entry.files || []).forEach((f) => state.adjPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    renderPhotos("adjPhotos");
+    renderAdjust();
+    closeEntries();
+    setTab("lost");
+  }
+
+  async function deleteEntry(entry) {
+    // Snapshot: the user can switch viewers while the DELETE is in flight —
+    // the local removal must target the list the entry actually lives in.
+    const sec = viewerSection;
+    if (entry.localId && (!entry.synced || entry.id == null)) {
+      // Still-pending (not uploaded) reys/adjust → just drop it from the outbox.
+      await idbDelete(entry.localId);
+    } else if (sec === "reys" || sec === "adjust") {
+      // Uploaded rows live on the backend — delete there first (the inventory
+      // effect is undone server-side; 409 if later transfers depend on it).
+      try {
+        const res = await fetch(`/api/entry/${entry.id}?report_id=${state.reportId}`,
+          { method: "DELETE", headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.detail || "O'chirib bo'lmadi");
+        state.inventory = json.balances || state.inventory;
+        renderBalances();
+        renderAdjust();
+      } catch (e) {
+        showToast(e.message || "O'chirib bo'lmadi", true);
+        return;
+      }
+    }
+    const list = state.entries[sec];
     const i = list.indexOf(entry);
     if (i === -1) return;
     list.splice(i, 1);
     if (editingEntry === entry) { editingEntry = null; els.topSave.textContent = "Saqlash"; }
+    if (editingReys === entry) { editingReys = null; els.saveBtn.textContent = "Saqlash"; }
+    if (editingAdj === entry) { editingAdj = null; renderAdjust(); }
     updateViewCount();
-    renderEntries();
+    if (viewerSection === sec) renderEntries(); // viewer may now show another section
     haptic("light");
+  }
+
+  // ================= Durable offline outbox (IndexedDB) =================
+  // Every reys/adashgan CREATE is written to IndexedDB *before* the upload, so a
+  // dropped connection or an app close never loses photos/data. A retry loop
+  // (on interval, on reconnect, on next launch) flushes anything still pending;
+  // once the server accepts it, it persists to disk. The channel send is queued
+  // later from the Yuklanganlar bulk button.
+  const IDB_NAME = "reys-outbox", IDB_STORE = "outbox";
+  let _idb = null;
+  function idbOpen() {
+    return new Promise((resolve) => {
+      if (_idb) return resolve(_idb);
+      let req;
+      try { req = indexedDB.open(IDB_NAME, 1); } catch (_) { return resolve(null); }
+      req.onupgradeneeded = () => { try { req.result.createObjectStore(IDB_STORE, { keyPath: "localId" }); } catch (_) {} };
+      req.onsuccess = () => { _idb = req.result; resolve(_idb); };
+      req.onerror = () => resolve(null);
+    });
+  }
+  function idbReq(mode, fn) {
+    return idbOpen().then((d) => new Promise((resolve) => {
+      if (!d) return resolve(null);
+      let out = null;
+      try {
+        const tx = d.transaction(IDB_STORE, mode);
+        const r = fn(tx.objectStore(IDB_STORE));
+        if (r) r.onsuccess = () => { out = r.result; };
+        tx.oncomplete = () => resolve(out);
+        tx.onerror = () => resolve(null);
+        tx.onabort = () => resolve(null);
+      } catch (_) { resolve(null); }
+    }));
+  }
+  const idbPut = (item) => idbReq("readwrite", (s) => s.put(item));
+  const idbDelete = (localId) => idbReq("readwrite", (s) => s.delete(localId));
+  const idbAll = () => idbReq("readonly", (s) => s.getAll()).then((v) => v || []);
+
+  let _uidSeq = 0;
+  const uid = () => `${Date.now().toString(36)}-${(_uidSeq++).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Build a display entry from raw fields (optimistic save + outbox replay).
+  function outboxEntry(item) {
+    const f = item.fields;
+    const files = (item.blobs || []).map((b, i) =>
+      b instanceof File ? b : new File([b], (b && b.name) || `photo_${i}.jpg`, { type: (b && b.type) || "image/jpeg" }));
+    const base = { localId: item.localId, files, ts: item.ts, synced: false, pending: true };
+    if (item.kind === "adjust") return { ...base, from: f.from_type, to: f.to_type, weight: Number(f.weight) };
+    const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
+    return { ...base, type: f.type, coefMode: f.coefficient_mode, coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
+  }
+
+  function findByLocalId(localId) {
+    for (const k of ["reys", "adjust"]) {
+      const e = state.entries[k].find((x) => x.localId === localId);
+      if (e) return e;
+    }
+    return null;
+  }
+
+  function refreshViewer(kind) {
+    updateViewCount();
+    if (!els.entriesScreen.hidden && viewerSection === kind) renderEntries();
+  }
+
+  // Persist + optimistically show a new entry, then try to upload it now.
+  async function enqueueCreate(kind, fields, files) {
+    const item = { localId: uid(), kind, reportId: state.reportId, fields, blobs: files, ts: Date.now() };
+    const storedKey = await idbPut(item);
+    if (storedKey == null) throw new Error("Qurilmada vaqtincha saqlab bo'lmadi");
+    const entry = outboxEntry(item);
+    state.entries[kind].push(entry);
+    updateViewCount();
+    trySync(item, entry); // fire-and-forget; retry loop is the safety net
+    return entry;
+  }
+
+  let _syncing = false;
+  const _syncingLocalIds = new Set();
+  async function trySync(item, entry) {
+    if (_syncingLocalIds.has(item.localId)) return;
+    if (entry && entry.syncing) return;
+    _syncingLocalIds.add(item.localId);
+    if (entry) entry.syncing = true;
+    try {
+      const fd = new FormData();
+      fd.append("init_data", inTelegram ? tg.initData : "");
+      fd.append("report_id", String(item.reportId));
+      Object.entries(item.fields).forEach(([k, v]) => fd.append(k, String(v)));
+      (item.blobs || []).forEach((b, i) => fd.append("photos", b, (b && b.name) || `photo_${i}.jpg`));
+      const path = item.kind === "adjust" ? "/api/adjust" : "/api/report";
+      const res = await fetch(path, { method: "POST", body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        // 4xx (not 429) = permanent rejection → stop retrying, surface it.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          await idbDelete(item.localId);
+          if (entry) { entry.pending = false; entry.error = json.detail || "xato"; }
+          showToast(json.detail || "Saqlashda xato", true);
+          refreshViewer(item.kind);
+        }
+        return; // 5xx/429/other → keep pending for retry
+      }
+      await idbDelete(item.localId); // uploaded → server owns it now
+      if (entry) { entry.id = json.entry_id; entry.pending = false; entry.synced = true; entry.sendStatus = null; }
+      if (item.reportId === state.reportId) {
+        state.inventory = json.inventory || json.balances || state.inventory;
+        renderBalances(); renderAdjust();
+      }
+      refreshViewer(item.kind);
+    } catch (_) {
+      if (entry) entry.pending = true; // network error → retry loop will pick it up
+    } finally {
+      if (entry) entry.syncing = false;
+      _syncingLocalIds.delete(item.localId);
+    }
+  }
+
+  // Flush every pending outbox item (boot, reconnect, interval, save).
+  async function syncOutbox() {
+    if (_syncing || (typeof navigator.onLine === "boolean" && !navigator.onLine)) return;
+    _syncing = true;
+    try {
+      const items = await idbAll();
+      for (const item of items) await trySync(item, findByLocalId(item.localId));
+    } finally { _syncing = false; }
+  }
+
+  let _outboxLoopStarted = false;
+  function startOutboxLoop() {
+    if (_outboxLoopStarted) return;
+    _outboxLoopStarted = true;
+    syncOutbox();
+    window.addEventListener("online", syncOutbox);
+    window.setInterval(syncOutbox, 15000);
+  }
+
+  // ---- Load saved entries from the server (history survives a reload) ----
+  function serverEntry(kind, r, files) {
+    const base = { id: r.id, files, ts: (r.ts || 0) * 1000, sendStatus: r.send_status || null, synced: true };
+    if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };
+    const coef = Number(r.coefficient) || 0;
+    return { ...base, type: r.tovar_turi, coefMode: coef ? "fixed" : "none", coefficient: coef, weight: r.weight, net: r.net };
+  }
+  async function fetchEntryFiles(entryId, idxs) {
+    const files = [];
+    for (const i of idxs) {
+      try {
+        const res = await fetch(`/api/entry/${entryId}/photo/${i}`, { headers: authHeaders() });
+        if (res.ok) {
+          const blob = await res.blob();
+          files.push(new File([blob], `p${i}.jpg`, { type: blob.type || "image/jpeg" }));
+        }
+      } catch (_) {}
+    }
+    return files;
+  }
+  async function loadEntries(kind) {
+    const rid = state.reportId;
+    let rows = [];
+    try {
+      const res = await fetch(`/api/entries?report_id=${rid}&kind=${kind}`, { headers: authHeaders() });
+      const json = await res.json().catch(() => ({}));
+      rows = (res.ok && json.entries) || [];
+    } catch (_) { return; }
+    const loaded = [];
+    for (const r of rows) loaded.push(serverEntry(kind, r, await fetchEntryFiles(r.id, r.photo_idxs || [])));
+    if (state.reportId !== rid) return; // report changed while loading → discard
+    // Server rows are newest-first; store oldest-first (renderEntries reverses),
+    // then append any still-pending outbox items for this report.
+    const items = await idbAll();
+    const pend = items.filter((it) => it.kind === kind && it.reportId === rid).map(outboxEntry);
+    state.entries[kind] = loaded.reverse().concat(pend);
+    refreshViewer(kind);
   }
 
   async function deleteReport(rep) {
@@ -993,7 +1493,9 @@
 
   // ---- Shared Obshiy-ves form ----
   els.topBackBtn.addEventListener("click", formBack);
-  els.topViewBtn.addEventListener("click", openEntries);
+  els.topViewBtn.addEventListener("click", () => openEntries(state.formSection));
+  els.reysViewBtn.addEventListener("click", () => openEntries("reys"));
+  els.adjViewBtn.addEventListener("click", () => openEntries("adjust"));
   els.topBtnGallery.addEventListener("click", () => { activePk = "topPhotos"; els.inGallery.click(); });
   els.topBtnCamera.addEventListener("click", () => { activePk = "topPhotos"; openCamera(); });
   // Keep the focused input above the on-screen keyboard (it was covering the
@@ -1007,6 +1509,8 @@
   els.entriesBackBtn.addEventListener("click", closeEntries);
   els.entriesPrev.addEventListener("click", () => { entriesPage -= 1; renderEntries(); });
   els.entriesNext.addEventListener("click", () => { entriesPage += 1; renderEntries(); });
+  els.entriesSendUnsentBtn.addEventListener("click", () => sendEntriesBulk("unsent"));
+  els.entriesResendSentBtn.addEventListener("click", () => sendEntriesBulk("sent"));
   els.entryActBackdrop.addEventListener("click", closeEntryActions);
   els.entryEditBtn.addEventListener("click", () => { const e = actionEntry; closeEntryActions(); if (e) startEditEntry(e); });
   els.entryDeleteBtn.addEventListener("click", async () => {
@@ -1231,8 +1735,20 @@
       if (v) addType(v);
     }
   });
-  // Escape closes the topmost overlay (hardware keyboards / desktop / browser).
+  // Escape closes the topmost overlay; Left/Right page the lightbox or the
+  // entries list (hardware keyboards / desktop / browser).
   document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const t = document.activeElement && document.activeElement.tagName;
+      if (t === "INPUT" || t === "TEXTAREA") return; // don't hijack the text caret
+      const d = e.key === "ArrowLeft" ? -1 : 1;
+      if (!els.lightbox.hidden) { lbNav(d); return; }
+      if (!els.entriesScreen.hidden && !els.entriesPager.hidden) {
+        const btn = d < 0 ? els.entriesPrev : els.entriesNext;
+        if (!btn.disabled) btn.click();
+      }
+      return;
+    }
     if (e.key !== "Escape") return;
     if (!els.lightbox.hidden) closeLightbox();
     else if (!els.camModal.hidden) closeCamera();
@@ -1346,7 +1862,8 @@
     setSelectLabel(els.adjToValue, state.adjTo, "Tanlang");
     els.adjFromBal.innerHTML = state.adjFrom ? `Mavjud: <strong>${fmtKg(balanceOf(state.adjFrom))}</strong>` : "";
     els.adjToBal.innerHTML = state.adjTo ? `Mavjud: <strong>${fmtKg(balanceOf(state.adjTo))}</strong>` : "";
-    els.adjSaveBtn.textContent = state.adjFrom && state.adjTo ? `${state.adjFrom} → ${state.adjTo}` : "Saqlash";
+    const base = state.adjFrom && state.adjTo ? `${state.adjFrom} → ${state.adjTo}` : "Saqlash";
+    els.adjSaveBtn.textContent = editingAdj && state.adjFrom && state.adjTo ? `Yangilash: ${base}` : base;
   }
 
   els.adjWeight.addEventListener("input", (e) => { state.adjWeightRaw = e.target.value; });
@@ -1364,21 +1881,35 @@
     els.adjSaveBtn.disabled = true;
     const restoreText = els.adjSaveBtn.textContent;
     els.adjSaveBtn.textContent = "Saqlanmoqda…";
+    const editing = editingAdj; // snapshot: cleared before finally runs
+    const from = state.adjFrom, to = state.adjTo;
+    const files = state.adjPhotos.map((p) => p.file);
     try {
+      if (!editing) {
+        await enqueueCreate("adjust", { from_type: from, to_type: to, weight }, files);
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        showToast("Saqlandi ✓");
+        resetAdjust();
+        return;
+      }
+
       const fd = new FormData();
       fd.append("init_data", inTelegram ? tg.initData : "");
       fd.append("report_id", String(state.reportId));
-      fd.append("from_type", state.adjFrom);
-      fd.append("to_type", state.adjTo);
+      fd.append("from_type", from);
+      fd.append("to_type", to);
       fd.append("weight", String(weight));
-      state.adjPhotos.forEach((p, i) => fd.append("photos", p.file, p.file.name || `photo_${i}.jpg`));
-      const res = await fetch("/api/adjust", { method: "POST", body: fd });
+      const res = await fetch(`/api/adjust/${editing.id}`, { method: "PUT", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
       state.inventory = json.balances || state.inventory;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-      showToast("Saqlandi ✓");
-      resetAdjust(); // clears photos + weight (keeps from/to if "remember" on)
+      Object.assign(editing, { from, to, weight });
+      const stillCurrent = editingAdj === editing;
+      if (stillCurrent) editingAdj = null; // may have been cancelled/replaced mid-flight
+      showToast("Yangilandi ✓");
+      updateViewCount();
+      if (stillCurrent) resetAdjust(); // clears photos + weight (keeps from/to if "remember" on)
       renderBalances();
     } catch (e) {
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
@@ -1386,7 +1917,7 @@
     } finally {
       adjusting = false;
       els.adjSaveBtn.disabled = false;
-      els.adjSaveBtn.textContent = restoreText;
+      els.adjSaveBtn.textContent = editingAdj ? restoreText : (state.adjFrom && state.adjTo ? `${state.adjFrom} → ${state.adjTo}` : "Saqlash");
     }
   }
   els.adjSaveBtn.addEventListener("click", onAdjustSave);
@@ -1536,6 +2067,29 @@
     saving = true;
     setBusy(true);
 
+    const editing = editingReys; // snapshot: cleared before finally runs
+
+    if (!editing) {
+      try {
+        await enqueueCreate("reys", {
+          type: data.type,
+          coefficient: data.coefficient,
+          coefficient_mode: data.coefficient_mode,
+          weight: data.weight,
+        }, data.photos);
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        showToast("Saqlandi ✓");
+        resetForm();
+      } catch (e) {
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
+        showToast(e.message || "Xatolik", true);
+      } finally {
+        saving = false;
+        setBusy(false);
+      }
+      return;
+    }
+
     const fd = new FormData();
     fd.append("init_data", tg ? tg.initData : "");
     fd.append("report_id", String(state.reportId));
@@ -1543,16 +2097,24 @@
     fd.append("coefficient", String(data.coefficient));
     fd.append("coefficient_mode", data.coefficient_mode);
     fd.append("weight", String(data.weight));
-    data.photos.forEach((file, i) => fd.append("photos", file, file.name || `photo_${i}.jpg`));
 
     try {
-      const res = await fetch("/api/report", { method: "POST", body: fd });
+      const res = await fetch(`/api/report/${editing.id}`, { method: "PUT", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.detail || "Server xatosi");
 
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-      showToast(json.balance != null ? `Saqlandi ✓  ${data.type}: ${fmtKg(json.balance)}` : "Saqlandi ✓");
-      resetForm();
+      Object.assign(editing, {
+        type: data.type, coefMode: data.coefficient_mode,
+        coefficient: data.coefficient, weight: data.weight,
+      });
+      // Only clear if the edit session still belongs to this request (it may
+      // have been cancelled/replaced while the PUT was in flight).
+      const stillCurrent = editingReys === editing;
+      if (stillCurrent) editingReys = null;
+      showToast(json.balance != null ? `Yangilandi ✓  ${data.type}: ${fmtKg(json.balance)}` : "Yangilandi ✓");
+      updateViewCount();
+      if (stillCurrent) resetForm();
       loadInventory();
     } catch (e) {
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
@@ -1565,7 +2127,7 @@
 
   function setBusy(busy) {
     els.saveBtn.disabled = busy;
-    els.saveBtn.textContent = busy ? "Saqlanmoqda…" : "Saqlash";
+    els.saveBtn.textContent = busy ? "Saqlanmoqda…" : (editingReys ? "Yangilash" : "Saqlash");
   }
 
   function resetForm(full) {

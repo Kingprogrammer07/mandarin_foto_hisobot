@@ -48,6 +48,22 @@ def _parse_proxies(raw: str) -> set[str]:
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_IDS: set[int] = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
 
+
+def _parse_chat_id(raw: str):
+    """A Telegram chat id: numeric (-100…) or an @channelusername. None = disabled."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+# Channel that saved reys/adashgan entries are forwarded to (photos + caption).
+# None disables forwarding (the send worker idles).
+KARGO_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_KARGOLARGA_TARQATISH_CHANNEL_ID", ""))
+
 # Browser (username/password) login accounts. Generate with:
 #   python -m app.passwords <username>
 ADMIN_CREDENTIALS: dict[str, str] = _parse_credentials(os.getenv("ADMIN_CREDENTIALS", ""))

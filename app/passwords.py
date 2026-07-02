@@ -45,8 +45,8 @@ def _main() -> None:
         print("username must be non-empty and contain no ':' or ','", file=sys.stderr)
         sys.exit(1)
     pw = getpass.getpass("password: ")
-    if len(pw) < 8:
-        print("password must be at least 8 characters", file=sys.stderr)
+    if len(pw) < 4:
+        print("password must be at least 4 characters (browser login uses a 4-digit PIN)", file=sys.stderr)
         sys.exit(1)
     if pw != getpass.getpass("repeat:   "):
         print("passwords do not match", file=sys.stderr)

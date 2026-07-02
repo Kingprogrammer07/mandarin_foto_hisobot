@@ -31,7 +31,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import config, db, passkeys
+from . import config, db, outbox, passkeys
 from .security import (
     InitDataError,
     authenticate_admin,
@@ -59,7 +59,8 @@ app = FastAPI(title="Reys hisoboti")
 # ---------------------------------------------------------------------------
 @app.middleware("http")
 async def _limit_body(request: Request, call_next):
-    if request.method == "POST":
+    # Any body-bearing method — the PUT edit endpoints take multipart too.
+    if request.method in ("POST", "PUT", "PATCH"):
         cl = request.headers.get("content-length")
         if cl and cl.isdigit() and int(cl) > MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"ok": False, "detail": "request too large"})
@@ -136,6 +137,8 @@ async def _startup() -> None:
     # (bypassing app/__main__.py). Prevents a fail-open empty-token deploy.
     config.require_config()
     db.init()
+    # Drain any queued channel sends (idles until a bot is set by __main__).
+    outbox.ensure_started()
 
 
 # Static assets (css/, js/).
@@ -156,6 +159,19 @@ async def _read_capped(upload: UploadFile, remaining_total: int) -> bytes:
         if len(buf) > remaining_total:
             raise HTTPException(status_code=413, detail="upload too large")
     return bytes(buf)
+
+
+async def _read_photos(photos: list[UploadFile]) -> list[tuple[bytes, str]]:
+    """Validate count + read all photos into memory as [(bytes, mime), …]."""
+    if len(photos) > MAX_PHOTOS:
+        raise HTTPException(status_code=413, detail=f"max {MAX_PHOTOS} photos")
+    out: list[tuple[bytes, str]] = []
+    total = 0
+    for f in photos:
+        content = await _read_capped(f, MAX_TOTAL_BYTES - total)
+        total += len(content)
+        out.append((content, f.content_type or "image/jpeg"))
+    return out
 
 
 @app.get("/")
@@ -435,18 +451,64 @@ async def submit_report(
     if net < 0:
         raise HTTPException(status_code=400, detail="koeffitsient og'irlikdan katta")
 
-    # Photo count cap (client cap is not trusted); read within size caps.
-    if len(photos) > MAX_PHOTOS:
-        raise HTTPException(status_code=413, detail=f"max {MAX_PHOTOS} photos")
-    total = 0
-    for f in photos:
-        content = await _read_capped(f, MAX_TOTAL_BYTES - total)
-        total += len(content)
+    photo_data = await _read_photos(photos)
 
-    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photos))
-    log.info("reys by %s [r%s]: %s +%s (weight=%s coef=%s photos=%d)",
-             identity, rid, tovar_turi, net, weight, coefficient, len(photos))
-    return JSONResponse({"ok": True, "net": net, "balance": result["balance"], "inventory": result["inventory"]})
+    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photo_data))
+    entry_id = result["entry_id"]
+    if photo_data:
+        db.save_photos(entry_id, photo_data)  # persisted to disk (survives a crash)
+    log.info("reys by %s [r%s e%s]: %s +%s (weight=%s coef=%s photos=%d)",
+             identity, rid, entry_id, tovar_turi, net, weight, coefficient, len(photo_data))
+    return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
+                         "inventory": result["inventory"], "entry_id": entry_id,
+                         "photo_idxs": list(range(len(photo_data)))})
+
+
+@app.put("/api/report/{entry_id}")
+async def edit_report_entry(
+    request: Request,
+    entry_id: int,
+    init_data: str = Form(""),
+    report_id: int = Form(...),
+    type: str = Form(...),
+    coefficient: float = Form(...),
+    coefficient_mode: str = Form(""),
+    weight: float = Form(...),
+):
+    """Fix a saved reys entry's numbers. Photos are immutable after the initial
+    save; the inventory delta is compensated atomically."""
+    if not _rate_ok(f"report:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+
+    identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
+
+    tovar_turi = (type or "").strip()
+    if not tovar_turi:
+        raise HTTPException(status_code=400, detail="tovar turi tanlanmagan")
+    if not (math.isfinite(weight) and math.isfinite(coefficient)):
+        raise HTTPException(status_code=400, detail="qiymat noto'g'ri")
+    if not (weight > 0):
+        raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+    if coefficient < 0:
+        raise HTTPException(status_code=400, detail="koeffitsient noto'g'ri")
+    net = round(weight - coefficient, 4)
+    if net < 0:
+        raise HTTPException(status_code=400, detail="koeffitsient og'irlikdan katta")
+
+    try:
+        result = db.edit_reys(rid, entry_id, tovar_turi, weight, coefficient, net)
+    except db.ActivityNotFound:
+        raise HTTPException(status_code=404, detail="yozuv topilmadi")
+    except db.InsufficientStock as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{exc.tovar_turi}da yetarli emas: {round(exc.have, 2)} kg mavjud",
+        )
+    log.info("reys edit by %s [r%s e%s]: %s (weight=%s coef=%s)",
+             identity, rid, entry_id, tovar_turi, weight, coefficient)
+    return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
+                         "inventory": result["inventory"], "entry_id": entry_id})
 
 
 # ---------------------------------------------------------------------------
@@ -477,23 +539,127 @@ async def submit_adjust(
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
 
-    if len(photos) > MAX_PHOTOS:
-        raise HTTPException(status_code=413, detail=f"max {MAX_PHOTOS} photos")
-    total = 0
-    for f in photos:
-        content = await _read_capped(f, MAX_TOTAL_BYTES - total)
-        total += len(content)
+    photo_data = await _read_photos(photos)
 
     try:
-        result = db.adjust(rid, identity, from_type, to_type, weight, len(photos))
+        result = db.adjust(rid, identity, from_type, to_type, weight, len(photo_data))
     except db.InsufficientStock as exc:
         raise HTTPException(
             status_code=409,
             detail=f"{exc.tovar_turi}da yetarli emas: {exc.have} kg mavjud",
         )
-    log.info("adjust by %s [r%s]: %s -> %s %s kg photos=%d",
-             identity, rid, from_type, to_type, weight, len(photos))
-    return JSONResponse({"ok": True, "balances": result["balances"]})
+    entry_id = result["entry_id"]
+    if photo_data:
+        db.save_photos(entry_id, photo_data)
+    log.info("adjust by %s [r%s e%s]: %s -> %s %s kg photos=%d",
+             identity, rid, entry_id, from_type, to_type, weight, len(photo_data))
+    return JSONResponse({"ok": True, "balances": result["balances"], "entry_id": entry_id,
+                         "photo_idxs": list(range(len(photo_data)))})
+
+
+@app.put("/api/adjust/{entry_id}")
+async def edit_adjust_entry(
+    request: Request,
+    entry_id: int,
+    init_data: str = Form(""),
+    report_id: int = Form(...),
+    from_type: str = Form(...),
+    to_type: str = Form(...),
+    weight: float = Form(...),
+):
+    """Fix a saved transfer's numbers (photos immutable): the old transfer is
+    reversed and the new one applied atomically."""
+    if not _rate_ok(f"adjust:{_client_ip(request)}", limit=60, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+
+    identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
+    from_type = from_type.strip()
+    to_type = to_type.strip()
+
+    if not from_type or not to_type:
+        raise HTTPException(status_code=400, detail="ikkala tovar turini tanlang")
+    if from_type == to_type:
+        raise HTTPException(status_code=400, detail="tovar turlari bir xil bo'lmasin")
+    if not (math.isfinite(weight) and weight > 0):
+        raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+
+    try:
+        result = db.edit_adjust(rid, entry_id, from_type, to_type, weight)
+    except db.ActivityNotFound:
+        raise HTTPException(status_code=404, detail="yozuv topilmadi")
+    except db.InsufficientStock as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{exc.tovar_turi}da yetarli emas: {round(exc.have, 2)} kg mavjud",
+        )
+    log.info("adjust edit by %s [r%s e%s]: %s -> %s %s kg",
+             identity, rid, entry_id, from_type, to_type, weight)
+    return JSONResponse({"ok": True, "balances": result["balances"], "entry_id": entry_id})
+
+
+@app.delete("/api/entry/{entry_id}")
+async def delete_entry(request: Request, entry_id: int, report_id: int | None = None):
+    """Delete a reys/adjust entry and undo its inventory effect."""
+    if not _rate_ok(f"adjust:{_client_ip(request)}", limit=60, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    identity = _auth_or_403(request, state_changing=True)  # cookie path requires same-origin
+    rid = _require_report(report_id)
+    try:
+        result = db.delete_entry(rid, entry_id)
+    except db.ActivityNotFound:
+        raise HTTPException(status_code=404, detail="yozuv topilmadi")
+    except db.InsufficientStock as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{exc.tovar_turi}da yetarli emas: {round(exc.have, 2)} kg mavjud",
+        )
+    log.info("entry %s deleted by %s [r%s]", entry_id, identity, rid)
+    return {"ok": True, "balances": result["balances"]}
+
+
+@app.get("/api/entries")
+async def api_entries(request: Request, report_id: int | None = None, kind: str = "reys"):
+    """Saved reys/adashgan rows for the 'Yuklanganlar' viewer (survives reload).
+    Photos are fetched separately via /api/entry/{id}/photo/{idx}."""
+    _auth_or_403(request, state_changing=False)
+    rid = _require_report(report_id)
+    action = "adjust" if kind == "adjust" else "reys"
+    return {"entries": db.list_entries(rid, action)}
+
+
+@app.post("/api/send-bulk")
+async def api_send_bulk(request: Request):
+    if not _rate_ok(f"send:{_client_ip(request)}", limit=20, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    rid = _require_report(body.get("report_id"))
+    kind = str(body.get("kind", "reys"))
+    action = "adjust" if kind == "adjust" else "reys"
+    mode = str(body.get("mode", "unsent"))
+    if mode not in ("unsent", "sent"):
+        raise HTTPException(status_code=400, detail="send mode noto'g'ri")
+    count = db.enqueue_bulk_send(rid, action, mode=mode)
+    outbox.notify()
+    log.info("bulk channel send queued by %s [r%s %s %s]: %s entries", identity, rid, action, mode, count)
+    return {"ok": True, "queued": count}
+
+
+@app.get("/api/entry/{entry_id}/photo/{idx}")
+async def api_entry_photo(request: Request, entry_id: int, idx: int):
+    """Serve one persisted photo. Auth via cookie (browser) or the
+    X-Telegram-Init-Data header — the client fetches these as blobs."""
+    _auth_or_403(request, state_changing=False)
+    res = db.photo_file(entry_id, idx)
+    if res is None:
+        raise HTTPException(status_code=404, detail="rasm topilmadi")
+    path, mime = res
+    return FileResponse(str(path), media_type=mime,
+                        headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/inventory")

@@ -45,6 +45,12 @@
           <span class="counter" id="photoCounter">0/10</span>
         </div>
 
+        <button type="button" class="btn btn--ghost view-btn" id="reysViewBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16v2H4V5Zm0 4h16v2H4V9Zm0 4h10v2H4v-2Zm0 4h10v2H4v-2Z"/></svg>
+          Yuklanganlar
+          <span class="view-badge" id="reysViewCount">0</span>
+        </button>
+
         <div class="photo-grid" id="photoGrid"></div>
 
         <div class="photo-actions">
@@ -127,6 +133,11 @@
           <span class="field__label">Rasmlar</span>
           <span class="counter" id="adjPhotoCounter">0/10</span>
         </div>
+        <button type="button" class="btn btn--ghost view-btn" id="adjViewBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16v2H4V5Zm0 4h16v2H4V9Zm0 4h10v2H4v-2Zm0 4h10v2H4v-2Z"/></svg>
+          Yuklanganlar
+          <span class="view-badge" id="adjViewCount">0</span>
+        </button>
         <div class="photo-grid" id="adjPhotoGrid"></div>
         <div class="photo-actions">
           <button type="button" class="btn btn--ghost" id="adjBtnGallery">
@@ -217,12 +228,24 @@
     <canvas id="camCanvas" hidden></canvas>
   </div>
 
-  <!-- Photo lightbox (tap a thumbnail to view large) -->
+  <!-- Photo lightbox (tap a thumbnail to view large; Telegram-like:
+       prev/next arrows, photo counter, caption bar) -->
   <div class="lightbox" id="lightbox" hidden>
     <img class="lightbox__img" id="lightboxImg" alt="" />
+    <span class="lightbox__count" id="lightboxCount" hidden>1/1</span>
     <button type="button" class="lightbox__close" id="lightboxClose" aria-label="Yopish">
       <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
     </button>
+    <button type="button" class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" aria-label="Oldingi" hidden>
+      <svg viewBox="0 0 24 24" class="ic"><path d="m15 6-6 6 6 6 1.4-1.4L11.8 12l4.6-4.6z"/></svg>
+    </button>
+    <button type="button" class="lightbox__nav lightbox__nav--next" id="lightboxNext" aria-label="Keyingi" hidden>
+      <svg viewBox="0 0 24 24" class="ic"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>
+    </button>
+    <div class="lightbox__caption" id="lightboxCaption" hidden>
+      <div class="lightbox__caption-main" id="lightboxCapMain"></div>
+      <div class="lightbox__caption-sub" id="lightboxCapSub"></div>
+    </div>
     <button type="button" class="lightbox__del" id="lightboxDel" aria-label="O'chirish">
       <svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Zm4 2v8h1v-8h-1Zm3 0v8h1v-8h-1Z"/></svg>
       O'chirish
@@ -397,6 +420,16 @@
     </header>
     <div class="screen__body">
       <div class="entries" id="entriesList"></div>
+    </div>
+    <div class="entries-actions" id="entriesActions" hidden>
+      <button type="button" class="btn btn--primary" id="entriesSendUnsentBtn">
+        <svg viewBox="0 0 24 24" class="ic"><path d="m21.8 3.2-4 18a1 1 0 0 1-1.6.5l-5.3-4.1-3 2.9a1 1 0 0 1-1.7-.7v-4.5L2.6 12a1 1 0 0 1 .4-1.7l17.5-8.1a1 1 0 0 1 1.3 1ZM7.5 14.4v2.9l1.7-1.7 7.6-8.4-9.3 7.2Z"/></svg>
+        Yuborilmaganlarni yuborish
+      </button>
+      <button type="button" class="btn btn--ghost" id="entriesResendSentBtn">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M12 6a6 6 0 0 0-5.7 4H4.2A8 8 0 0 1 18 6.3V3h2v7h-7V8h3.7A6 6 0 0 0 12 6Zm-6 8h7v2H9.3A6 6 0 0 0 20 14h2.1A8 8 0 0 1 6 17.7V21H4v-7h2Z"/></svg>
+        Yuborilganlarni qayta yuborish
+      </button>
     </div>
     <div class="pager" id="entriesPager" hidden>
       <button type="button" class="filter-nav" id="entriesPrev" aria-label="Oldingi">
