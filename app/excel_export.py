@@ -7,7 +7,7 @@ from io import BytesIO
 
 from . import config, db
 
-TEMPLATE = config.BASE_DIR / "M232 KARGOLARGA TARQATISH.xlsx"
+TEMPLATE = config.BASE_DIR / "shablon.xlsx"
 
 
 def _safe_sheet_name(name: str) -> str:
