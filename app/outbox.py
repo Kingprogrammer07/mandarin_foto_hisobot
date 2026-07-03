@@ -1,10 +1,9 @@
 """Durable Telegram sender.
 
-Every saved reys/adashgan entry is enqueued in the SQLite `send_queue`. A single
-background worker drains it, forwarding photos + caption to the kargo channel.
-Because the queue is on disk, a pending send survives a process restart, and a
-failed send (channel/Telegram/internet down) is retried with backoff forever —
-so once an entry reaches the server it is never lost.
+Saved entries are enqueued in SQLite `send_queue`. A single background worker
+drains the queue and forwards photos + caption to the configured Telegram
+channel for that entry type. Pending sends survive process restarts and retry
+forever with backoff.
 """
 from __future__ import annotations
 
@@ -22,9 +21,13 @@ _bot = None
 _wake: asyncio.Event | None = None
 _started = False
 
-# Retry backoff (seconds) indexed by attempt; caps at the last value. Sends are
-# retried indefinitely — the data stays queued until it is delivered.
 _BACKOFF = [5, 15, 30, 60, 120, 300, 600, 900]
+_OBSHIY_TITLES = {
+    "top": "Top",
+    "topchiqgan": "Topdan chiqgan",
+    "bizda": "Bizda qoladigan",
+    "chiqgan": "Bizdan chiqgan",
+}
 
 
 def set_bot(bot) -> None:
@@ -33,7 +36,6 @@ def set_bot(bot) -> None:
 
 
 def notify() -> None:
-    """Wake the worker to process a freshly-enqueued job (best effort)."""
     if _wake is not None:
         try:
             _wake.set()
@@ -50,8 +52,13 @@ def _fmt(v) -> str:
 
 def _caption(entry: dict, report_name: str) -> str:
     name = report_name or "Hisobot"
-    if entry["action"] == "adjust":
-        head = f"{name} - {entry['from_type']} → {entry['to_type']}"
+    action = entry["action"]
+    if action in _OBSHIY_TITLES:
+        head = f"{name} - {_OBSHIY_TITLES[action]}"
+        code = (entry.get("tovar_turi") or "").strip()
+        body = f"{code + ' - ' if code else ''}{_fmt(entry.get('weight'))} kg"
+    elif action == "adjust":
+        head = f"{name} - {entry['from_type']} -> {entry['to_type']}"
         body = f"{_fmt(entry['weight'])} kg"
     else:
         coef = float(entry.get("coefficient") or 0)
@@ -82,9 +89,12 @@ async def _send_one(entry_id: int) -> None:
     if entry is None:
         db.mark_send_canceled(entry_id)
         return
+    chat = config.channel_for_action(entry["action"])
+    if chat is None:
+        raise RuntimeError(f"channel not configured for {entry['action']}")
+
     caption = _caption(entry, db.report_name(entry["report_id"]) or "")
     blobs = db.photo_blobs(entry_id)
-    chat = config.KARGO_CHANNEL_ID
 
     if not blobs:
         await _bot.send_message(chat, caption)
@@ -110,9 +120,7 @@ async def worker() -> None:
     _wake = asyncio.Event()
     log.info("outbox worker started (pending=%s)", db.pending_send_count())
     while True:
-        # No bot / channel configured (e.g. a `uvicorn app.server:app` preview) →
-        # idle without draining, so entries stay queued for the real process.
-        if _bot is None or config.KARGO_CHANNEL_ID is None:
+        if _bot is None:
             await asyncio.sleep(5)
             continue
 
@@ -131,18 +139,17 @@ async def worker() -> None:
             await _send_one(entry_id)
             db.mark_sent(entry_id)
             log.info("channel send ok: entry=%s", entry_id)
-        except Exception as exc:  # noqa: BLE001 — keep the worker alive on any failure
+        except Exception as exc:  # noqa: BLE001
             attempts = job["attempts"] + 1
             retry_after = getattr(exc, "retry_after", None)
             delay = int(retry_after) if retry_after else _BACKOFF[min(attempts - 1, len(_BACKOFF) - 1)]
             db.mark_send_retry(entry_id, attempts, now + delay, str(exc))
             log.warning("channel send failed: entry=%s attempt=%s err=%s retry_in=%ss",
                         entry_id, attempts, exc, delay)
-            await asyncio.sleep(1)  # don't hot-loop on a persistent error
+            await asyncio.sleep(1)
 
 
 def ensure_started() -> None:
-    """Start the worker task once (call from within the running event loop)."""
     global _started
     if _started:
         return

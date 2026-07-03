@@ -20,6 +20,7 @@
 
   const MAX_PHOTOS = 10;
   const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"];
+  const OBSHIY_SECTIONS = ["top", "topchiqgan", "bizda", "chiqgan"];
 
   // Obshiy ves sub-sections that share one photo+code+weight form. `codeRequired`
   // toggles whether karobka kodi is mandatory (Bizda qoladigan lets it be blank).
@@ -48,7 +49,7 @@
     topFast: false, // fast-mode capture loop
     reysFast: false, // kargolarga tarqatish fast-mode capture loop
     formSection: "top", // which SECTIONS entry the form is currently editing
-    entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] }, // saved rows (client-side until backend)
+    entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] },
     type: "akb",
     customTypes: [], // user-added types not yet persisted to inventory
     inventory: {}, // tovar_turi -> weight (from server)
@@ -831,6 +832,7 @@
     clearEntries();
     setTab("report");
     loadInventory();
+    OBSHIY_SECTIONS.forEach(loadEntries);
     loadEntries("reys");
     loadEntries("adjust");
     syncOutbox();
@@ -912,8 +914,9 @@
   let editingEntry = null; // shared-form entry being edited (null = creating)
   let editingReys = null;  // reys-tab entry being edited (backend PUT on save)
   let editingAdj = null;   // adashgan-tab entry being edited (backend PUT on save)
-  function onFormSave() {
+  async function onFormSave() {
     if (savingTop) return;
+    if (!state.reportId) { showToast("Hisobot tanlanmagan", true); return; }
     const cfg = SECTIONS[state.formSection];
     const code = els.topCode.value.trim();
     const weight = parseFloat(cleanDecimal(state.topWeightRaw));
@@ -925,6 +928,47 @@
     // Entries hold the actual File objects (so photos can be viewed later);
     // object URLs are created on demand at render time. Backend isn't wired yet.
     const files = state.topPhotos.map((p) => p.file);
+    if (editingEntry && editingEntry.synced && editingEntry.id != null) {
+      try {
+        const fd = new FormData();
+        fd.append("init_data", inTelegram ? tg.initData : "");
+        fd.append("report_id", String(state.reportId));
+        fd.append("section", state.formSection);
+        fd.append("code", code);
+        fd.append("weight", String(weight));
+        const res = await fetch(`/api/obshiy/${editingEntry.id}`, { method: "PUT", body: fd });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
+        Object.assign(editingEntry, { code, weight, editedAt: Date.now() });
+        const edited = editingEntry;
+        editingEntry = null;
+        els.topSave.textContent = "Saqlash";
+        showToast("Yangilandi ✓");
+        resetTop(false);
+        updateViewCount();
+        returnToEditedEntry(state.formSection, edited);
+      } catch (e) {
+        showToast(e.message || "Xatolik", true);
+      } finally {
+        savingTop = false;
+        els.topSave.disabled = false;
+      }
+      return;
+    }
+    if (!editingEntry) {
+      try {
+        await enqueueCreate(state.formSection, { section: state.formSection, code, weight }, files);
+        showToast("Saqlandi ✓");
+        resetTop(false);
+        if (state.topFast) { activePk = "topPhotos"; openCamera(); }
+      } catch (e) {
+        showToast(e.message || "Xatolik", true);
+      } finally {
+        savingTop = false;
+        els.topSave.disabled = false;
+      }
+      return;
+    }
     if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
     if (editingEntry) {
       editingEntry.code = code;
@@ -988,7 +1032,7 @@
     els.entriesScreen.hidden = false;
     document.body.classList.add("locked");
     renderEntries();
-    if (viewerSection === "reys" || viewerSection === "adjust") loadEntries(viewerSection);
+    if (isBackendSection(viewerSection)) loadEntries(viewerSection);
     syncBackButton();
   }
   function closeEntries() {
@@ -1057,7 +1101,8 @@
   }
 
   let sendingBulk = false;
-  function isBulkSection() { return viewerSection === "reys" || viewerSection === "adjust"; }
+  function isBackendSection(section) { return section === "reys" || section === "adjust" || OBSHIY_SECTIONS.includes(section); }
+  function isBulkSection() { return isBackendSection(viewerSection); }
   function canSendUnsent(e) {
     return e.synced && e.id != null && !e.pending && e.sendStatus !== "pending" && e.sendStatus !== "sent";
   }
@@ -1341,7 +1386,7 @@
     if (entry.localId && (!entry.synced || entry.id == null)) {
       // Still-pending (not uploaded) reys/adjust → just drop it from the outbox.
       await idbDelete(entry.localId);
-    } else if (sec === "reys" || sec === "adjust") {
+    } else if (isBackendSection(sec)) {
       // Uploaded rows live on the backend — delete there first (the inventory
       // effect is undone server-side; 409 if later transfers depend on it).
       try {
@@ -1439,12 +1484,13 @@
       b instanceof File ? b : new File([b], (b && b.name) || `photo_${i}.jpg`, { type: (b && b.type) || "image/jpeg" }));
     const base = { localId: item.localId, files, ts: item.ts, synced: false, pending: true };
     if (item.kind === "adjust") return { ...base, from: f.from_type, to: f.to_type, weight: Number(f.weight) };
+    if (OBSHIY_SECTIONS.includes(item.kind)) return { ...base, code: f.code || "", weight: Number(f.weight) };
     const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
     return { ...base, type: f.type, coefMode: f.coefficient_mode, coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
   }
 
   function findByLocalId(localId) {
-    for (const k of ["reys", "adjust"]) {
+    for (const k of ["top", "topchiqgan", "bizda", "chiqgan", "reys", "adjust"]) {
       const e = state.entries[k].find((x) => x.localId === localId);
       if (e) return e;
     }
@@ -1457,7 +1503,7 @@
     fd.append("report_id", String(item.reportId));
     Object.entries(item.fields).forEach(([k, v]) => fd.append(k, String(v)));
     (item.blobs || []).forEach((b, i) => fd.append("photos", b, (b && b.name) || `photo_${i}.jpg`));
-    const path = item.kind === "adjust" ? "/api/adjust" : "/api/report";
+    const path = item.kind === "adjust" ? "/api/adjust" : (OBSHIY_SECTIONS.includes(item.kind) ? "/api/obshiy" : "/api/report");
     const res = await fetch(path, { method: "POST", body: fd });
     const json = await res.json().catch(() => ({}));
     return { res, json };
@@ -1565,6 +1611,7 @@
       synced: true,
     };
     if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };
+    if (OBSHIY_SECTIONS.includes(kind)) return { ...base, code: r.tovar_turi || "", weight: r.weight };
     const coef = Number(r.coefficient) || 0;
     return { ...base, type: r.tovar_turi, coefMode: coef ? "fixed" : "none", coefficient: coef, weight: r.weight, net: r.net };
   }

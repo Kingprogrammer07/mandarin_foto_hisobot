@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 WEBAPP_DIR = BASE_DIR / "webapp"
+ASSETS_DIR = BASE_DIR / "assets"
 DATA_DIR = BASE_DIR / "data"  # passkeys store (gitignored)
 
 
@@ -63,6 +64,25 @@ def _parse_chat_id(raw: str):
 # Channel that saved reys/adashgan entries are forwarded to (photos + caption).
 # None disables forwarding (the send worker idles).
 KARGO_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_KARGOLARGA_TARQATISH_CHANNEL_ID", ""))
+TOP_TYPE_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_TOP_TYPE_CHANNEL_ID", ""))
+TOPDAN_CHIQGAN_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_TOPDAN_CHIQGAN_CHANNEL_ID", ""))
+BIZDA_QOLADIGAN_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_BIZDA_QOLADIGAN_CHANNEL_ID", ""))
+BIZDAN_CHIQGAN_CHANNEL_ID = _parse_chat_id(os.getenv("BOT_BIZDAN_CHIQGAN_CHANNEL_ID", ""))
+
+OBSHIY_CHANNELS = {
+    "top": TOP_TYPE_CHANNEL_ID,
+    "topchiqgan": TOPDAN_CHIQGAN_CHANNEL_ID,
+    "bizda": BIZDA_QOLADIGAN_CHANNEL_ID,
+    "chiqgan": BIZDAN_CHIQGAN_CHANNEL_ID,
+}
+
+
+def channel_for_action(action: str):
+    if action in OBSHIY_CHANNELS:
+        return OBSHIY_CHANNELS[action]
+    if action in {"reys", "adjust"}:
+        return KARGO_CHANNEL_ID
+    return None
 
 # Browser (username/password) login accounts. Generate with:
 #   python -m app.passwords <username>

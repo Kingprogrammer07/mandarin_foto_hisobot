@@ -381,6 +381,18 @@ def _require_report(report_id) -> int:
     return rid
 
 
+OBSHIY_KINDS = {"top", "topchiqgan", "bizda", "chiqgan"}
+
+
+def _entry_action(kind: str) -> str:
+    kind = str(kind or "reys")
+    if kind in OBSHIY_KINDS:
+        return kind
+    if kind == "adjust":
+        return "adjust"
+    return "reys"
+
+
 @app.get("/api/reports")
 async def api_reports_list(request: Request):
     _auth_or_403(request, state_changing=False)
@@ -508,7 +520,8 @@ async def edit_report_entry(
     log.info("reys edit by %s [r%s e%s]: %s (weight=%s coef=%s)",
              identity, rid, entry_id, tovar_turi, weight, coefficient)
     return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
-                         "inventory": result["inventory"], "entry_id": entry_id})
+                         "inventory": result["inventory"], "entry_id": entry_id,
+                         "edited": bool(result.get("edited"))})
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +608,70 @@ async def edit_adjust_entry(
         )
     log.info("adjust edit by %s [r%s e%s]: %s -> %s %s kg",
              identity, rid, entry_id, from_type, to_type, weight)
-    return JSONResponse({"ok": True, "balances": result["balances"], "entry_id": entry_id})
+    return JSONResponse({"ok": True, "balances": result["balances"], "entry_id": entry_id,
+                         "edited": bool(result.get("edited"))})
+
+
+@app.post("/api/obshiy")
+async def submit_obshiy(
+    request: Request,
+    init_data: str = Form(""),
+    report_id: int = Form(...),
+    section: str = Form(...),
+    code: str = Form(""),
+    weight: float = Form(...),
+    photos: list[UploadFile] = [],  # noqa: B006
+):
+    if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
+    section = str(section or "").strip()
+    if section not in OBSHIY_KINDS:
+        raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
+    if section == "top" and not code.strip():
+        raise HTTPException(status_code=400, detail="karobka kodini kiriting")
+    if not (math.isfinite(weight) and weight > 0):
+        raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+
+    photo_data = await _read_photos(photos)
+    result = db.add_obshiy(rid, identity, section, code, weight, len(photo_data))
+    entry_id = result["entry_id"]
+    if photo_data:
+        db.save_photos(entry_id, photo_data)
+    log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s photos=%d",
+             identity, rid, entry_id, section, code, weight, len(photo_data))
+    return JSONResponse({"ok": True, "entry_id": entry_id, "photo_idxs": list(range(len(photo_data)))})
+
+
+@app.put("/api/obshiy/{entry_id}")
+async def edit_obshiy_entry(
+    request: Request,
+    entry_id: int,
+    init_data: str = Form(""),
+    report_id: int = Form(...),
+    section: str = Form(...),
+    code: str = Form(""),
+    weight: float = Form(...),
+):
+    if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    identity = _auth_or_403(request, init_data)
+    rid = _require_report(report_id)
+    section = str(section or "").strip()
+    if section not in OBSHIY_KINDS:
+        raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
+    if section == "top" and not code.strip():
+        raise HTTPException(status_code=400, detail="karobka kodini kiriting")
+    if not (math.isfinite(weight) and weight > 0):
+        raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+    try:
+        result = db.edit_obshiy(rid, entry_id, section, code, weight)
+    except db.ActivityNotFound:
+        raise HTTPException(status_code=404, detail="yozuv topilmadi")
+    log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s",
+             identity, rid, entry_id, section, code, weight)
+    return JSONResponse({"ok": True, "entry_id": entry_id, "edited": bool(result.get("edited"))})
 
 
 @app.delete("/api/entry/{entry_id}")
@@ -624,7 +700,7 @@ async def api_entries(request: Request, report_id: int | None = None, kind: str 
     Photos are fetched separately via /api/entry/{id}/photo/{idx}."""
     _auth_or_403(request, state_changing=False)
     rid = _require_report(report_id)
-    action = "adjust" if kind == "adjust" else "reys"
+    action = _entry_action(kind)
     return {"entries": db.list_entries(rid, action)}
 
 
@@ -666,7 +742,7 @@ async def api_send_bulk(request: Request):
     identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
     rid = _require_report(body.get("report_id"))
     kind = str(body.get("kind", "reys"))
-    action = "adjust" if kind == "adjust" else "reys"
+    action = _entry_action(kind)
     mode = str(body.get("mode", "unsent"))
     if mode not in ("unsent", "sent"):
         raise HTTPException(status_code=400, detail="send mode noto'g'ri")

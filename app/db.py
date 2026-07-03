@@ -45,6 +45,9 @@ class ActivityNotFound(Exception):
     pass
 
 
+OBSHIY_ACTIONS = {"top", "topchiqgan", "bizda", "chiqgan"}
+
+
 def _connect() -> sqlite3.Connection:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_DB)
@@ -317,10 +320,30 @@ def adjust(report_id: int, actor: str, from_type: str, to_type: str, weight: flo
         return {"balances": _inventory(c, report_id), "entry_id": cur.lastrowid}
 
 
+def add_obshiy(report_id: int, actor: str, action: str, code: str,
+               weight: float, photos: int = 0) -> dict:
+    if action not in OBSHIY_ACTIONS:
+        raise ValueError("bad obshiy action")
+    if not (math.isfinite(weight) and weight > 0):
+        raise ValueError("non-finite value")
+    now = int(time.time())
+    with _db() as c:
+        cur = c.execute(
+            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, photos)
+               VALUES(?, ?, ?, ?, ?, ?, ?)""",
+            (report_id, now, actor, action, (code or "").strip(), weight, photos),
+        )
+        return {"entry_id": cur.lastrowid}
+
+
 # --------------------------------------------------------------------------
 # Entry edit / delete (fix a saved reys/adjust; inventory is compensated)
 # --------------------------------------------------------------------------
 _EPS = 1e-9  # float compensation slack: don't 409 on rounding dust
+
+
+def _same_num(a, b) -> bool:
+    return abs(float(a or 0) - float(b or 0)) <= 1e-9
 
 
 def _get_entry(c: sqlite3.Connection, report_id: int, entry_id: int, action: str):
@@ -361,6 +384,14 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
     now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, "reys")
+        changed = (
+            str(old["tovar_turi"] or "") != str(tovar_turi or "")
+            or not _same_num(old["weight"], weight)
+            or not _same_num(old["coefficient"], coefficient)
+            or not _same_num(old["net"], net)
+        )
+        if not changed:
+            return {"balance": _inventory(c, report_id).get(tovar_turi, 0), "inventory": _inventory(c, report_id), "edited": False}
         deltas: dict[str, float] = {}
         deltas[old["tovar_turi"]] = deltas.get(old["tovar_turi"], 0) - (old["net"] or 0)
         deltas[tovar_turi] = deltas.get(tovar_turi, 0) + net
@@ -369,7 +400,7 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
             "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, edited_at = ? WHERE id = ?",
             (tovar_turi, weight, coefficient, net, now, entry_id),
         )
-        return {"balance": balances.get(tovar_turi, 0), "inventory": balances}
+        return {"balance": balances.get(tovar_turi, 0), "inventory": balances, "edited": True}
 
 
 def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
@@ -379,6 +410,13 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
     now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, "adjust")
+        changed = (
+            str(old["from_type"] or "") != str(from_type or "")
+            or str(old["to_type"] or "") != str(to_type or "")
+            or not _same_num(old["weight"], weight)
+        )
+        if not changed:
+            return {"balances": _inventory(c, report_id), "edited": False}
         deltas: dict[str, float] = {}
         # Reverse the old transfer, then apply the new one.
         for t, d in ((old["from_type"], old["weight"] or 0), (old["to_type"], -(old["weight"] or 0)),
@@ -389,7 +427,27 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
             "UPDATE activity SET from_type = ?, to_type = ?, weight = ?, edited_at = ? WHERE id = ?",
             (from_type, to_type, weight, now, entry_id),
         )
-        return {"balances": balances}
+        return {"balances": balances, "edited": True}
+
+
+def edit_obshiy(report_id: int, entry_id: int, action: str, code: str,
+                weight: float) -> dict:
+    if action not in OBSHIY_ACTIONS:
+        raise ValueError("bad obshiy action")
+    if not (math.isfinite(weight) and weight > 0):
+        raise ValueError("non-finite value")
+    now = int(time.time())
+    with _db() as c:
+        old = _get_entry(c, report_id, entry_id, action)
+        code = (code or "").strip()
+        changed = str(old["tovar_turi"] or "") != code or not _same_num(old["weight"], weight)
+        if not changed:
+            return {"entry_id": entry_id, "edited": False}
+        c.execute(
+            "UPDATE activity SET tovar_turi = ?, weight = ?, edited_at = ? WHERE id = ?",
+            (code, weight, now, entry_id),
+        )
+        return {"entry_id": entry_id, "edited": True}
 
 
 def delete_entry(report_id: int, entry_id: int) -> dict:
@@ -408,9 +466,11 @@ def delete_entry(report_id: int, entry_id: int) -> dict:
             raise ActivityNotFound(entry_id)
         if row["action"] == "reys":
             deltas = {row["tovar_turi"]: -(row["net"] or 0)}
-        else:  # adjust: give the weight back to from_type, take it from to_type
+        elif row["action"] == "adjust":  # give the weight back to from_type, take it from to_type
             deltas = {row["from_type"]: row["weight"] or 0, row["to_type"]: -(row["weight"] or 0)}
-        balances = _apply_balances(c, report_id, deltas)
+        else:
+            deltas = {}
+        balances = _apply_balances(c, report_id, deltas) if deltas else _inventory(c, report_id)
         c.execute("UPDATE activity SET deleted_at = ? WHERE id = ?", (now, entry_id))
         c.execute(
             "UPDATE send_queue SET status = 'canceled', last_error = 'entry soft-deleted' "

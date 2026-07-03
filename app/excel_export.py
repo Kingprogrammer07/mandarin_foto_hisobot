@@ -7,7 +7,8 @@ from io import BytesIO
 
 from . import config, db
 
-TEMPLATE = config.BASE_DIR / "shablon.xlsx"
+TEMPLATE = config.ASSETS_DIR / "shablon.xlsx"
+LEGACY_TEMPLATE = config.BASE_DIR / "shablon.xlsx"
 
 
 def _safe_sheet_name(name: str) -> str:
@@ -132,8 +133,9 @@ def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
             if tovar_turi and tovar_turi not in default_set and tovar_turi not in custom_types:
                 custom_types.append(tovar_turi)
 
-    if TEMPLATE.exists():
-        wb = load_workbook(TEMPLATE)
+    template = TEMPLATE if TEMPLATE.exists() else LEGACY_TEMPLATE
+    if template.exists():
+        wb = load_workbook(template)
     else:
         wb = Workbook()
         ws0 = wb.active
