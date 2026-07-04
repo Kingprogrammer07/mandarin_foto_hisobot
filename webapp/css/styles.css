@@ -928,6 +928,10 @@ body.locked { overflow: hidden; }
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, var(--section-bg));
 }
+.entry-status--err {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 14%, var(--section-bg));
+}
 .entries-actions {
   display: grid;
   gap: 8px;

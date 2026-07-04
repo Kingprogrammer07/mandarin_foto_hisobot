@@ -393,6 +393,27 @@
         </div>
       </div>
 
+      <!-- Karobka weight coefficient -->
+      <div class="field">
+        <span class="field__label">Karobka og'irligi</span>
+        <div class="chips" id="topCoefChips">
+          <button type="button" class="chip" data-mode="none" data-value="0">Ayirilmasin</button>
+          <button type="button" class="chip is-active" data-mode="fixed" data-value="1">0.94</button>
+          <button type="button" class="chip" data-mode="fixed" data-value="1.22">1.22</button>
+          <button type="button" class="chip" data-mode="custom">O'zim kiritaman</button>
+        </div>
+        <div class="custom-coef" id="topCoefCustomWrap" hidden>
+          <input
+            type="text"
+            inputmode="decimal"
+            class="input"
+            id="topCoefCustom"
+            aria-label="Karobka og'irligi"
+            placeholder="Masalan: 1.05"
+          />
+        </div>
+      </div>
+
       <!-- Weight -->
       <div class="field">
         <label class="field__label" for="topWeight">Og'irlik</label>

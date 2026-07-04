@@ -45,6 +45,7 @@
     adjPhotos: [], // adashgan photos
     topPhotos: [], // shared Obshiy-ves form photos (one section open at a time)
     topWeightRaw: "",
+    topCoef: { mode: "fixed", value: 1 },
     topCodeFree: false, // pencil unlocked → karobka kodi accepts any character
     topFast: false, // fast-mode capture loop
     reysFast: false, // kargolarga tarqatish fast-mode capture loop
@@ -72,6 +73,14 @@
     const i = v.indexOf(".");
     if (i !== -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, "");
     return v;
+  }
+
+  function sameNum(a, b) {
+    return Math.abs((Number(a) || 0) - (Number(b) || 0)) <= 0.0001;
+  }
+
+  function sameText(a, b) {
+    return String(a || "").trim() === String(b || "").trim();
   }
 
   // Union of default types, inventory types, and locally-added custom types.
@@ -204,6 +213,9 @@
     topCodeLabel: $("#topCodeLabel"),
     topCode: $("#topCode"),
     topCodePencil: $("#topCodePencil"),
+    topCoefChips: $("#topCoefChips"),
+    topCoefCustomWrap: $("#topCoefCustomWrap"),
+    topCoefCustom: $("#topCoefCustom"),
     topWeight: $("#topWeight"),
     topFast: $("#topFast"),
     topSave: $("#topSave"),
@@ -598,7 +610,11 @@
         ? `${e.type.toUpperCase()} ${n2(e.weight)} - ${n2(coef)} = ${fmtKg(e.weight - coef)}`
         : `${e.type.toUpperCase()} ${fmtKg(e.weight)}`;
     } else {
-      main = `${e.code || "—"} · ${fmtKg(e.weight)}`;
+      const coef = Number(e.coefficient) || 0;
+      const n = (v) => String(Math.round(Number(v) * 100) / 100);
+      main = coef
+        ? `${e.code || "—"} · ${n(e.weight)} - ${n(coef)} = ${fmtKg(e.net != null ? e.net : e.weight - coef)}`
+        : `${e.code || "—"} · ${fmtKg(e.weight)}`;
     }
     return { main, sub: `${fmtTs(e.ts / 1000)} · ${(e.files || []).length} rasm` };
   }
@@ -752,6 +768,35 @@
     });
   }
 
+  async function downloadSummaryExcel(rep, btn) {
+    if (!rep || !rep.id) return;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`/api/export/summary?report_id=${rep.id}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || "Excel yuklab bo'lmadi");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filenameFromDisposition(
+        res.headers.get("content-disposition"),
+        `${rep.name || "Hisobot"} UMUMIY HISOBOT.xlsx`
+      );
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Excel tayyor");
+    } catch (e) {
+      showToast(e.message || "Excel yuklab bo'lmadi", true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   function reportItem(rep) {
     const li = document.createElement("li");
     li.className = "report-item";
@@ -767,9 +812,10 @@
     const xls = document.createElement("button");
     xls.className = "report-item__xls";
     xls.type = "button";
-    xls.setAttribute("aria-label", "Excel yuklash");
-    xls.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>';
-    xls.addEventListener("click", (e) => { e.stopPropagation(); showToast("Excel funksiyasi tez orada", false); });
+    xls.setAttribute("aria-label", "Umumiy hisobot Excel yuklab olish");
+    xls.title = "Umumiy hisobot Excel yuklab olish";
+    xls.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M11 4h2v8h3l-4 4-4-4h3V4ZM5 18h14v2H5z"/></svg>';
+    xls.addEventListener("click", (e) => { e.stopPropagation(); downloadSummaryExcel(rep, xls); });
     const del = document.createElement("button");
     del.className = "report-item__del";
     del.type = "button";
@@ -901,6 +947,7 @@
     state.topWeightRaw = "";
     els.topWeight.value = "";
     renderPhotos("topPhotos");
+    setTopCoefUI("fixed", 1);
     if (full) {
       // Opening a report resets the free-text unlock back to numeric-only;
       // fast mode is a persisted workflow preference, so it's kept.
@@ -908,6 +955,29 @@
       els.topCodePencil.classList.remove("is-on");
       els.topCode.inputMode = "numeric";
     }
+  }
+
+  function topCoefValue() {
+    if (state.topCoef.mode === "none") return 0;
+    if (state.topCoef.mode === "fixed") return Number(state.topCoef.value) || 0;
+    return parseFloat(String(els.topCoefCustom.value).replace(",", "."));
+  }
+
+  function setTopCoefUI(mode, value) {
+    const chips = [...els.topCoefChips.querySelectorAll(".chip")];
+    chips.forEach((c) => c.classList.remove("is-active"));
+    let chip = null;
+    if (mode === "none") chip = chips.find((c) => c.dataset.mode === "none");
+    else if (mode === "custom") chip = chips.find((c) => c.dataset.mode === "custom");
+    else chip = chips.find((c) => c.dataset.mode === "fixed" && sameNum(c.dataset.value, value));
+    if (!chip) {
+      mode = "custom";
+      chip = chips.find((c) => c.dataset.mode === "custom");
+    }
+    if (chip) chip.classList.add("is-active");
+    state.topCoef = { mode, value: mode === "none" ? 0 : value };
+    els.topCoefCustomWrap.hidden = mode !== "custom";
+    els.topCoefCustom.value = mode === "custom" ? String(value || "") : "";
   }
 
   let savingTop = false;
@@ -920,8 +990,16 @@
     const cfg = SECTIONS[state.formSection];
     const code = els.topCode.value.trim();
     const weight = parseFloat(cleanDecimal(state.topWeightRaw));
+    const coefficient = topCoefValue();
+    const net = Math.round((weight - coefficient) * 1e4) / 1e4;
     if (cfg.codeRequired && !code) { showToast("Karobka kodini kiriting", true); haptic("rigid"); return; }
     if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); haptic("rigid"); return; }
+    if (state.topCoef.mode === "custom" && (!isFinite(coefficient) || coefficient <= 0)) {
+      showToast("Karobka og'irligini kiriting", true); haptic("rigid"); return;
+    }
+    if (!isFinite(coefficient) || coefficient < 0 || net < 0) {
+      showToast("Karobka og'irligini tekshiring", true); haptic("rigid"); return;
+    }
 
     savingTop = true;
     els.topSave.disabled = true;
@@ -929,17 +1007,37 @@
     // object URLs are created on demand at render time. Backend isn't wired yet.
     const files = state.topPhotos.map((p) => p.file);
     if (editingEntry && editingEntry.synced && editingEntry.id != null) {
+      if (
+        sameText(editingEntry.code, code) &&
+        sameNum(editingEntry.weight, weight) &&
+        sameText(editingEntry.coefMode || "fixed", state.topCoef.mode || "fixed") &&
+        sameNum(editingEntry.coefficient == null ? 1 : editingEntry.coefficient, coefficient)
+      ) {
+        const edited = editingEntry;
+        editingEntry = null;
+        els.topSave.textContent = "Saqlash";
+        showToast("O'zgarish yo'q");
+        resetTop(false);
+        updateViewCount();
+        savingTop = false;
+        els.topSave.disabled = false;
+        returnToEditedEntry(state.formSection, edited);
+        return;
+      }
       try {
         const fd = new FormData();
         fd.append("init_data", inTelegram ? tg.initData : "");
         fd.append("report_id", String(state.reportId));
         fd.append("section", state.formSection);
         fd.append("code", code);
+        fd.append("coefficient", String(coefficient));
+        fd.append("coefficient_mode", state.topCoef.mode);
         fd.append("weight", String(weight));
         const res = await fetch(`/api/obshiy/${editingEntry.id}`, { method: "PUT", body: fd });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
-        Object.assign(editingEntry, { code, weight, editedAt: Date.now() });
+        Object.assign(editingEntry, { code, weight, coefficient, coefMode: state.topCoef.mode, net });
+        if (json.edited) editingEntry.editedAt = Date.now();
         const edited = editingEntry;
         editingEntry = null;
         els.topSave.textContent = "Saqlash";
@@ -957,7 +1055,13 @@
     }
     if (!editingEntry) {
       try {
-        await enqueueCreate(state.formSection, { section: state.formSection, code, weight }, files);
+        await enqueueCreate(state.formSection, {
+          section: state.formSection,
+          code,
+          coefficient,
+          coefficient_mode: state.topCoef.mode,
+          weight,
+        }, files);
         showToast("Saqlandi ✓");
         resetTop(false);
         if (state.topFast) { activePk = "topPhotos"; openCamera(); }
@@ -971,9 +1075,16 @@
     }
     if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
     if (editingEntry) {
+      const changed = !sameText(editingEntry.code, code) ||
+        !sameNum(editingEntry.weight, weight) ||
+        !sameNum(editingEntry.coefficient || 0, coefficient);
       editingEntry.code = code;
       editingEntry.weight = weight;
+      editingEntry.coefficient = coefficient;
+      editingEntry.coefMode = state.topCoef.mode;
+      editingEntry.net = net;
       editingEntry.files = files;
+      if (changed) editingEntry.editedAt = Date.now();
       editingEntry = null;
       els.topSave.textContent = "Saqlash";
       showToast("Yangilandi ✓");
@@ -983,7 +1094,7 @@
       els.topSave.disabled = false;
       return; // no fast-mode camera reopen while editing
     }
-    state.entries[state.formSection].push({ code, weight, files, ts: Date.now() });
+    state.entries[state.formSection].push({ code, weight, coefficient, coefMode: state.topCoef.mode, net, files, ts: Date.now() });
     updateViewCount();
     showToast("Saqlandi ✓");
     resetTop(false);
@@ -1020,6 +1131,8 @@
   let selectedEntryIds = new Set();
   let entriesFocusId = null;
   let editReturn = null;
+  let sendStatusPollTimer = null;
+  let sendStatusPollKind = null;
   function clearEntryUrls() { entryUrls.forEach((u) => URL.revokeObjectURL(u)); entryUrls = []; }
   function entriesScroller() { return els.entriesList ? els.entriesList.parentElement : null; }
 
@@ -1038,6 +1151,7 @@
   function closeEntries() {
     clearEntryUrls();
     selectedEntryIds = new Set();
+    stopSendStatusPolling();
     els.entriesScreen.hidden = true;
     els.entriesActions.hidden = true;
     syncLock(); // form screen may still be open beneath; work area isn't locked
@@ -1098,6 +1212,7 @@
         entriesFocusId = null;
       }
     }
+    if (isBulkSection() && hasChannelPending(viewerSection)) startSendStatusPolling(viewerSection);
   }
 
   let sendingBulk = false;
@@ -1153,6 +1268,7 @@
       targets.forEach((e) => { e.sendStatus = "pending"; });
       showToast(`${json.queued || targets.length} ta yozuv kanalga yuborishga qo'shildi`);
       renderEntries();
+      startSendStatusPolling(viewerSection);
     } catch (e) {
       showToast(e.message || "Yuborib bo'lmadi", true);
     } finally {
@@ -1186,12 +1302,54 @@
       selectedEntryIds = new Set();
       showToast(`${json.queued || targets.length} ta tanlangan yozuv yuborishga qo'shildi`);
       renderEntries();
+      startSendStatusPolling(viewerSection);
     } catch (e) {
       showToast(e.message || "Yuborib bo'lmadi", true);
     } finally {
       sendingBulk = false;
       renderBulkSendState(state.entries[viewerSection]);
     }
+  }
+
+  function hasChannelPending(kind) {
+    return (state.entries[kind] || []).some((e) => e.synced && e.id != null && e.sendStatus === "pending");
+  }
+
+  function stopSendStatusPolling() {
+    if (sendStatusPollTimer) clearInterval(sendStatusPollTimer);
+    sendStatusPollTimer = null;
+    sendStatusPollKind = null;
+  }
+
+  async function refreshEntryStatuses(kind) {
+    if (!state.reportId || !isBackendSection(kind)) return;
+    try {
+      const res = await fetch(`/api/entries/status?report_id=${state.reportId}&kind=${kind}`, { headers: authHeaders() });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.entries) return;
+      const byId = new Map((json.entries || []).map((r) => [String(r.id), r]));
+      (state.entries[kind] || []).forEach((e) => {
+        if (!e.synced || e.id == null) return;
+        const row = byId.get(String(e.id));
+        if (!row) return;
+        e.sendStatus = row.send_status || null;
+        e.sendError = row.send_error || null;
+      });
+      if (!els.entriesScreen.hidden && viewerSection === kind) renderEntries();
+      if (!hasChannelPending(kind) && sendStatusPollKind === kind) stopSendStatusPolling();
+    } catch (_) {}
+  }
+
+  function startSendStatusPolling(kind) {
+    if (!isBackendSection(kind)) return;
+    if (sendStatusPollTimer && sendStatusPollKind === kind) return;
+    stopSendStatusPolling();
+    sendStatusPollKind = kind;
+    refreshEntryStatuses(kind);
+    sendStatusPollTimer = setInterval(() => {
+      if (els.entriesScreen.hidden || viewerSection !== kind) { stopSendStatusPolling(); return; }
+      refreshEntryStatuses(kind);
+    }, 2500);
   }
 
   function entryCard(e) {
@@ -1263,6 +1421,8 @@
     statusBadge.className = "entry-status";
     const statusTxt = e.error
       ? `xato: ${e.error}`
+      : e.sendError
+        ? "yuborilmadi"
       : e.pending || e.syncing
         ? "yuklanmoqda"
         : e.sendStatus === "pending"
@@ -1284,6 +1444,8 @@
       statusBadge.textContent = statusTxt;
       statusBadge.classList.toggle("entry-status--sent", e.sendStatus === "sent");
       statusBadge.classList.toggle("entry-status--pending", e.pending || e.syncing || e.sendStatus === "pending");
+      statusBadge.classList.toggle("entry-status--err", !!e.error || !!e.sendError);
+      if (e.sendError) statusBadge.title = e.sendError;
       foot.appendChild(statusBadge);
     }
     card.appendChild(foot);
@@ -1320,6 +1482,7 @@
     (entry.files || []).forEach((f) => state.topPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
     renderPhotos("topPhotos");
     els.topCode.value = entry.code || "";
+    setTopCoefUI(entry.coefMode || (entry.coefficient ? "fixed" : "none"), entry.coefficient || 0);
     els.topWeight.value = String(entry.weight);
     state.topWeightRaw = String(entry.weight);
     els.topSave.textContent = "Yangilash";
@@ -1484,7 +1647,11 @@
       b instanceof File ? b : new File([b], (b && b.name) || `photo_${i}.jpg`, { type: (b && b.type) || "image/jpeg" }));
     const base = { localId: item.localId, files, ts: item.ts, synced: false, pending: true };
     if (item.kind === "adjust") return { ...base, from: f.from_type, to: f.to_type, weight: Number(f.weight) };
-    if (OBSHIY_SECTIONS.includes(item.kind)) return { ...base, code: f.code || "", weight: Number(f.weight) };
+    if (OBSHIY_SECTIONS.includes(item.kind)) {
+      const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
+      return { ...base, code: f.code || "", coefMode: f.coefficient_mode || (coef ? "fixed" : "none"),
+        coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
+    }
     const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
     return { ...base, type: f.type, coefMode: f.coefficient_mode, coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
   }
@@ -1608,10 +1775,16 @@
       ts: (r.ts || 0) * 1000,
       editedAt: r.edited_at ? r.edited_at * 1000 : null,
       sendStatus: r.send_status || null,
+      sendError: r.send_error || null,
       synced: true,
     };
     if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };
-    if (OBSHIY_SECTIONS.includes(kind)) return { ...base, code: r.tovar_turi || "", weight: r.weight };
+    if (OBSHIY_SECTIONS.includes(kind)) {
+      const coef = Number(r.coefficient) || 0, w = Number(r.weight) || 0;
+      const net = r.net == null ? Math.round((w - coef) * 1e4) / 1e4 : Number(r.net);
+      return { ...base, code: r.tovar_turi || "", coefMode: coef ? "fixed" : "none",
+        coefficient: coef, weight: w, net };
+    }
     const coef = Number(r.coefficient) || 0;
     return { ...base, type: r.tovar_turi, coefMode: coef ? "fixed" : "none", coefficient: coef, weight: r.weight, net: r.net };
   }
@@ -1645,6 +1818,7 @@
     const pend = items.filter((it) => it.kind === kind && it.reportId === rid).map(outboxEntry);
     state.entries[kind] = loaded.reverse().concat(pend);
     refreshViewer(kind);
+    if (!els.entriesScreen.hidden && viewerSection === kind && hasChannelPending(kind)) startSendStatusPolling(kind);
   }
 
   async function deleteReport(rep) {
@@ -1695,12 +1869,12 @@
   els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
 
-  function filenameFromDisposition(header) {
+  function filenameFromDisposition(header, fallback) {
     const m = /filename\*=UTF-8''([^;]+)/i.exec(header || "");
     if (m) {
       try { return decodeURIComponent(m[1]); } catch (_) {}
     }
-    return `${state.reportName || "Hisobot"} KARGOLARGA TARQATISH.xlsx`;
+    return fallback || `${state.reportName || "Hisobot"} KARGOLARGA TARQATISH.xlsx`;
   }
 
   async function downloadKargoExcel() {
@@ -1716,7 +1890,10 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filenameFromDisposition(res.headers.get("content-disposition"));
+      a.download = filenameFromDisposition(
+        res.headers.get("content-disposition"),
+        `${state.reportName || "Hisobot"} KARGOLARGA TARQATISH.xlsx`
+      );
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1729,12 +1906,41 @@
     }
   }
 
+  async function downloadObshiyExcel() {
+    if (!state.reportId) return;
+    els.menuTotalXls.disabled = true;
+    try {
+      const res = await fetch(`/api/export/obshiy?report_id=${state.reportId}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || "Excel yuklab bo'lmadi");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filenameFromDisposition(
+        res.headers.get("content-disposition"),
+        `${state.reportName || "Hisobot"} OBSHIY VES.xlsx`
+      );
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Excel tayyor");
+    } catch (e) {
+      showToast(e.message || "Excel yuklab bo'lmadi", true);
+    } finally {
+      els.menuTotalXls.disabled = false;
+    }
+  }
+
   // ---- Report section menu ----
   els.menuBackBtn.addEventListener("click", showHome);
   els.menuDistBtn.addEventListener("click", openWork);
   els.menuDistXls.addEventListener("click", downloadKargoExcel);
   els.menuTotalBtn.addEventListener("click", showObshiy);
-  els.menuTotalXls.addEventListener("click", () => showToast("Excel funksiyasi tez orada", false));
+  els.menuTotalXls.addEventListener("click", downloadObshiyExcel);
 
   // ---- Obshiy ves submenu ----
   els.obshiyBackBtn.addEventListener("click", showMenu);
@@ -2074,6 +2280,26 @@
     state.coef.value = parseFloat(e.target.value.replace(",", "."));
   });
 
+  els.topCoefChips.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      els.topCoefChips.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
+      chip.classList.add("is-active");
+      const mode = chip.dataset.mode;
+      state.topCoef.mode = mode;
+      if (mode === "custom") {
+        els.topCoefCustomWrap.hidden = false;
+        setTimeout(() => els.topCoefCustom.focus(), 60);
+      } else {
+        els.topCoefCustomWrap.hidden = true;
+        state.topCoef.value = mode === "none" ? 0 : parseFloat(chip.dataset.value);
+      }
+      haptic("select");
+    });
+  });
+  els.topCoefCustom.addEventListener("input", (e) => {
+    state.topCoef.value = parseFloat(e.target.value.replace(",", "."));
+  });
+
   // ---- Weight ----
   els.weight.addEventListener("input", (e) => { state.weightRaw = e.target.value; });
 
@@ -2151,6 +2377,17 @@
         return;
       }
 
+      if (sameText(editing.from, from) && sameText(editing.to, to) && sameNum(editing.weight, weight)) {
+        const stillCurrent = editingAdj === editing;
+        if (stillCurrent) editingAdj = null;
+        showToast("O'zgarish yo'q");
+        updateViewCount();
+        if (stillCurrent) resetAdjust();
+        renderBalances();
+        returnToEditedEntry("adjust", editing);
+        return;
+      }
+
       const fd = new FormData();
       fd.append("init_data", inTelegram ? tg.initData : "");
       fd.append("report_id", String(state.reportId));
@@ -2162,7 +2399,8 @@
       if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
       state.inventory = json.balances || state.inventory;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-      Object.assign(editing, { from, to, weight, editedAt: Date.now() });
+      Object.assign(editing, { from, to, weight });
+      if (json.edited) editing.editedAt = Date.now();
       const stillCurrent = editingAdj === editing;
       if (stillCurrent) editingAdj = null; // may have been cancelled/replaced mid-flight
       showToast("Yangilandi ✓");
@@ -2350,6 +2588,24 @@
       return;
     }
 
+    if (
+      sameText(editing.type, data.type) &&
+      sameText(editing.coefMode || "none", data.coefficient_mode || "none") &&
+      sameNum(editing.coefficient, data.coefficient) &&
+      sameNum(editing.weight, data.weight)
+    ) {
+      const stillCurrent = editingReys === editing;
+      if (stillCurrent) editingReys = null;
+      showToast("O'zgarish yo'q");
+      updateViewCount();
+      if (stillCurrent) resetForm();
+      loadInventory();
+      returnToEditedEntry("reys", editing);
+      saving = false;
+      setBusy(false);
+      return;
+    }
+
     const fd = new FormData();
     fd.append("init_data", tg ? tg.initData : "");
     fd.append("report_id", String(state.reportId));
@@ -2367,8 +2623,8 @@
       Object.assign(editing, {
         type: data.type, coefMode: data.coefficient_mode,
         coefficient: data.coefficient, weight: data.weight,
-        editedAt: Date.now(),
       });
+      if (json.edited) editing.editedAt = Date.now();
       // Only clear if the edit session still belongs to this request (it may
       // have been cancelled/replaced while the PUT was in flight).
       const stillCurrent = editingReys === editing;

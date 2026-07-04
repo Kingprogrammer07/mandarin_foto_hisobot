@@ -56,7 +56,12 @@ def _caption(entry: dict, report_name: str) -> str:
     if action in _OBSHIY_TITLES:
         head = f"{name} - {_OBSHIY_TITLES[action]}"
         code = (entry.get("tovar_turi") or "").strip()
-        body = f"{code + ' - ' if code else ''}{_fmt(entry.get('weight'))} kg"
+        coef = float(entry.get("coefficient") or 0)
+        net = entry.get("net")
+        if net is None:
+            net = float(entry.get("weight") or 0) - coef
+        weight = f"{_fmt(entry.get('weight'))} - {_fmt(coef)} = {_fmt(net)}" if coef else _fmt(entry.get("weight"))
+        body = f"{code + ' - ' if code else ''}{weight} kg"
     elif action == "adjust":
         head = f"{name} - {entry['from_type']} -> {entry['to_type']}"
         body = f"{_fmt(entry['weight'])} kg"

@@ -9,6 +9,11 @@ from . import config, db
 
 TEMPLATE = config.ASSETS_DIR / "shablon.xlsx"
 LEGACY_TEMPLATE = config.BASE_DIR / "shablon.xlsx"
+OBSHIY_TEMPLATE = config.ASSETS_DIR / "obshiy_ves_shablon.xlsx"
+LEGACY_OBSHIY_TEMPLATE = config.BASE_DIR / "obshiy_ves_shablon.xlsx"
+UMUMIY_TEMPLATE = config.ASSETS_DIR / "umumiy_hisobot_shabloni.xlsx"
+LEGACY_UMUMIY_TEMPLATE = config.BASE_DIR / "umumiy_hisobot_shabloni.xlsx"
+OBSHIY_ACTION_ORDER = ("top", "topchiqgan", "bizda", "chiqgan")
 
 
 def _safe_sheet_name(name: str) -> str:
@@ -20,6 +25,18 @@ def _safe_filename(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (name or "Hisobot")).strip()
     name = re.sub(r"\s+", " ", name)
     return f"{name or 'Hisobot'} KARGOLARGA TARQATISH.xlsx"
+
+
+def _safe_obshiy_filename(name: str) -> str:
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (name or "Hisobot")).strip()
+    name = re.sub(r"\s+", " ", name)
+    return f"{name or 'Hisobot'} OBSHIY VES.xlsx"
+
+
+def _safe_umumiy_filename(name: str) -> str:
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (name or "Hisobot")).strip()
+    name = re.sub(r"\s+", " ", name)
+    return f"{name or 'Hisobot'} UMUMIY HISOBOT.xlsx"
 
 
 def _num(v) -> float:
@@ -106,6 +123,304 @@ def _apply_adjust(slots: dict[str, list[dict]], entry: dict) -> None:
             "deltas": [-remaining],
             "force_formula": True,
         })
+
+
+def _obshiy_code(entry: dict) -> str:
+    return (str(entry.get("tovar_turi") or "").strip() or "Kodsiz")
+
+
+def _sum_by_code(entries: list[dict]) -> tuple[dict[str, float], list[str]]:
+    totals: dict[str, float] = {}
+    order: list[str] = []
+    for entry in entries:
+        code = _obshiy_code(entry)
+        if code not in totals:
+            totals[code] = 0.0
+            order.append(code)
+        totals[code] = round(totals[code] + _num(entry.get("weight")), 4)
+    return totals, order
+
+
+def _obshiy_value(entry: dict) -> float:
+    net = entry.get("net")
+    if net is not None:
+        return _num(net)
+    return round(_num(entry.get("weight")) - _num(entry.get("coefficient")), 4)
+
+
+def _sum_obshiy_values_by_code(entries: list[dict]) -> tuple[dict[str, float], list[str]]:
+    totals: dict[str, float] = {}
+    order: list[str] = []
+    for entry in entries:
+        code = _obshiy_code(entry)
+        if code not in totals:
+            totals[code] = 0.0
+            order.append(code)
+        totals[code] = round(totals[code] + _obshiy_value(entry), 4)
+    return totals, order
+
+
+def _ordered_codes(*orders: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for order in orders:
+        for code in order:
+            if code not in seen:
+                seen.add(code)
+                out.append(code)
+    return out
+
+
+def _obshiy_rows(base: dict[str, float], plus: dict[str, float], minus: dict[str, float],
+                 order: list[str]) -> list[tuple[str, float, float]]:
+    rows = []
+    for code in order:
+        base_value = _num(base.get(code, 0))
+        transfer = round(_num(plus.get(code, 0)) - _num(minus.get(code, 0)), 4)
+        if base_value or transfer:
+            rows.append((code, base_value, transfer))
+    return rows
+
+
+def _write_obshiy_sheet(ws, rows: list[tuple[str, float, float]], transfer_header: dict[str, str]) -> None:
+    from openpyxl.styles import Alignment
+
+    ws.title = transfer_header["sheet"]
+    headers = ["Karobka kodi", "karobka kg", transfer_header["column"], "jami"]
+    for col, header in enumerate(headers, start=1):
+        cell = ws.cell(1, col)
+        cell.value = header
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    clear_until = max(ws.max_row, len(rows) + 1)
+    for r in range(2, clear_until + 1):
+        for c in range(1, 5):
+            ws.cell(r, c).value = None
+
+    for idx, (code, base_value, transfer) in enumerate(rows, start=2):
+        ws.cell(idx, 1).value = code
+        ws.cell(idx, 2).value = base_value
+        ws.cell(idx, 3).value = transfer
+        ws.cell(idx, 4).value = None
+        for col in (2, 3):
+            ws.cell(idx, col).number_format = "0.00"
+
+    total_row = 2
+    last_row = max(total_row, len(rows) + 1)
+    total_cell = ws.cell(total_row, 4)
+    total_cell.value = f"=SUM(B{total_row}:C{last_row})" if rows else 0
+    total_cell.number_format = "0.00"
+
+
+def build_obshiy_excel(report_id: int) -> tuple[bytes, str]:
+    from openpyxl import Workbook, load_workbook
+
+    report_name = db.report_name(report_id) or "Hisobot"
+    entries_by_action = {
+        action: list(reversed(db.list_entries(report_id, action, limit=2000)))
+        for action in OBSHIY_ACTION_ORDER
+    }
+    top, top_order = _sum_obshiy_values_by_code(entries_by_action["top"])
+    topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(entries_by_action["topchiqgan"])
+    bizda, bizda_order = _sum_obshiy_values_by_code(entries_by_action["bizda"])
+    chiqgan, chiqgan_order = _sum_obshiy_values_by_code(entries_by_action["chiqgan"])
+
+    top_rows = _obshiy_rows(
+        top,
+        plus=chiqgan,
+        minus=topchiqgan,
+        order=_ordered_codes(top_order, chiqgan_order, topchiqgan_order),
+    )
+    bizda_rows = _obshiy_rows(
+        bizda,
+        plus=topchiqgan,
+        minus=chiqgan,
+        order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
+    )
+
+    template = OBSHIY_TEMPLATE if OBSHIY_TEMPLATE.exists() else LEGACY_OBSHIY_TEMPLATE
+    if template.exists():
+        wb = load_workbook(template)
+    else:
+        wb = Workbook()
+        wb.active.title = "top"
+        wb.create_sheet("bizda qoladigan")
+
+    while len(wb.worksheets) < 2:
+        wb.create_sheet("bizda qoladigan" if len(wb.worksheets) == 1 else f"Hisobot {len(wb.worksheets) + 1}")
+
+    _write_obshiy_sheet(
+        wb.worksheets[0],
+        top_rows,
+        {"sheet": "top", "column": "bizdan chiqgan"},
+    )
+    _write_obshiy_sheet(
+        wb.worksheets[1],
+        bizda_rows,
+        {"sheet": "bizda qoladigan", "column": "topdan chiqgan"},
+    )
+    for ws in wb.worksheets[2:]:
+        wb.remove(ws)
+
+    wb.calculation.calcMode = "auto"
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue(), _safe_obshiy_filename(report_name)
+
+
+def _inventory_for_summary(report_id: int) -> dict[str, float]:
+    inv = {str(k).strip().lower(): _num(v) for k, v in db.get_inventory(report_id).items()}
+    if "uztez" in inv:
+        inv["uzt"] = round(inv.get("uzt", 0) + inv["uztez"], 4)
+    return inv
+
+
+def _copy_row_style(ws, source_row: int, target_row: int, max_col: int) -> None:
+    for col in range(1, max_col + 1):
+        src = ws.cell(source_row, col)
+        dst = ws.cell(target_row, col)
+        if src.has_style:
+            dst._style = copy(src._style)
+        dst.number_format = src.number_format
+        dst.alignment = copy(src.alignment)
+        dst.fill = copy(src.fill)
+        dst.font = copy(src.font)
+        dst.border = copy(src.border)
+
+
+def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
+    from datetime import date
+    from openpyxl import Workbook, load_workbook
+
+    report_name = db.report_name(report_id) or "Hisobot"
+    obshiy_entries = {
+        action: list(reversed(db.list_entries(report_id, action, limit=2000)))
+        for action in OBSHIY_ACTION_ORDER
+    }
+    top, top_order = _sum_obshiy_values_by_code(obshiy_entries["top"])
+    topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
+    bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
+    chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
+    top_rows = _obshiy_rows(
+        top,
+        plus=chiqgan,
+        minus=topchiqgan,
+        order=_ordered_codes(top_order, chiqgan_order, topchiqgan_order),
+    )
+    bizda_rows = _obshiy_rows(
+        bizda,
+        plus=topchiqgan,
+        minus=chiqgan,
+        order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
+    )
+
+    obshiy_totals = [round(base + transfer, 4) for _, base, transfer in top_rows + bizda_rows]
+    box_weight_total = round(sum(
+        _num(e.get("coefficient"))
+        for entries in obshiy_entries.values()
+        for e in entries
+    ), 4)
+    reys_entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
+    no_coef_reys_total = round(sum(
+        _num(e.get("weight"))
+        for e in reys_entries
+        if _num(e.get("coefficient")) <= 0
+    ), 4)
+
+    template = UMUMIY_TEMPLATE if UMUMIY_TEMPLATE.exists() else LEGACY_UMUMIY_TEMPLATE
+    if template.exists():
+        wb = load_workbook(template)
+    else:
+        wb = Workbook()
+    ws = wb.active
+    ws.title = _safe_sheet_name(report_name)
+
+    max_clear_row = max(ws.max_row, 129)
+    for r in range(2, max_clear_row + 1):
+        ws.cell(r, 1).value = None
+
+    a_row = 2
+    for value in obshiy_totals:
+        if value:
+            ws.cell(a_row, 1).value = value
+            ws.cell(a_row, 1).number_format = "0.00"
+            a_row += 1
+    if no_coef_reys_total:
+        ws.cell(a_row, 1).value = -no_coef_reys_total
+        ws.cell(a_row, 1).number_format = "0.00"
+
+    ws["B2"] = report_name
+    ws["F2"] = date.today().strftime("%d.%m.%Y")
+    ws["C2"] = "=SUM(A:A)"
+    ws["C3"] = box_weight_total
+    ws["C3"].number_format = "0.00"
+
+    inv = _inventory_for_summary(report_id)
+    label_rows: dict[str, int] = {}
+    for row in range(4, ws.max_row + 1):
+        label = str(ws.cell(row, 2).value or "").strip().lower()
+        if label:
+            label_rows[label] = row
+
+    represented = set(label_rows)
+    custom_types = [
+        t for t, value in inv.items()
+        if value and t not in represented and t not in {"mandarin", "uztez"}
+    ]
+    next_row = max([r for r in label_rows.values()] + [15]) + 1
+    for tovar_turi in custom_types:
+        _copy_row_style(ws, 15, next_row, 8)
+        ws.cell(next_row, 2).value = tovar_turi
+        label_rows[tovar_turi] = next_row
+        next_row += 1
+
+    non_distributed = {"izi", "triton", "top"}
+    for label, row in label_rows.items():
+        if label == "karobka":
+            continue
+        if label == "mandarin":
+            continue
+        ws.cell(row, 3).value = inv.get(label, 0)
+        ws.cell(row, 3).number_format = "0.00"
+
+    for label in non_distributed:
+        row = label_rows.get(label)
+        if row:
+            ws.cell(row, 4).value = None
+            ws.cell(row, 5).value = f"=C{row}+D{row}"
+
+    distributable_rows = [
+        row for label, row in label_rows.items()
+        if label not in non_distributed and label not in {"karobka", "mandarin"}
+    ]
+    mandarin_row = label_rows.get("mandarin", 4)
+    non_distributed_refs = [f"C{label_rows[label]}" for label in non_distributed if label in label_rows]
+    ws["G3"] = f"=C2-C3" + ("-" + "-".join(non_distributed_refs) if non_distributed_refs else "")
+    ws["H3"] = "=IF(G3=0,0,C3/G3)"
+    ws.cell(mandarin_row, 3).value = (
+        "=G3" + ("-" + "-".join(f"C{row}" for row in distributable_rows) if distributable_rows else "")
+    )
+    ws.cell(mandarin_row, 4).value = f"=C{mandarin_row}*$H$3"
+    ws.cell(mandarin_row, 5).value = f"=C{mandarin_row}+D{mandarin_row}"
+
+    for row in distributable_rows:
+        ws.cell(row, 4).value = f"=C{row}*$H$3"
+        ws.cell(row, 5).value = f"=C{row}+D{row}"
+
+    for row in set([3, mandarin_row] + distributable_rows + [label_rows[l] for l in non_distributed if l in label_rows]):
+        for col in (3, 4, 5, 7, 8):
+            ws.cell(row, col).number_format = "0.00"
+
+    wb.calculation.calcMode = "auto"
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue(), _safe_umumiy_filename(report_name)
 
 
 def build_kargo_excel(report_id: int) -> tuple[bytes, str]:

@@ -619,6 +619,8 @@ async def submit_obshiy(
     report_id: int = Form(...),
     section: str = Form(...),
     code: str = Form(""),
+    coefficient: float = Form(0),
+    coefficient_mode: str = Form("fixed"),
     weight: float = Form(...),
     photos: list[UploadFile] = [],  # noqa: B006
 ):
@@ -633,15 +635,21 @@ async def submit_obshiy(
         raise HTTPException(status_code=400, detail="karobka kodini kiriting")
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+    if not math.isfinite(coefficient) or coefficient < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
+    net = round(weight - coefficient, 4)
+    if net < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi yukdan katta")
 
     photo_data = await _read_photos(photos)
-    result = db.add_obshiy(rid, identity, section, code, weight, len(photo_data))
+    result = db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data))
     entry_id = result["entry_id"]
     if photo_data:
         db.save_photos(entry_id, photo_data)
-    log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s photos=%d",
-             identity, rid, entry_id, section, code, weight, len(photo_data))
-    return JSONResponse({"ok": True, "entry_id": entry_id, "photo_idxs": list(range(len(photo_data)))})
+    log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s coef=%s mode=%s photos=%d",
+             identity, rid, entry_id, section, code, weight, coefficient, coefficient_mode, len(photo_data))
+    return JSONResponse({"ok": True, "entry_id": entry_id, "net": net,
+                         "photo_idxs": list(range(len(photo_data)))})
 
 
 @app.put("/api/obshiy/{entry_id}")
@@ -652,6 +660,8 @@ async def edit_obshiy_entry(
     report_id: int = Form(...),
     section: str = Form(...),
     code: str = Form(""),
+    coefficient: float = Form(0),
+    coefficient_mode: str = Form(""),
     weight: float = Form(...),
 ):
     if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
@@ -665,13 +675,19 @@ async def edit_obshiy_entry(
         raise HTTPException(status_code=400, detail="karobka kodini kiriting")
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
+    if not math.isfinite(coefficient) or coefficient < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
+    net = round(weight - coefficient, 4)
+    if net < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi yukdan katta")
     try:
-        result = db.edit_obshiy(rid, entry_id, section, code, weight)
+        result = db.edit_obshiy(rid, entry_id, section, code, weight, coefficient, net)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
-    log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s",
-             identity, rid, entry_id, section, code, weight)
-    return JSONResponse({"ok": True, "entry_id": entry_id, "edited": bool(result.get("edited"))})
+    log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s coef=%s mode=%s",
+             identity, rid, entry_id, section, code, weight, coefficient, coefficient_mode)
+    return JSONResponse({"ok": True, "entry_id": entry_id, "net": net,
+                         "edited": bool(result.get("edited"))})
 
 
 @app.delete("/api/entry/{entry_id}")
@@ -704,6 +720,14 @@ async def api_entries(request: Request, report_id: int | None = None, kind: str 
     return {"entries": db.list_entries(rid, action)}
 
 
+@app.get("/api/entries/status")
+async def api_entries_status(request: Request, report_id: int | None = None, kind: str = "reys"):
+    _auth_or_403(request, state_changing=False)
+    rid = _require_report(report_id)
+    action = _entry_action(kind)
+    return {"entries": db.list_entry_statuses(rid, action)}
+
+
 @app.get("/api/export/kargo")
 async def api_export_kargo(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
@@ -717,6 +741,56 @@ async def api_export_kargo(request: Request, report_id: int | None = None):
         raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
     except Exception as exc:
         log.exception("excel export failed: report_id=%s", rid)
+        raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@app.get("/api/export/obshiy")
+async def api_export_obshiy(request: Request, report_id: int | None = None):
+    _auth_or_403(request, state_changing=False)
+    rid = _require_report(report_id)
+    try:
+        content, filename = excel_export.build_obshiy_excel(rid)
+    except ModuleNotFoundError as exc:
+        log.exception("obshiy excel export dependency missing")
+        raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("obshiy excel export failed: report_id=%s", rid)
+        raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@app.get("/api/export/summary")
+async def api_export_summary(request: Request, report_id: int | None = None):
+    _auth_or_403(request, state_changing=False)
+    rid = _require_report(report_id)
+    try:
+        content, filename = excel_export.build_umumiy_excel(rid)
+    except ModuleNotFoundError as exc:
+        log.exception("summary excel export dependency missing")
+        raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("summary excel export failed: report_id=%s", rid)
         raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
     headers = {
         "Content-Disposition": (

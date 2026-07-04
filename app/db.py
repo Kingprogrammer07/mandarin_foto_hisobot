@@ -321,17 +321,20 @@ def adjust(report_id: int, actor: str, from_type: str, to_type: str, weight: flo
 
 
 def add_obshiy(report_id: int, actor: str, action: str, code: str,
-               weight: float, photos: int = 0) -> dict:
+               weight: float, coefficient: float = 0, net: float | None = None,
+               photos: int = 0) -> dict:
     if action not in OBSHIY_ACTIONS:
         raise ValueError("bad obshiy action")
-    if not (math.isfinite(weight) and weight > 0):
+    if net is None:
+        net = round(weight - coefficient, 4)
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net) and weight > 0):
         raise ValueError("non-finite value")
     now = int(time.time())
     with _db() as c:
         cur = c.execute(
-            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, photos)
-               VALUES(?, ?, ?, ?, ?, ?, ?)""",
-            (report_id, now, actor, action, (code or "").strip(), weight, photos),
+            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, coefficient, net, photos)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (report_id, now, actor, action, (code or "").strip(), weight, coefficient, net, photos),
         )
         return {"entry_id": cur.lastrowid}
 
@@ -431,21 +434,28 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
 
 
 def edit_obshiy(report_id: int, entry_id: int, action: str, code: str,
-                weight: float) -> dict:
+                weight: float, coefficient: float = 0, net: float | None = None) -> dict:
     if action not in OBSHIY_ACTIONS:
         raise ValueError("bad obshiy action")
-    if not (math.isfinite(weight) and weight > 0):
+    if net is None:
+        net = round(weight - coefficient, 4)
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net) and weight > 0):
         raise ValueError("non-finite value")
     now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, action)
         code = (code or "").strip()
-        changed = str(old["tovar_turi"] or "") != code or not _same_num(old["weight"], weight)
+        changed = (
+            str(old["tovar_turi"] or "") != code
+            or not _same_num(old["weight"], weight)
+            or not _same_num(old["coefficient"], coefficient)
+            or not _same_num(old["net"], net)
+        )
         if not changed:
             return {"entry_id": entry_id, "edited": False}
         c.execute(
-            "UPDATE activity SET tovar_turi = ?, weight = ?, edited_at = ? WHERE id = ?",
-            (code, weight, now, entry_id),
+            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, edited_at = ? WHERE id = ?",
+            (code, weight, coefficient, net, now, entry_id),
         )
         return {"entry_id": entry_id, "edited": True}
 
@@ -654,13 +664,27 @@ def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
                 "SELECT idx, telegram_file_id FROM entry_photos WHERE entry_id = ? ORDER BY idx",
                 (r["id"],),
             )]
-            sq = c.execute("SELECT status FROM send_queue WHERE entry_id = ?", (r["id"],)).fetchone()
+            sq = c.execute("SELECT status, last_error FROM send_queue WHERE entry_id = ?", (r["id"],)).fetchone()
             d = dict(r)
             d["photo_idxs"] = [p["idx"] for p in photos]
             d["photo_file_ids"] = [p["telegram_file_id"] for p in photos]
             d["send_status"] = sq["status"] if sq else None
+            d["send_error"] = sq["last_error"] if sq else None
             out.append(d)
     return out
+
+
+def list_entry_statuses(report_id: int, action: str) -> list[dict]:
+    with _db() as c:
+        rows = c.execute(
+            """SELECT a.id, q.status AS send_status, q.last_error AS send_error
+               FROM activity a
+               LEFT JOIN send_queue q ON q.entry_id = a.id
+               WHERE a.report_id = ? AND a.action = ? AND a.deleted_at IS NULL
+               ORDER BY a.id DESC""",
+            (report_id, action),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def enqueue_send(entry_id: int) -> None:
