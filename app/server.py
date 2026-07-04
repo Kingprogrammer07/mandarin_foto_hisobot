@@ -428,6 +428,21 @@ async def api_reports_delete(request: Request, report_id: int):
     return {"ok": True}
 
 
+@app.post("/api/reports/{report_id}/zero-top-coefficients")
+async def api_reports_zero_top_coefficients(request: Request, report_id: int):
+    if not _rate_ok(f"zero-coef:{_client_ip(request)}", limit=10, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    rid = _require_report(report_id)
+    changed = db.zero_top_coefficients(rid)
+    log.info("top coefficients zeroed by %s [r%s]: %s entries", identity, rid, changed)
+    return {"ok": True, "changed": changed}
+
+
 # ---------------------------------------------------------------------------
 # Reys hisoboti — add net weight to a report's tovar turi balance
 # ---------------------------------------------------------------------------
@@ -633,6 +648,9 @@ async def submit_obshiy(
         raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
     if section == "top" and not code.strip():
         raise HTTPException(status_code=400, detail="karobka kodini kiriting")
+    if section == "top":
+        coefficient = 0
+        coefficient_mode = "none"
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
     if not math.isfinite(coefficient) or coefficient < 0:
@@ -673,6 +691,9 @@ async def edit_obshiy_entry(
         raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
     if section == "top" and not code.strip():
         raise HTTPException(status_code=400, detail="karobka kodini kiriting")
+    if section == "top":
+        coefficient = 0
+        coefficient_mode = "none"
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
     if not math.isfinite(coefficient) or coefficient < 0:

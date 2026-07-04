@@ -45,7 +45,7 @@
     adjPhotos: [], // adashgan photos
     topPhotos: [], // shared Obshiy-ves form photos (one section open at a time)
     topWeightRaw: "",
-    topCoef: { mode: "fixed", value: 1 },
+    topCoef: { mode: "none", value: 0 },
     topCodeFree: false, // pencil unlocked → karobka kodi accepts any character
     topFast: false, // fast-mode capture loop
     reysFast: false, // kargolarga tarqatish fast-mode capture loop
@@ -248,6 +248,7 @@
     setClose: $("#setClose"),
     rememberToggle: $("#rememberToggle"),
     reysFastToggle: $("#reysFastToggle"),
+    zeroCoefBtn: $("#zeroCoefBtn"),
     // adashgan photos
     adjPhotoGrid: $("#adjPhotoGrid"),
     adjPhotoCounter: $("#adjPhotoCounter"),
@@ -947,7 +948,7 @@
     state.topWeightRaw = "";
     els.topWeight.value = "";
     renderPhotos("topPhotos");
-    setTopCoefUI("fixed", 1);
+    setTopCoefUI("none", 0);
     if (full) {
       // Opening a report resets the free-text unlock back to numeric-only;
       // fast mode is a persisted workflow preference, so it's kept.
@@ -1010,8 +1011,8 @@
       if (
         sameText(editingEntry.code, code) &&
         sameNum(editingEntry.weight, weight) &&
-        sameText(editingEntry.coefMode || "fixed", state.topCoef.mode || "fixed") &&
-        sameNum(editingEntry.coefficient == null ? 1 : editingEntry.coefficient, coefficient)
+        sameText(editingEntry.coefMode || "none", state.topCoef.mode || "none") &&
+        sameNum(editingEntry.coefficient || 0, coefficient)
       ) {
         const edited = editingEntry;
         editingEntry = null;
@@ -2020,6 +2021,40 @@
     state.reysFast = els.reysFastToggle.checked;
     try { localStorage.setItem("reys-fast", state.reysFast ? "1" : "0"); } catch (_) {}
   });
+
+  function zeroLocalTopCoefficients() {
+    (state.entries.top || []).forEach((e) => {
+      if (!e || e.pending || !e.synced) return;
+      e.coefficient = 0;
+      e.coefMode = "none";
+      if (e.weight != null) e.net = Number(e.weight) || 0;
+      e.editedAt = Date.now();
+    });
+    refreshViewer(viewerSection);
+  }
+
+  async function zeroTopCoefficients() {
+    if (!state.reportId) { showToast("Avval hisobotni tanlang", true); return; }
+    const ok = await confirmDialog("Obshiy ves ichidagi Top yuklanganlari sof og'irlikka o'tkazilsinmi?");
+    if (!ok) return;
+    els.zeroCoefBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/reports/${state.reportId}/zero-top-coefficients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ init_data: inTelegram ? tg.initData : "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Top yozuvlarini sof og'irlikka o'tkazib bo'lmadi");
+      zeroLocalTopCoefficients();
+      showToast(`${json.changed || 0} ta Top yozuvi sof og'irlikka o'tdi`);
+    } catch (e) {
+      showToast(e.message || "Top yozuvlarini sof og'irlikka o'tkazib bo'lmadi", true);
+    } finally {
+      els.zeroCoefBtn.disabled = false;
+    }
+  }
+  els.zeroCoefBtn.addEventListener("click", zeroTopCoefficients);
 
   // ---- Adashgan reset ----
   function resetAdjust(full) {

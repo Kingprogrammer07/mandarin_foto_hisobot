@@ -139,6 +139,11 @@ def init() -> None:
         _add_column(c, "activity", "edited_at", "INTEGER")
         _add_column(c, "activity", "deleted_at", "INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_report ON activity(report_id, id)")
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS schema_migrations(
+                 name       TEXT PRIMARY KEY,
+                 applied_at INTEGER NOT NULL)"""
+        )
 
         # Photos persisted to disk (data/photos/<entry_id>/<idx>); this table
         # records their order + mime so nothing is lost across a restart.
@@ -180,6 +185,21 @@ def init() -> None:
             c.execute(
                 f"UPDATE activity SET {col} = 0 "
                 f"WHERE {col} IS NOT NULL AND NOT {fin.format(c=col)}"
+            )
+
+        top_restore = "restore_top_obshiy_net_20260704"
+        if c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (top_restore,)).fetchone() is None:
+            c.execute(
+                """UPDATE activity
+                   SET coefficient = 0,
+                       net = weight
+                   WHERE action = 'top'
+                     AND weight IS NOT NULL
+                     AND (coefficient IS NOT NULL OR net IS NOT NULL)"""
+            )
+            c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (top_restore, int(time.time())),
             )
 
 
@@ -458,6 +478,25 @@ def edit_obshiy(report_id: int, entry_id: int, action: str, code: str,
             (code, weight, coefficient, net, now, entry_id),
         )
         return {"entry_id": entry_id, "edited": True}
+
+
+def zero_top_coefficients(report_id: int) -> int:
+    """Convert Obshiy ves -> Top rows in one report to gross/net equality."""
+    now = int(time.time())
+    with _db() as c:
+        cur = c.execute(
+            """UPDATE activity
+               SET coefficient = 0,
+                   net = weight,
+                   edited_at = ?
+               WHERE report_id = ?
+                 AND deleted_at IS NULL
+                 AND action = 'top'
+                 AND weight IS NOT NULL
+                 AND (COALESCE(coefficient, 0) <> 0 OR COALESCE(net, weight) <> weight)""",
+            (now, report_id),
+        )
+        return cur.rowcount or 0
 
 
 def delete_entry(report_id: int, entry_id: int) -> dict:
