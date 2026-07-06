@@ -128,6 +128,17 @@
     lightboxCaption: $("#lightboxCaption"),
     lightboxCapMain: $("#lightboxCapMain"),
     lightboxCapSub: $("#lightboxCapSub"),
+    lightboxEdit: $("#lightboxEdit"),
+    lightboxEditPanel: $("#lightboxEditPanel"),
+    lbEditTitle: $("#lbEditTitle"),
+    lbEditNameLabel: $("#lbEditNameLabel"),
+    lbEditName: $("#lbEditName"),
+    lbEditWeight: $("#lbEditWeight"),
+    lbEditCoefRow: $("#lbEditCoefRow"),
+    lbEditCoefLabel: $("#lbEditCoefLabel"),
+    lbEditCoef: $("#lbEditCoef"),
+    lbEditCancel: $("#lbEditCancel"),
+    lbEditSave: $("#lbEditSave"),
     reysViewBtn: $("#reysViewBtn"),
     reysViewCount: $("#reysViewCount"),
     adjViewBtn: $("#adjViewBtn"),
@@ -598,8 +609,14 @@
   // (view-only + caption; one ephemeral URL at a time).
   let lb = null; // { mode: 'form'|'entry', pk?, section?, entry?, files?, caption?, i }
   let lbTempUrl = null;
+  let lbEditing = false;
+  let lbSaving = false;
 
   function lbItems() { return lb.mode === "form" ? state[lb.pk] : lb.files; }
+  function isLightboxEditable() {
+    return !!(lb && lb.mode === "entry" && lb.entry && lb.entry.synced && !lb.entry.pending &&
+      (lb.section === "reys" || OBSHIY_SECTIONS.includes(lb.section)));
+  }
 
   // Two-line caption: bold summary + dim meta. Reys shows the arithmetic the
   // admin asked for: "AKB 100 - 0.94 = 99.06 kg".
@@ -648,6 +665,7 @@
     els.lightboxCaption.hidden = !cap;
     els.lightboxCapMain.textContent = cap ? cap.main : "";
     els.lightboxCapSub.textContent = cap ? cap.sub : "";
+    els.lightboxEdit.hidden = !isLightboxEditable() || lbEditing;
   }
 
   function openLightbox(photo, pk) {
@@ -661,6 +679,7 @@
   }
 
   function viewEntryPhotos(entry, startIndex) {
+    closeLightboxEdit(false);
     lb = {
       mode: "entry",
       section: viewerSection,
@@ -688,6 +707,7 @@
   }
 
   function setLightboxEntry(entry, index) {
+    closeLightboxEdit(false);
     lb.entry = entry;
     lb.files = entry.files || [];
     lb.caption = entryCaption(entry);
@@ -718,7 +738,9 @@
     els.lightbox.hidden = true;
     els.lightboxImg.src = "";
     if (lbTempUrl) { URL.revokeObjectURL(lbTempUrl); lbTempUrl = null; }
+    closeLightboxEdit(false);
     lb = null;
+    els.lightboxEdit.hidden = true;
     els.lightboxDel.hidden = false;
     syncLock(); // keep the lock if a .screen (entries viewer / top form) is still open
     syncBackButton();
@@ -730,6 +752,90 @@
     if (cur) removePhoto(cur.id, lb.pk);
     if (!state[lb.pk].length) closeLightbox();
     else lbShow(); // index clamps to the shortened list
+  }
+
+  function closeLightboxEdit(refresh) {
+    lbEditing = false;
+    if (els.lightboxEditPanel) els.lightboxEditPanel.hidden = true;
+    if (els.lightboxEdit) els.lightboxEdit.hidden = !isLightboxEditable();
+    if (refresh && lb) lbShow();
+  }
+
+  function openLightboxEdit() {
+    if (!isLightboxEditable()) return;
+    const e = lb.entry;
+    lbEditing = true;
+    els.lightboxEdit.hidden = true;
+    els.lightboxEditPanel.hidden = false;
+    els.lbEditWeight.value = String(e.weight || "");
+    els.lbEditCoef.value = String(e.coefficient || "");
+    if (lb.section === "reys") {
+      els.lbEditTitle.textContent = "Kargolarga tarqatish";
+      els.lbEditNameLabel.textContent = "Tovar turi";
+      els.lbEditName.value = e.type || "";
+      els.lbEditCoefLabel.textContent = "Koeffitsient";
+      els.lbEditCoefRow.hidden = false;
+    } else {
+      els.lbEditTitle.textContent = SECTIONS[lb.section].title;
+      els.lbEditNameLabel.textContent = "Karobka kodi";
+      els.lbEditName.value = e.code || "";
+      els.lbEditCoefLabel.textContent = "Karobka og'irligi";
+      els.lbEditCoefRow.hidden = lb.section === "top";
+      if (lb.section === "top") els.lbEditCoef.value = "0";
+    }
+    setTimeout(() => els.lbEditWeight.focus(), 50);
+  }
+
+  async function saveLightboxEdit() {
+    if (!isLightboxEditable() || lbSaving) return;
+    const e = lb.entry;
+    const name = els.lbEditName.value.trim();
+    const weight = parseFloat(cleanDecimal(els.lbEditWeight.value));
+    let coefficient = lb.section === "top" ? 0 : parseFloat(cleanDecimal(els.lbEditCoef.value || "0"));
+    if (lb.section === "reys" && !name) { showToast("Tovar turini kiriting", true); return; }
+    if (lb.section !== "reys" && SECTIONS[lb.section].codeRequired && !name) { showToast("Karobka kodini kiriting", true); return; }
+    if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); return; }
+    if (!isFinite(coefficient) || coefficient < 0) coefficient = 0;
+    const net = Math.round((weight - coefficient) * 1e4) / 1e4;
+    if (net < 0) { showToast("Koeffitsient og'irlikdan katta", true); return; }
+
+    lbSaving = true;
+    els.lbEditSave.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("init_data", inTelegram ? tg.initData : "");
+      fd.append("report_id", String(state.reportId));
+      fd.append("weight", String(weight));
+      fd.append("coefficient", String(coefficient));
+      fd.append("coefficient_mode", coefficient ? "custom" : "none");
+      const path = lb.section === "reys" ? `/api/report/${e.id}` : `/api/obshiy/${e.id}`;
+      if (lb.section === "reys") {
+        fd.append("type", name);
+      } else {
+        fd.append("section", lb.section);
+        fd.append("code", name);
+      }
+      const res = await fetch(path, { method: "PUT", body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Yangilab bo'lmadi");
+      if (lb.section === "reys") {
+        Object.assign(e, { type: name, weight, coefficient, coefMode: coefficient ? "custom" : "none", net });
+        if (json.inventory) state.inventory = json.inventory;
+        loadInventory();
+      } else {
+        Object.assign(e, { code: name, weight, coefficient, coefMode: coefficient ? "custom" : "none", net });
+      }
+      if (json.edited) e.editedAt = Date.now();
+      lb.caption = entryCaption(e);
+      closeLightboxEdit(true);
+      renderEntries();
+      showToast(json.edited ? "Yangilandi ✓" : "O'zgarish yo'q");
+    } catch (err) {
+      showToast(err.message || "Yangilab bo'lmadi", true);
+    } finally {
+      lbSaving = false;
+      els.lbEditSave.disabled = false;
+    }
   }
 
   // Swipe left/right to page (Telegram-style). The .lightbox has
@@ -761,6 +867,10 @@
   els.lightbox.addEventListener("click", (e) => { if (e.target === els.lightbox) closeLightbox(); });
   els.lightboxClose.addEventListener("click", closeLightbox);
   els.lightboxDel.addEventListener("click", deleteFromLightbox);
+  els.lightboxEdit.addEventListener("click", openLightboxEdit);
+  els.lbEditCancel.addEventListener("click", () => closeLightboxEdit(true));
+  els.lbEditSave.addEventListener("click", saveLightboxEdit);
+  els.lightboxEditPanel.addEventListener("click", (e) => e.stopPropagation());
   els.lightboxPrev.addEventListener("click", () => lbNav(-1));
   els.lightboxNext.addEventListener("click", () => lbNav(1));
 

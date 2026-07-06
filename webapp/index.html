@@ -249,6 +249,29 @@
       <div class="lightbox__caption-main" id="lightboxCapMain"></div>
       <div class="lightbox__caption-sub" id="lightboxCapSub"></div>
     </div>
+    <button type="button" class="lightbox__edit" id="lightboxEdit" aria-label="Tahrirlash" hidden>
+      <svg viewBox="0 0 24 24" class="ic"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/></svg>
+      Tahrirlash
+    </button>
+    <div class="lightbox__edit-panel" id="lightboxEditPanel" hidden>
+      <div class="lightbox__edit-title" id="lbEditTitle">Tahrirlash</div>
+      <label class="lightbox__field">
+        <span id="lbEditNameLabel">Nomi</span>
+        <input type="text" id="lbEditName" autocomplete="off" />
+      </label>
+      <label class="lightbox__field">
+        <span>Og'irlik</span>
+        <input type="text" inputmode="decimal" id="lbEditWeight" />
+      </label>
+      <label class="lightbox__field" id="lbEditCoefRow">
+        <span id="lbEditCoefLabel">Koeffitsient</span>
+        <input type="text" inputmode="decimal" id="lbEditCoef" />
+      </label>
+      <div class="lightbox__edit-actions">
+        <button type="button" class="lightbox__edit-cancel" id="lbEditCancel">Bekor qilish</button>
+        <button type="button" class="lightbox__edit-save" id="lbEditSave">Saqlash</button>
+      </div>
+    </div>
     <button type="button" class="lightbox__del" id="lightboxDel" aria-label="O'chirish">
       <svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Zm4 2v8h1v-8h-1Zm3 0v8h1v-8h-1Z"/></svg>
       O'chirish

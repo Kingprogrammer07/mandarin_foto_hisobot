@@ -753,6 +753,76 @@ body.locked { overflow: hidden; }
 .lightbox__caption[hidden] { display: none; }
 .lightbox__caption-main { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lightbox__caption-sub { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+.lightbox__edit {
+  position: absolute;
+  right: 14px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.lightbox__edit[hidden] { display: none; }
+.lightbox__edit-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(18, 20, 24, 0.94);
+  color: #fff;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.lightbox__edit-panel[hidden] { display: none; }
+.lightbox__edit-title { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
+.lightbox__field { display: block; margin-top: 9px; }
+.lightbox__field span {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+}
+.lightbox__field input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  padding: 0 12px;
+  font-size: 16px;
+  outline: none;
+}
+.lightbox__field input:focus { border-color: rgba(255, 255, 255, 0.42); }
+.lightbox__edit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.lightbox__edit-actions button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.lightbox__edit-cancel { background: rgba(255, 255, 255, 0.14); }
+.lightbox__edit-save { background: var(--accent); }
 
 /* ---------- Topbar back + report name ---------- */
 .topbar__back { color: var(--accent); }
