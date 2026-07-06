@@ -19,7 +19,10 @@
   if (isIOS) document.documentElement.classList.add("ios");
 
   const MAX_PHOTOS = 10;
-  const DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"];
+  const DEFAULT_TYPES = [
+    "akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin",
+    "oneway", "x637", "x517", "redwing",
+  ];
   const OBSHIY_SECTIONS = ["top", "topchiqgan", "bizda", "chiqgan"];
 
   // Obshiy ves sub-sections that share one photo+code+weight form. `codeRequired`

@@ -363,6 +363,9 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     for row in range(4, ws.max_row + 1):
         label = str(ws.cell(row, 2).value or "").strip().lower()
         if label:
+            if label == "one":
+                label = "oneway"
+                ws.cell(row, 2).value = "oneway"
             label_rows[label] = row
 
     represented = set(label_rows)

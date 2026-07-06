@@ -21,7 +21,10 @@ from . import config
 _DB = config.DATA_DIR / "reys.db"
 _LOCK = threading.Lock()
 
-DEFAULT_TYPES = ["akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin"]
+DEFAULT_TYPES = [
+    "akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin",
+    "oneway", "x637", "x517", "redwing",
+]
 MAX_REPORTS = 9999
 
 
@@ -201,6 +204,15 @@ def init() -> None:
                 "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
                 (top_restore, int(time.time())),
             )
+
+        now = int(time.time())
+        report_rows = c.execute("SELECT id FROM reports").fetchall()
+        for report in report_rows:
+            for tovar_turi in DEFAULT_TYPES:
+                c.execute(
+                    "INSERT OR IGNORE INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
+                    (report["id"], tovar_turi, now),
+                )
 
 
 # --------------------------------------------------------------------------
