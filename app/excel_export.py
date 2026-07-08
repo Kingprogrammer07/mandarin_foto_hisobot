@@ -343,17 +343,13 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         ws.cell(r, 1).value = None
 
     a_row = 2
-    for value in obshiy_totals:
-        if value:
-            ws.cell(a_row, 1).value = value
-            ws.cell(a_row, 1).number_format = "0.00"
-            a_row += 1
-    if no_coef_reys_total:
-        ws.cell(a_row, 1).value = -no_coef_reys_total
-        ws.cell(a_row, 1).number_format = "0.00"
+    clean_total = round(sum(obshiy_totals) - no_coef_reys_total, 4)
+    ws.cell(a_row, 1).value = clean_total
+    ws.cell(a_row, 1).number_format = "0.00"
 
-    ws["B2"] = report_name
+    ws["E2"] = "To'lashi kerak bo'lgan summa:"
     ws["F2"] = date.today().strftime("%d.%m.%Y")
+    ws["F3"] = report_name
     ws["C2"] = "=SUM(A:A)"
     ws["C3"] = box_weight_total
     ws["C3"].number_format = "0.00"
@@ -380,7 +376,7 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         label_rows[tovar_turi] = next_row
         next_row += 1
 
-    non_distributed = {"izi", "triton", "top"}
+    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt", "uztez", "x637", "x517"}
     for label, row in label_rows.items():
         if label == "karobka":
             continue
@@ -389,19 +385,21 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         ws.cell(row, 3).value = inv.get(label, 0)
         ws.cell(row, 3).number_format = "0.00"
 
-    for label in non_distributed:
-        row = label_rows.get(label)
-        if row:
-            ws.cell(row, 4).value = None
-            ws.cell(row, 5).value = f"=C{row}+D{row}"
-
     distributable_rows = [
         row for label, row in label_rows.items()
-        if label not in non_distributed and label not in {"karobka", "mandarin"}
+        if label in distributed_labels
     ]
+    non_distributed_rows = [
+        row for label, row in label_rows.items()
+        if label not in distributed_labels and label not in {"karobka", "mandarin"}
+    ]
+    for row in non_distributed_rows:
+        ws.cell(row, 4).value = None
+        ws.cell(row, 5).value = f"=C{row}+D{row}"
+
     mandarin_row = label_rows.get("mandarin", 4)
-    non_distributed_refs = [f"C{label_rows[label]}" for label in non_distributed if label in label_rows]
-    ws["G3"] = f"=C2-C3" + ("-" + "-".join(non_distributed_refs) if non_distributed_refs else "")
+    non_distributed_refs = [f"C{row}" for row in non_distributed_rows]
+    ws["G3"] = f"=C2" + ("-" + "-".join(non_distributed_refs) if non_distributed_refs else "") + "-C3"
     ws["H3"] = "=IF(G3=0,0,C3/G3)"
     ws.cell(mandarin_row, 3).value = (
         "=G3" + ("-" + "-".join(f"C{row}" for row in distributable_rows) if distributable_rows else "")
@@ -413,7 +411,7 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         ws.cell(row, 4).value = f"=C{row}*$H$3"
         ws.cell(row, 5).value = f"=C{row}+D{row}"
 
-    for row in set([3, mandarin_row] + distributable_rows + [label_rows[l] for l in non_distributed if l in label_rows]):
+    for row in set([3, mandarin_row] + distributable_rows + non_distributed_rows):
         for col in (3, 4, 5, 7, 8):
             ws.cell(row, col).number_format = "0.00"
 
