@@ -271,10 +271,24 @@ def build_obshiy_excel(report_id: int) -> tuple[bytes, str]:
     return out.getvalue(), _safe_obshiy_filename(report_name)
 
 
+def _summary_type_key(tovar_turi: str) -> str:
+    key = str(tovar_turi or "").strip().lower()
+    if key == "one":
+        return "oneway"
+    if key == "uztez":
+        return "uzt"
+    if key.startswith("x"):
+        return "xabib"
+    return key
+
+
 def _inventory_for_summary(report_id: int) -> dict[str, float]:
-    inv = {str(k).strip().lower(): _num(v) for k, v in db.get_inventory(report_id).items()}
-    if "uztez" in inv:
-        inv["uzt"] = round(inv.get("uzt", 0) + inv["uztez"], 4)
+    inv: dict[str, float] = {}
+    for tovar_turi, value in db.get_inventory(report_id).items():
+        key = _summary_type_key(tovar_turi)
+        if not key:
+            continue
+        inv[key] = round(inv.get(key, 0) + _num(value), 4)
     return inv
 
 
@@ -300,16 +314,9 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         action: list(reversed(db.list_entries(report_id, action, limit=2000)))
         for action in OBSHIY_ACTION_ORDER
     }
-    top, top_order = _sum_obshiy_values_by_code(obshiy_entries["top"])
     topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
     bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
     chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
-    top_rows = _obshiy_rows(
-        top,
-        plus=chiqgan,
-        minus=topchiqgan,
-        order=_ordered_codes(top_order, chiqgan_order, topchiqgan_order),
-    )
     bizda_rows = _obshiy_rows(
         bizda,
         plus=topchiqgan,
@@ -317,18 +324,15 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
     )
 
-    obshiy_totals = [round(base + transfer, 4) for _, base, transfer in top_rows + bizda_rows]
+    bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 4)
     box_weight_total = round(sum(
         _num(e.get("coefficient"))
         for entries in obshiy_entries.values()
         for e in entries
     ), 4)
-    reys_entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
-    no_coef_reys_total = round(sum(
-        _num(e.get("weight"))
-        for e in reys_entries
-        if _num(e.get("coefficient")) <= 0
-    ), 4)
+    inv = _inventory_for_summary(report_id)
+    top_inventory = _num(inv.get("top", 0))
+    inv["top"] = 0.0
 
     template = UMUMIY_TEMPLATE if UMUMIY_TEMPLATE.exists() else LEGACY_UMUMIY_TEMPLATE
     if template.exists():
@@ -343,7 +347,7 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         ws.cell(r, 1).value = None
 
     a_row = 2
-    clean_total = round(sum(obshiy_totals) - no_coef_reys_total, 4)
+    clean_total = round(bizda_total - top_inventory, 4)
     ws.cell(a_row, 1).value = clean_total
     ws.cell(a_row, 1).number_format = "0.00"
 
@@ -354,13 +358,12 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     ws["C3"] = box_weight_total
     ws["C3"].number_format = "0.00"
 
-    inv = _inventory_for_summary(report_id)
     label_rows: dict[str, int] = {}
     for row in range(4, ws.max_row + 1):
-        label = str(ws.cell(row, 2).value or "").strip().lower()
+        raw_label = str(ws.cell(row, 2).value or "").strip().lower()
+        label = _summary_type_key(raw_label)
         if label:
-            if label == "one":
-                label = "oneway"
+            if raw_label == "one":
                 ws.cell(row, 2).value = "oneway"
             label_rows[label] = row
 
@@ -376,7 +379,7 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         label_rows[tovar_turi] = next_row
         next_row += 1
 
-    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt", "uztez", "x637", "x517"}
+    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt"}
     for label, row in label_rows.items():
         if label == "karobka":
             continue
