@@ -292,6 +292,12 @@ def _inventory_for_summary(report_id: int) -> dict[str, float]:
     return inv
 
 
+def _summary_box_weight(obshiy_entries: dict[str, list[dict]], reys_entries: list[dict]) -> float:
+    obshiy_box = round(sum(_num(e.get("coefficient")) for e in obshiy_entries.get("bizda", [])), 4)
+    kargo_box = round(sum(_num(e.get("box_weight")) for e in reys_entries), 4)
+    return round(obshiy_box - kargo_box, 4)
+
+
 def _copy_row_style(ws, source_row: int, target_row: int, max_col: int) -> None:
     for col in range(1, max_col + 1):
         src = ws.cell(source_row, col)
@@ -325,11 +331,8 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     )
 
     bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 4)
-    box_weight_total = round(sum(
-        _num(e.get("coefficient"))
-        for entries in obshiy_entries.values()
-        for e in entries
-    ), 4)
+    reys_entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
+    box_weight_total = _summary_box_weight(obshiy_entries, reys_entries)
     inv = _inventory_for_summary(report_id)
     top_inventory = _num(inv.get("top", 0))
     inv["top"] = 0.0

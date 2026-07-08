@@ -25,6 +25,7 @@ DEFAULT_TYPES = [
     "akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin",
     "oneway", "x637", "x517", "redwing",
 ]
+DEFAULT_TYPE_SET = {t.lower() for t in DEFAULT_TYPES}
 MAX_REPORTS = 9999
 
 
@@ -49,6 +50,45 @@ class ActivityNotFound(Exception):
 
 
 OBSHIY_ACTIONS = {"top", "topchiqgan", "bizda", "chiqgan"}
+
+
+def _clean_type(name: str) -> str:
+    return str(name or "").strip().lower()
+
+
+def _is_default_type(name: str) -> bool:
+    return _clean_type(name) in DEFAULT_TYPE_SET
+
+
+def _ensure_custom_type(c: sqlite3.Connection, name: str) -> str:
+    name = _clean_type(name)
+    if name and not _is_default_type(name):
+        now = int(time.time())
+        c.execute(
+            """INSERT INTO custom_types(name, created_at, deleted_at)
+               VALUES(?, ?, NULL)
+               ON CONFLICT(name) DO UPDATE SET deleted_at = NULL""",
+            (name, now),
+        )
+    return name
+
+
+def _active_custom_types(c: sqlite3.Connection) -> list[str]:
+    return [
+        r["name"] for r in c.execute(
+            "SELECT name FROM custom_types WHERE deleted_at IS NULL ORDER BY name"
+        )
+    ]
+
+
+def _all_type_names(c: sqlite3.Connection) -> list[str]:
+    out = list(DEFAULT_TYPES)
+    seen = {_clean_type(t) for t in out}
+    for name in _active_custom_types(c):
+        if name not in seen:
+            out.append(name)
+            seen.add(name)
+    return out
 
 
 def _connect() -> sqlite3.Connection:
@@ -138,9 +178,16 @@ def init() -> None:
                  edited_at   INTEGER,
                  deleted_at  INTEGER)"""
         )
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS custom_types(
+                 name       TEXT PRIMARY KEY,
+                 created_at INTEGER NOT NULL,
+                 deleted_at INTEGER)"""
+        )
         _add_column(c, "reports", "deleted_at", "INTEGER")
         _add_column(c, "activity", "edited_at", "INTEGER")
         _add_column(c, "activity", "deleted_at", "INTEGER")
+        _add_column(c, "activity", "box_weight", "REAL")
         c.execute("CREATE INDEX IF NOT EXISTS idx_activity_report ON activity(report_id, id)")
         c.execute(
             """CREATE TABLE IF NOT EXISTS schema_migrations(
@@ -184,7 +231,7 @@ def init() -> None:
         # Self-heal any non-finite (inf/nan/null) values from before the guards.
         fin = "({c} IS NOT NULL AND {c} > -1e308 AND {c} < 1e308)"
         c.execute(f"UPDATE inventory SET weight = 0 WHERE NOT {fin.format(c='weight')}")
-        for col in ("weight", "coefficient", "net"):
+        for col in ("weight", "coefficient", "net", "box_weight"):
             c.execute(
                 f"UPDATE activity SET {col} = 0 "
                 f"WHERE {col} IS NOT NULL AND NOT {fin.format(c=col)}"
@@ -205,10 +252,46 @@ def init() -> None:
                 (top_restore, int(time.time())),
             )
 
+        custom_backfill = "custom_types_backfill_20260708"
+        if c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (custom_backfill,)).fetchone() is None:
+            rows = c.execute(
+                """SELECT tovar_turi AS name FROM activity WHERE action = 'reys' AND tovar_turi IS NOT NULL
+                   UNION SELECT from_type FROM activity WHERE action = 'adjust' AND from_type IS NOT NULL
+                   UNION SELECT to_type FROM activity WHERE action = 'adjust' AND to_type IS NOT NULL"""
+            ).fetchall()
+            for row in rows:
+                _ensure_custom_type(c, row["name"])
+            c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (custom_backfill, int(time.time())),
+            )
+
+        custom_prune = "custom_types_prune_obshiy_codes_20260708"
+        if c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (custom_prune,)).fetchone() is None:
+            product_rows = c.execute(
+                """SELECT tovar_turi AS name FROM activity WHERE action = 'reys' AND tovar_turi IS NOT NULL
+                   UNION SELECT from_type FROM activity WHERE action = 'adjust' AND from_type IS NOT NULL
+                   UNION SELECT to_type FROM activity WHERE action = 'adjust' AND to_type IS NOT NULL
+                   UNION SELECT tovar_turi FROM inventory WHERE ABS(COALESCE(weight, 0)) > 0.0001"""
+            ).fetchall()
+            product_names = {_clean_type(r["name"]) for r in product_rows if _clean_type(r["name"])}
+            for row in c.execute("SELECT name FROM custom_types WHERE deleted_at IS NULL").fetchall():
+                name = _clean_type(row["name"])
+                if name and not _is_default_type(name) and name not in product_names:
+                    c.execute("UPDATE custom_types SET deleted_at = ? WHERE name = ?", (int(time.time()), name))
+                    c.execute(
+                        "DELETE FROM inventory WHERE tovar_turi = ? AND ABS(COALESCE(weight, 0)) <= 0.0001",
+                        (name,),
+                    )
+            c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (custom_prune, int(time.time())),
+            )
+
         now = int(time.time())
         report_rows = c.execute("SELECT id FROM reports").fetchall()
         for report in report_rows:
-            for tovar_turi in DEFAULT_TYPES:
+            for tovar_turi in _all_type_names(c):
                 c.execute(
                     "INSERT OR IGNORE INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
                     (report["id"], tovar_turi, now),
@@ -238,7 +321,7 @@ def create_report(name: str) -> dict:
             raise DuplicateName(name)
         cur = c.execute("INSERT INTO reports(name, created_at) VALUES(?, ?)", (name, now))
         rid = cur.lastrowid
-        for t in DEFAULT_TYPES:
+        for t in _all_type_names(c):
             c.execute(
                 "INSERT INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
                 (rid, t, now),
@@ -278,10 +361,52 @@ def delete_report(report_id: int) -> None:
         )
 
 
+def list_types() -> dict:
+    with _db() as c:
+        custom = _active_custom_types(c)
+    return {"default": list(DEFAULT_TYPES), "custom": custom, "types": list(DEFAULT_TYPES) + custom}
+
+
+def add_custom_type(name: str) -> str:
+    name = _clean_type(name)
+    if not name:
+        raise ValueError("empty type")
+    now = int(time.time())
+    with _db() as c:
+        if _is_default_type(name):
+            return name
+        c.execute(
+            """INSERT INTO custom_types(name, created_at, deleted_at)
+               VALUES(?, ?, NULL)
+               ON CONFLICT(name) DO UPDATE SET deleted_at = NULL""",
+            (name, now),
+        )
+        for report in c.execute("SELECT id FROM reports WHERE deleted_at IS NULL").fetchall():
+            c.execute(
+                "INSERT OR IGNORE INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
+                (report["id"], name, now),
+            )
+    return name
+
+
+def delete_custom_type(name: str) -> None:
+    name = _clean_type(name)
+    if not name:
+        raise ValueError("empty type")
+    if _is_default_type(name):
+        raise ValueError("default type")
+    with _db() as c:
+        c.execute(
+            "UPDATE custom_types SET deleted_at = ? WHERE name = ?",
+            (int(time.time()), name),
+        )
+
+
 # --------------------------------------------------------------------------
 # Inventory / operations (all scoped to a report)
 # --------------------------------------------------------------------------
 def _ensure_type(c: sqlite3.Connection, report_id: int, t: str) -> None:
+    t = _ensure_custom_type(c, t)
     c.execute(
         "INSERT OR IGNORE INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
         (report_id, t, int(time.time())),
@@ -299,8 +424,13 @@ def get_inventory(report_id: int) -> dict[str, float]:
 
 
 def add_reys(report_id: int, actor: str, tovar_turi: str, weight: float,
-             coefficient: float, net: float, photos: int) -> dict:
-    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net)):
+             coefficient: float, net: float, photos: int, box_weight: float = 0) -> dict:
+    if not (
+        math.isfinite(weight)
+        and math.isfinite(coefficient)
+        and math.isfinite(net)
+        and math.isfinite(box_weight)
+    ):
         raise ValueError("non-finite value")
     now = int(time.time())
     with _db() as c:
@@ -310,9 +440,9 @@ def add_reys(report_id: int, actor: str, tovar_turi: str, weight: float,
             (net, now, report_id, tovar_turi),
         )
         cur = c.execute(
-            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, coefficient, net, photos)
-               VALUES(?, ?, ?, 'reys', ?, ?, ?, ?, ?)""",
-            (report_id, now, actor, tovar_turi, weight, coefficient, net, photos),
+            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, coefficient, net, photos, box_weight)
+               VALUES(?, ?, ?, 'reys', ?, ?, ?, ?, ?, ?)""",
+            (report_id, now, actor, tovar_turi, weight, coefficient, net, photos, box_weight),
         )
         bal = c.execute(
             "SELECT weight FROM inventory WHERE report_id = ? AND tovar_turi = ?",
@@ -413,8 +543,13 @@ def _apply_balances(c: sqlite3.Connection, report_id: int, deltas: dict[str, flo
 # Edits change numbers only; photos are immutable after the initial save, so the
 # stored `photos` count is left untouched.
 def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
-              coefficient: float, net: float) -> dict:
-    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net)):
+              coefficient: float, net: float, box_weight: float = 0) -> dict:
+    if not (
+        math.isfinite(weight)
+        and math.isfinite(coefficient)
+        and math.isfinite(net)
+        and math.isfinite(box_weight)
+    ):
         raise ValueError("non-finite value")
     now = int(time.time())
     with _db() as c:
@@ -424,6 +559,7 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
             or not _same_num(old["weight"], weight)
             or not _same_num(old["coefficient"], coefficient)
             or not _same_num(old["net"], net)
+            or not _same_num(old["box_weight"], box_weight)
         )
         if not changed:
             return {"balance": _inventory(c, report_id).get(tovar_turi, 0), "inventory": _inventory(c, report_id), "edited": False}
@@ -432,8 +568,8 @@ def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: float,
         deltas[tovar_turi] = deltas.get(tovar_turi, 0) + net
         balances = _apply_balances(c, report_id, deltas)
         c.execute(
-            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, edited_at = ? WHERE id = ?",
-            (tovar_turi, weight, coefficient, net, now, entry_id),
+            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, box_weight = ?, edited_at = ? WHERE id = ?",
+            (tovar_turi, weight, coefficient, net, box_weight, now, entry_id),
         )
         return {"balance": balances.get(tovar_turi, 0), "inventory": balances, "edited": True}
 

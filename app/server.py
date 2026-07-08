@@ -443,6 +443,45 @@ async def api_reports_zero_top_coefficients(request: Request, report_id: int):
     return {"ok": True, "changed": changed}
 
 
+@app.get("/api/types")
+async def api_types_list(request: Request):
+    _auth_or_403(request, state_changing=False)
+    return db.list_types()
+
+
+@app.post("/api/types")
+async def api_types_add(request: Request):
+    if not _rate_ok(f"types:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="tovar turini kiriting")
+    if len(name) > 40:
+        raise HTTPException(status_code=400, detail="tovar turi juda uzun")
+    try:
+        name = db.add_custom_type(name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="tovar turi noto'g'ri")
+    return {"ok": True, "name": name, **db.list_types()}
+
+
+@app.delete("/api/types/{name}")
+async def api_types_delete(request: Request, name: str):
+    if not _rate_ok(f"types:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    _auth_or_403(request, state_changing=True)
+    try:
+        db.delete_custom_type(name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="default tovar turini o'chirib bo'lmaydi")
+    return {"ok": True, **db.list_types()}
+
+
 # ---------------------------------------------------------------------------
 # Reys hisoboti — add net weight to a report's tovar turi balance
 # ---------------------------------------------------------------------------
@@ -454,6 +493,7 @@ async def submit_report(
     type: str = Form(...),
     coefficient: float = Form(...),
     coefficient_mode: str = Form(...),
+    box_weight: float = Form(0),
     weight: float = Form(...),
     photos: list[UploadFile] = [],  # noqa: B006 (FastAPI handles default)
 ):
@@ -467,11 +507,11 @@ async def submit_report(
     if not tovar_turi:
         raise HTTPException(status_code=400, detail="tovar turi tanlanmagan")
     # Reject inf/nan before any arithmetic hits the DB (would poison a balance).
-    if not (math.isfinite(weight) and math.isfinite(coefficient)):
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(box_weight)):
         raise HTTPException(status_code=400, detail="qiymat noto'g'ri")
     if not (weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
-    if coefficient < 0:
+    if coefficient < 0 or box_weight < 0:
         raise HTTPException(status_code=400, detail="koeffitsient noto'g'ri")
     # net weight added to inventory = weight − coefficient (coef is kg to subtract).
     net = round(weight - coefficient, 4)
@@ -480,7 +520,7 @@ async def submit_report(
 
     photo_data = await _read_photos(photos)
 
-    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photo_data))
+    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photo_data), box_weight)
     entry_id = result["entry_id"]
     if photo_data:
         db.save_photos(entry_id, photo_data)  # persisted to disk (survives a crash)
@@ -500,6 +540,7 @@ async def edit_report_entry(
     type: str = Form(...),
     coefficient: float = Form(...),
     coefficient_mode: str = Form(""),
+    box_weight: float = Form(0),
     weight: float = Form(...),
 ):
     """Fix a saved reys entry's numbers. Photos are immutable after the initial
@@ -513,18 +554,18 @@ async def edit_report_entry(
     tovar_turi = (type or "").strip()
     if not tovar_turi:
         raise HTTPException(status_code=400, detail="tovar turi tanlanmagan")
-    if not (math.isfinite(weight) and math.isfinite(coefficient)):
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(box_weight)):
         raise HTTPException(status_code=400, detail="qiymat noto'g'ri")
     if not (weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
-    if coefficient < 0:
+    if coefficient < 0 or box_weight < 0:
         raise HTTPException(status_code=400, detail="koeffitsient noto'g'ri")
     net = round(weight - coefficient, 4)
     if net < 0:
         raise HTTPException(status_code=400, detail="koeffitsient og'irlikdan katta")
 
     try:
-        result = db.edit_reys(rid, entry_id, tovar_turi, weight, coefficient, net)
+        result = db.edit_reys(rid, entry_id, tovar_turi, weight, coefficient, net, box_weight)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
     except db.InsufficientStock as exc:

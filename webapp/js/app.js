@@ -55,9 +55,9 @@
     formSection: "top", // which SECTIONS entry the form is currently editing
     entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] },
     type: "akb",
-    customTypes: [], // user-added types not yet persisted to inventory
+    customTypes: [], // server-persisted user-added types
     inventory: {}, // tovar_turi -> weight (from server)
-    coef: { mode: "none", value: 0 }, // mode: none | fixed | custom
+    coef: { mode: "none", value: 0, boxWeight: 0 }, // mode: none | box | fixed | custom
     weightRaw: "",
     adjFrom: "",
     adjTo: "",
@@ -89,9 +89,21 @@
   // Union of default types, inventory types, and locally-added custom types.
   function allTypes() {
     const set = new Set(DEFAULT_TYPES);
-    Object.keys(state.inventory).forEach((t) => set.add(t));
     state.customTypes.forEach((t) => set.add(t));
+    Object.entries(state.inventory).forEach(([t, w]) => {
+      if (Number(w) !== 0) set.add(t);
+    });
     return [...set].sort((a, b) => a.localeCompare(b));
+  }
+
+  async function loadTypes() {
+    try {
+      const res = await fetch("/api/types", { headers: authHeaders() });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      state.customTypes = Array.isArray(json.custom) ? json.custom : [];
+      if (sheetOpen) renderSheet(els.sheetInput.value || "");
+    } catch (_) {}
   }
 
   const authHeaders = () => (inTelegram ? { "X-Telegram-Init-Data": tg.initData } : {});
@@ -968,6 +980,7 @@
     els.homeScreen.hidden = false;
     document.body.classList.add("locked");
     syncBackButton(); // home is the root → no back button
+    loadTypes();
     loadReports();
   }
 
@@ -991,6 +1004,7 @@
     resetTop(true);
     clearEntries();
     setTab("report");
+    loadTypes();
     loadInventory();
     OBSHIY_SECTIONS.forEach(loadEntries);
     loadEntries("reys");
@@ -1061,7 +1075,8 @@
     state.topWeightRaw = "";
     els.topWeight.value = "";
     renderPhotos("topPhotos");
-    setTopCoefUI("none", 0);
+    if (state.formSection === "bizda") setTopCoefUI("fixed", 1);
+    else setTopCoefUI("none", 0);
     if (full) {
       // Opening a report resets the free-text unlock back to numeric-only;
       // fast mode is a persisted workflow preference, so it's kept.
@@ -1530,7 +1545,7 @@
     }
     const sub = document.createElement("div");
     sub.className = "entry-card__sub";
-    const coefTxt = e.type && e.coefficient ? `koef ${e.coefficient} · ` : "";
+    const coefTxt = e.type && e.boxWeight ? `karobka ${e.boxWeight} · ` : (e.type && e.coefficient ? `koef ${e.coefficient} · ` : "");
     const statusBadge = document.createElement("span");
     statusBadge.className = "entry-status";
     const statusTxt = e.error
@@ -1605,14 +1620,24 @@
 
   // Restore a coefficient into the chips row (none / fixed 0.94 / fixed 1.22 /
   // custom). A fixed value with no matching chip falls back to custom.
+  function setCoefBoxMenu(open) {
+    els.coefChips.querySelectorAll('[data-mode="box"]').forEach((chip) => {
+      chip.hidden = !open;
+    });
+  }
+
   function setCoefUI(mode, value) {
     const chips = [...els.coefChips.querySelectorAll(".chip")];
+    let boxWeight = 0;
+    if (mode === "box") boxWeight = Number(value) || 0;
     let target = null;
     if (mode === "none") target = chips.find((c) => c.dataset.mode === "none");
+    else if (mode === "box") target = chips.find((c) => c.dataset.mode === "box" && parseFloat(c.dataset.value) === boxWeight);
     else if (mode === "fixed") target = chips.find((c) => c.dataset.mode === "fixed" && parseFloat(c.dataset.value) === value);
-    if (!target) { mode = "custom"; target = chips.find((c) => c.dataset.mode === "custom"); }
+    if (!target) { mode = "custom"; boxWeight = 0; target = chips.find((c) => c.dataset.mode === "custom"); }
     chips.forEach((c) => c.classList.toggle("is-active", c === target));
-    state.coef = { mode, value: mode === "none" ? 0 : value };
+    state.coef = { mode, value: mode === "fixed" || mode === "custom" ? value : 0, boxWeight };
+    setCoefBoxMenu(mode === "box");
     els.coefCustomWrap.hidden = mode !== "custom";
     els.coefCustom.value = mode === "custom" ? String(value) : "";
   }
@@ -1627,7 +1652,7 @@
     resetForm(true);
     state.type = entry.type;
     els.typeValue.textContent = entry.type;
-    setCoefUI(entry.coefMode || "none", entry.coefficient || 0);
+    setCoefUI(entry.boxWeight ? "box" : (entry.coefMode || "none"), entry.boxWeight || entry.coefficient || 0);
     els.weight.value = String(entry.weight);
     state.weightRaw = String(entry.weight);
     (entry.files || []).forEach((f) => state.photos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
@@ -1767,7 +1792,15 @@
         coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
     }
     const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
-    return { ...base, type: f.type, coefMode: f.coefficient_mode, coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
+    return {
+      ...base,
+      type: f.type,
+      coefMode: f.coefficient_mode,
+      coefficient: coef,
+      boxWeight: Number(f.box_weight) || 0,
+      weight: w,
+      net: Math.round((w - coef) * 1e4) / 1e4,
+    };
   }
 
   function findByLocalId(localId) {
@@ -1900,7 +1933,16 @@
         coefficient: coef, weight: w, net };
     }
     const coef = Number(r.coefficient) || 0;
-    return { ...base, type: r.tovar_turi, coefMode: coef ? "fixed" : "none", coefficient: coef, weight: r.weight, net: r.net };
+    const boxWeight = Number(r.box_weight) || 0;
+    return {
+      ...base,
+      type: r.tovar_turi,
+      coefMode: boxWeight ? "box" : (coef ? "fixed" : "none"),
+      coefficient: coef,
+      boxWeight,
+      weight: r.weight,
+      net: r.net,
+    };
   }
   async function fetchEntryFiles(entryId, idxs) {
     const files = [];
@@ -2230,10 +2272,10 @@
     syncBackButton();
   }
 
-  // A type is deletable only if it's a local custom addition not yet persisted
-  // to inventory (never used in a saved report/adjustment).
+  // Default types stay fixed; custom types can be removed from the selector
+  // without deleting historical report rows.
   function isDeletable(t) {
-    return state.customTypes.includes(t) && !(t in state.inventory);
+    return state.customTypes.includes(t);
   }
 
   function renderSheet(query) {
@@ -2294,26 +2336,48 @@
     haptic("select");
   }
 
-  function addType(value) {
+  async function addType(value) {
     value = (value || "").trim();
     if (!value) return;
     // Prefer the canonical casing of an existing option; only add if new.
     const existing = allTypes().find((t) => t.toLowerCase() === value.toLowerCase());
     if (existing) { selectValue(existing); return; }
-    state.customTypes.push(value);
-    selectValue(value);
+    try {
+      const res = await fetch("/api/types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ init_data: inTelegram ? tg.initData : "", name: value }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "Tovar turini qo'shib bo'lmadi");
+      state.customTypes = Array.isArray(json.custom) ? json.custom : state.customTypes;
+      selectValue(json.name || value.toLowerCase());
+    } catch (e) {
+      showToast(e.message || "Tovar turini qo'shib bo'lmadi", true);
+    }
   }
 
-  function deleteType(t) {
+  async function deleteType(t) {
     const idx = state.customTypes.indexOf(t);
     if (idx === -1) return;
-    state.customTypes.splice(idx, 1);
-    // If any selector currently points at the deleted type, reset it.
-    if (state.type === t) reysTypeTarget.onSelect(reysTypeTarget.fallback);
-    if (state.adjFrom === t) adjFromTarget.onSelect("");
-    if (state.adjTo === t) adjToTarget.onSelect("");
-    renderSheet(els.sheetInput.value); // keep the sheet open
-    haptic("light");
+    if (!(await confirmDialog(`"${t}" tovar turi ro'yxatdan o'chirilsinmi?`))) return;
+    try {
+      const res = await fetch(`/api/types/${encodeURIComponent(t)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.detail || "O'chirib bo'lmadi");
+      state.customTypes = Array.isArray(json.custom) ? json.custom : state.customTypes.filter((x) => x !== t);
+      // If any selector currently points at the deleted type, reset it.
+      if (state.type === t) reysTypeTarget.onSelect(reysTypeTarget.fallback);
+      if (state.adjFrom === t) adjFromTarget.onSelect("");
+      if (state.adjTo === t) adjToTarget.onSelect("");
+      renderSheet(els.sheetInput.value); // keep the sheet open
+      haptic("light");
+    } catch (e) {
+      showToast(e.message || "O'chirib bo'lmadi", true);
+    }
   }
 
   // Selector targets
@@ -2414,18 +2478,28 @@
       chip.classList.add("is-active");
       const mode = chip.dataset.mode;
       state.coef.mode = mode;
+      if (mode === "none") {
+        const shouldOpen = [...els.coefChips.querySelectorAll('[data-mode="box"]')].some((c) => c.hidden);
+        setCoefBoxMenu(shouldOpen);
+      } else {
+        setCoefBoxMenu(mode === "box");
+      }
       if (mode === "custom") {
         els.coefCustomWrap.hidden = false;
+        state.coef.boxWeight = 0;
         setTimeout(() => els.coefCustom.focus(), 60);
       } else {
         els.coefCustomWrap.hidden = true;
-        state.coef.value = mode === "none" ? 0 : parseFloat(chip.dataset.value);
+        const value = parseFloat(chip.dataset.value);
+        state.coef.value = mode === "fixed" ? value : 0;
+        state.coef.boxWeight = mode === "box" ? value : 0;
       }
       haptic("select");
     });
   });
   els.coefCustom.addEventListener("input", (e) => {
     state.coef.value = parseFloat(e.target.value.replace(",", "."));
+    state.coef.boxWeight = 0;
   });
 
   els.topCoefChips.querySelectorAll(".chip").forEach((chip) => {
@@ -2677,6 +2751,7 @@
     const weight = parseFloat(state.weightRaw.replace(",", "."));
     let coefValue = 0;
     if (state.coef.mode === "none") coefValue = 0;
+    else if (state.coef.mode === "box") coefValue = 0;
     else if (state.coef.mode === "fixed") coefValue = state.coef.value;
     else coefValue = parseFloat(String(els.coefCustom.value).replace(",", "."));
 
@@ -2684,6 +2759,7 @@
       type: state.type,
       coefficient_mode: state.coef.mode,
       coefficient: coefValue,
+      box_weight: state.coef.mode === "box" ? Number(state.coef.boxWeight) || 0 : 0,
       weight,
       photos: state.photos.map((p) => p.file),
     };
@@ -2692,6 +2768,8 @@
   function validate(data) {
     if (!data.photos.length) return "Kamida 1 ta rasm qo'shing";
     if (!isFinite(data.weight) || data.weight <= 0) return "Og'irlikni to'g'ri kiriting";
+    if (state.coef.mode === "box" && (!isFinite(data.box_weight) || data.box_weight <= 0))
+      return "Karobka og'irligini tanlang";
     if (state.coef.mode === "custom" && (!isFinite(data.coefficient) || data.coefficient <= 0))
       return "Koeffitsientni kiriting";
     return null;
@@ -2720,6 +2798,7 @@
           type: data.type,
           coefficient: data.coefficient,
           coefficient_mode: data.coefficient_mode,
+          box_weight: data.box_weight,
           weight: data.weight,
         }, data.photos);
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
@@ -2740,6 +2819,7 @@
       sameText(editing.type, data.type) &&
       sameText(editing.coefMode || "none", data.coefficient_mode || "none") &&
       sameNum(editing.coefficient, data.coefficient) &&
+      sameNum(editing.boxWeight || 0, data.box_weight || 0) &&
       sameNum(editing.weight, data.weight)
     ) {
       const stillCurrent = editingReys === editing;
@@ -2760,6 +2840,7 @@
     fd.append("type", data.type);
     fd.append("coefficient", String(data.coefficient));
     fd.append("coefficient_mode", data.coefficient_mode);
+    fd.append("box_weight", String(data.box_weight || 0));
     fd.append("weight", String(data.weight));
 
     try {
@@ -2770,7 +2851,7 @@
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
       Object.assign(editing, {
         type: data.type, coefMode: data.coefficient_mode,
-        coefficient: data.coefficient, weight: data.weight,
+        coefficient: data.coefficient, boxWeight: data.box_weight || 0, weight: data.weight,
       });
       if (json.edited) editing.editedAt = Date.now();
       // Only clear if the edit session still belongs to this request (it may
@@ -2806,7 +2887,7 @@
     // e.g. opening a report — each report starts from 0).
     if (full || !remember) {
       state.type = "akb";
-      state.coef = { mode: "none", value: 0 };
+      state.coef = { mode: "none", value: 0, boxWeight: 0 };
       els.typeValue.textContent = "akb";
       els.coefCustom.value = "";
       els.coefCustomWrap.hidden = true;
