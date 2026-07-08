@@ -1621,9 +1621,35 @@
 
   // Restore a coefficient into the chips row (none / fixed 0.94 / fixed 1.22 /
   // custom). A fixed value with no matching chip falls back to custom.
+  function ensureCoefBoxMenu() {
+    if (els.coefBoxMenu) return els.coefBoxMenu;
+    const menu = document.createElement("div");
+    menu.className = "coef-menu";
+    menu.id = "coefBoxMenu";
+    menu.hidden = true;
+    menu.innerHTML = [
+      '<button type="button" class="coef-menu__item" data-box-value="0">Ayirilmasin</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1">1</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1.22">1.22</button>',
+    ].join("");
+    els.coefChips.insertAdjacentElement("afterend", menu);
+    els.coefBoxMenu = menu;
+    return menu;
+  }
+
   function setCoefBoxMenu(open) {
-    if (!els.coefBoxMenu) return;
-    els.coefBoxMenu.hidden = !open;
+    const menu = ensureCoefBoxMenu();
+    if (!menu) return;
+    if (open) {
+      menu.hidden = false;
+      menu.removeAttribute("hidden");
+      menu.classList.add("is-open");
+      menu.style.display = "block";
+    } else {
+      menu.classList.remove("is-open");
+      menu.style.display = "none";
+      menu.hidden = true;
+    }
     els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
       const v = Number(btn.dataset.boxValue) || 0;
       const on = state.coef.mode === "box" ? sameNum(v, state.coef.boxWeight || 0) : v === 0;
@@ -2477,6 +2503,20 @@
   });
 
   // ---- Coefficient ----
+  els.coefChips.addEventListener("click", (ev) => {
+    const chip = ev.target.closest && ev.target.closest('.chip[data-mode="none"]');
+    if (!chip || !els.coefChips.contains(chip)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.stopImmediatePropagation();
+    els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
+    state.coef = { mode: "none", value: 0, boxWeight: 0 };
+    els.coefCustomWrap.hidden = true;
+    const menu = ensureCoefBoxMenu();
+    setCoefBoxMenu(menu ? menu.hidden : true);
+    haptic("select");
+  }, true);
+
   els.coefChips.querySelectorAll(".chip").forEach((chip) => {
     chip.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -2505,6 +2545,7 @@
       haptic("select");
     });
   });
+  ensureCoefBoxMenu();
   if (els.coefBoxMenu) {
     els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {

@@ -314,6 +314,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   color: var(--accent);
 }
 .coef-menu {
+  display: none;
   margin-top: 8px;
   width: min(260px, 100%);
   padding: 6px;
@@ -323,6 +324,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   box-shadow: var(--shadow);
   animation: panelIn 0.16s var(--ease);
 }
+.coef-menu.is-open { display: block; }
 .coef-menu__item {
   width: 100%;
   min-height: 42px;
