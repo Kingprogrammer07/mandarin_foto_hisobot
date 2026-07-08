@@ -313,6 +313,34 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   border-color: var(--accent);
   color: var(--accent);
 }
+.coef-menu {
+  margin-top: 8px;
+  width: min(260px, 100%);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+  border: 1px solid var(--separator);
+  box-shadow: var(--shadow);
+  animation: panelIn 0.16s var(--ease);
+}
+.coef-menu__item {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.coef-menu__item:active,
+.coef-menu__item.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
 .custom-coef { margin-top: 12px; animation: panelIn 0.18s var(--ease); }
 
 /* ---------- Inputs ---------- */

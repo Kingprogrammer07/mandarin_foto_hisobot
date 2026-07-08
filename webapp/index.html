@@ -88,11 +88,14 @@
         <span class="field__label">Koeffitsient</span>
         <div class="chips" id="coefChips">
           <button type="button" class="chip is-active" data-mode="none" data-value="0">Ayirilmasin</button>
-          <button type="button" class="chip" data-mode="box" data-value="1" hidden>Ayr. 1</button>
-          <button type="button" class="chip" data-mode="box" data-value="1.22" hidden>Ayr. 1.22</button>
           <button type="button" class="chip" data-mode="fixed" data-value="0.94">0.94</button>
           <button type="button" class="chip" data-mode="fixed" data-value="1.22">1.22</button>
           <button type="button" class="chip" data-mode="custom">O'zim kiritaman</button>
+        </div>
+        <div class="coef-menu" id="coefBoxMenu" hidden>
+          <button type="button" class="coef-menu__item" data-box-value="0">Ayirilmasin</button>
+          <button type="button" class="coef-menu__item" data-box-value="1">1</button>
+          <button type="button" class="coef-menu__item" data-box-value="1.22">1.22</button>
         </div>
         <div class="custom-coef" id="coefCustomWrap" hidden>
           <input

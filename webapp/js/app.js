@@ -159,6 +159,7 @@
     typeValue: $("#typeValue"),
     typePencil: $("#typePencil"),
     coefChips: $("#coefChips"),
+    coefBoxMenu: $("#coefBoxMenu"),
     coefCustomWrap: $("#coefCustomWrap"),
     coefCustom: $("#coefCustom"),
     weight: $("#weight"),
@@ -1621,8 +1622,12 @@
   // Restore a coefficient into the chips row (none / fixed 0.94 / fixed 1.22 /
   // custom). A fixed value with no matching chip falls back to custom.
   function setCoefBoxMenu(open) {
-    els.coefChips.querySelectorAll('[data-mode="box"]').forEach((chip) => {
-      chip.hidden = !open;
+    if (!els.coefBoxMenu) return;
+    els.coefBoxMenu.hidden = !open;
+    els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
+      const v = Number(btn.dataset.boxValue) || 0;
+      const on = state.coef.mode === "box" ? sameNum(v, state.coef.boxWeight || 0) : v === 0;
+      btn.classList.toggle("is-active", on);
     });
   }
 
@@ -1632,12 +1637,12 @@
     if (mode === "box") boxWeight = Number(value) || 0;
     let target = null;
     if (mode === "none") target = chips.find((c) => c.dataset.mode === "none");
-    else if (mode === "box") target = chips.find((c) => c.dataset.mode === "box" && parseFloat(c.dataset.value) === boxWeight);
+    else if (mode === "box") target = chips.find((c) => c.dataset.mode === "none");
     else if (mode === "fixed") target = chips.find((c) => c.dataset.mode === "fixed" && parseFloat(c.dataset.value) === value);
     if (!target) { mode = "custom"; boxWeight = 0; target = chips.find((c) => c.dataset.mode === "custom"); }
     chips.forEach((c) => c.classList.toggle("is-active", c === target));
     state.coef = { mode, value: mode === "fixed" || mode === "custom" ? value : 0, boxWeight };
-    setCoefBoxMenu(mode === "box");
+    setCoefBoxMenu(false);
     els.coefCustomWrap.hidden = mode !== "custom";
     els.coefCustom.value = mode === "custom" ? String(value) : "";
   }
@@ -2473,17 +2478,20 @@
 
   // ---- Coefficient ----
   els.coefChips.querySelectorAll(".chip").forEach((chip) => {
-    chip.addEventListener("click", () => {
+    chip.addEventListener("click", (ev) => {
+      ev.stopPropagation();
       els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
       chip.classList.add("is-active");
       const mode = chip.dataset.mode;
-      state.coef.mode = mode;
       if (mode === "none") {
-        const shouldOpen = [...els.coefChips.querySelectorAll('[data-mode="box"]')].some((c) => c.hidden);
-        setCoefBoxMenu(shouldOpen);
-      } else {
-        setCoefBoxMenu(mode === "box");
+        state.coef = { mode: "none", value: 0, boxWeight: 0 };
+        els.coefCustomWrap.hidden = true;
+        setCoefBoxMenu(els.coefBoxMenu ? els.coefBoxMenu.hidden : false);
+        haptic("select");
+        return;
       }
+      state.coef.mode = mode;
+      setCoefBoxMenu(false);
       if (mode === "custom") {
         els.coefCustomWrap.hidden = false;
         state.coef.boxWeight = 0;
@@ -2497,6 +2505,26 @@
       haptic("select");
     });
   });
+  if (els.coefBoxMenu) {
+    els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const boxWeight = Number(btn.dataset.boxValue) || 0;
+        state.coef = boxWeight > 0
+          ? { mode: "box", value: 0, boxWeight }
+          : { mode: "none", value: 0, boxWeight: 0 };
+        els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c.dataset.mode === "none"));
+        els.coefCustomWrap.hidden = true;
+        setCoefBoxMenu(false);
+        haptic("select");
+      });
+    });
+    document.addEventListener("click", (ev) => {
+      if (els.coefBoxMenu.hidden) return;
+      if (els.coefBoxMenu.contains(ev.target) || els.coefChips.contains(ev.target)) return;
+      setCoefBoxMenu(false);
+    });
+  }
   els.coefCustom.addEventListener("input", (e) => {
     state.coef.value = parseFloat(e.target.value.replace(",", "."));
     state.coef.boxWeight = 0;
@@ -2891,6 +2919,7 @@
       els.typeValue.textContent = "akb";
       els.coefCustom.value = "";
       els.coefCustomWrap.hidden = true;
+      setCoefBoxMenu(false);
       els.coefChips.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-active", i === 0));
     }
     renderPhotos("photos");
