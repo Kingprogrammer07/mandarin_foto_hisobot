@@ -37,7 +37,7 @@
     reys: { title: "Reys hisoboti" },
     adjust: { title: "Adashgan yuklar" },
   };
-  const ENTRIES_PAGE = 6;
+  const ENTRIES_PAGE = 15;
 
   // ---- App state ----
   const state = {
@@ -68,6 +68,46 @@
   try { remember = localStorage.getItem("reys-remember") === "1"; } catch (_) {}
   try { state.topFast = localStorage.getItem("reys-top-fast") === "1"; } catch (_) {}
   try { state.reysFast = localStorage.getItem("reys-fast") === "1"; } catch (_) {}
+  let homeReports = [];
+  let homeReportsMax = 25;
+  let homeArchiveOpen = false;
+  let homeRenderKey = "";
+  let reportsLoaded = false;
+  let routeRestoring = false;
+  let suppressTabRoute = false;
+  let activityReturnRoute = "";
+
+  function parseRoute() {
+    let raw = (location.hash || "").replace(/^#\/?/, "");
+    try { raw = decodeURIComponent(raw); } catch (_) {}
+    const parts = raw.split("/").filter(Boolean);
+    if (!parts.length || parts[0] === "reports") return { kind: "reports" };
+    if (parts[0] !== "report" || !parts[1]) return { kind: "reports" };
+    const reportId = Number(parts[1]);
+    const page = parts[2] || "menu";
+    return {
+      kind: "report",
+      reportId,
+      page,
+      section: parts[3] || "",
+    };
+  }
+
+  function setRoute(path, replace) {
+    if (routeRestoring) return;
+    const next = `#${path.replace(/^#?\/?/, "/")}`;
+    if (location.hash === next) return;
+    try {
+      if (replace) history.replaceState(null, "", next);
+      else history.pushState(null, "", next);
+    } catch (_) {
+      location.hash = next;
+    }
+  }
+
+  function findCachedReport(reportId) {
+    return homeReports.find((r) => Number(r.id) === Number(reportId));
+  }
 
   // iOS numeric keyboards can emit a comma as the decimal separator — normalize
   // to a dot and drop stray chars / extra dots so parseFloat works.
@@ -426,6 +466,9 @@
     els.panels.lost.hidden = name !== "lost";
     // Save only applies to the report tab.
     els.saveBtn.style.display = name === "report" ? "" : "none";
+    if (!suppressTabRoute && workAreaVisible()) {
+      setRoute(`/report/${state.reportId}/kargo/${name === "lost" ? "adjust" : "reys"}`, true);
+    }
     haptic("select");
   }
 
@@ -749,6 +792,7 @@
 
   function closeLightbox() {
     els.lightbox.hidden = true;
+    els.lightbox.classList.remove("is-editing");
     els.lightboxImg.src = "";
     if (lbTempUrl) { URL.revokeObjectURL(lbTempUrl); lbTempUrl = null; }
     closeLightboxEdit(false);
@@ -769,6 +813,7 @@
 
   function closeLightboxEdit(refresh) {
     lbEditing = false;
+    if (els.lightbox) els.lightbox.classList.remove("is-editing");
     if (els.lightboxEditPanel) els.lightboxEditPanel.hidden = true;
     if (els.lightboxEdit) els.lightboxEdit.hidden = !isLightboxEditable();
     if (refresh && lb) lbShow();
@@ -778,6 +823,7 @@
     if (!isLightboxEditable()) return;
     const e = lb.entry;
     lbEditing = true;
+    els.lightbox.classList.add("is-editing");
     els.lightboxEdit.hidden = true;
     els.lightboxEditPanel.hidden = false;
     els.lbEditWeight.value = String(e.weight || "");
@@ -890,8 +936,29 @@
   // ---- Reports (home) ----
   function confirmDialog(msg) {
     return new Promise((resolve) => {
-      if (inTelegram && tg.showConfirm) tg.showConfirm(msg, (ok) => resolve(!!ok));
-      else resolve(window.confirm(msg));
+      const wrap = document.createElement("div");
+      wrap.className = "confirm-modal";
+      wrap.innerHTML = `
+        <div class="confirm-modal__card" role="dialog" aria-modal="true">
+          <div class="confirm-modal__title">Tasdiqlang</div>
+          <div class="confirm-modal__msg"></div>
+          <div class="confirm-modal__actions">
+            <button type="button" class="confirm-modal__cancel">Bekor qilish</button>
+            <button type="button" class="confirm-modal__ok">Tasdiqlash</button>
+          </div>
+        </div>`;
+      wrap.querySelector(".confirm-modal__msg").textContent = msg;
+      const done = (ok) => {
+        wrap.classList.add("is-closing");
+        setTimeout(() => wrap.remove(), 140);
+        syncLock();
+        resolve(!!ok);
+      };
+      wrap.addEventListener("click", (e) => { if (e.target === wrap) done(false); });
+      wrap.querySelector(".confirm-modal__cancel").addEventListener("click", () => done(false));
+      wrap.querySelector(".confirm-modal__ok").addEventListener("click", () => done(true));
+      document.body.appendChild(wrap);
+      document.body.classList.add("locked");
     });
   }
 
@@ -929,45 +996,97 @@
     li.className = "report-item";
     const main = document.createElement("div");
     main.className = "report-item__main";
+    const head = document.createElement("div");
+    head.className = "report-item__head";
     const name = document.createElement("div");
     name.className = "report-item__name";
     name.textContent = rep.name;
+    const go = document.createElement("span");
+    go.className = "report-item__go";
+    go.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>';
+    head.append(name, go);
     const sub = document.createElement("div");
     sub.className = "report-item__sub";
     sub.textContent = `${fmtTs(rep.created_at)} · ${rep.entries || 0} yozuv`;
-    main.append(name, sub);
+    main.append(head, sub);
+    const actions = document.createElement("div");
+    actions.className = "report-item__actions";
     const xls = document.createElement("button");
     xls.className = "report-item__xls";
     xls.type = "button";
     xls.setAttribute("aria-label", "Umumiy hisobot Excel yuklab olish");
     xls.title = "Umumiy hisobot Excel yuklab olish";
-    xls.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M11 4h2v8h3l-4 4-4-4h3V4ZM5 18h14v2H5z"/></svg>';
+    xls.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M11 4h2v8h3l-4 4-4-4h3V4ZM5 18h14v2H5z"/></svg><span>Excel</span>';
     xls.addEventListener("click", (e) => { e.stopPropagation(); downloadSummaryExcel(rep, xls); });
     const del = document.createElement("button");
     del.className = "report-item__del";
     del.type = "button";
     del.setAttribute("aria-label", "O'chirish");
-    del.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z"/></svg>';
+    del.innerHTML = "<svg viewBox=\"0 0 24 24\" class=\"ic\"><path d=\"M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z\"/></svg><span>O'chirish</span>";
     del.addEventListener("click", (e) => { e.stopPropagation(); deleteReport(rep); });
-    const go = document.createElement("span");
-    go.className = "report-item__go";
-    go.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>';
-    li.append(main, xls, del, go);
+    actions.append(xls, del);
+    main.append(actions);
+    li.append(main);
     li.addEventListener("click", () => openReport(rep));
     return li;
   }
 
-  async function loadReports() {
+  function archiveToggle(count) {
+    const li = document.createElement("li");
+    li.className = "report-archive";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "report-archive__btn" + (homeArchiveOpen ? " is-open" : "");
+    btn.innerHTML = `<span>Arxiv</span><strong>${count}</strong><svg viewBox="0 0 24 24" class="ic"><path d="m7 10 5 5 5-5z"/></svg>`;
+    btn.addEventListener("click", () => {
+      homeArchiveOpen = !homeArchiveOpen;
+      renderReports(homeReports, homeReportsMax, true);
+    });
+    li.appendChild(btn);
+    return li;
+  }
+
+  function renderReports(reports, max, force) {
+    const key = JSON.stringify({
+      ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at]),
+      max,
+      open: homeArchiveOpen,
+    });
+    if (!force && key === homeRenderKey) return;
+    homeRenderKey = key;
     els.reportList.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    reports.slice(0, 3).forEach((rep) => frag.appendChild(reportItem(rep)));
+    const archived = reports.slice(3);
+    if (archived.length) {
+      frag.appendChild(archiveToggle(archived.length));
+      if (homeArchiveOpen) {
+        const wrap = document.createElement("li");
+        wrap.className = "report-archive__panel is-open";
+        const ul = document.createElement("ul");
+        ul.className = "report-list report-list--archive";
+        archived.forEach((rep) => ul.appendChild(reportItem(rep)));
+        wrap.appendChild(ul);
+        frag.appendChild(wrap);
+      }
+    }
+    els.reportList.appendChild(frag);
+  }
+
+  async function loadReports() {
     els.homeHint.textContent = "Yuklanmoqda…";
     try {
       const res = await fetch("/api/reports", { headers: authHeaders() });
       const json = await res.json().catch(() => ({}));
       const reports = (res.ok && json.reports) || [];
+      homeReports = reports;
+      homeReportsMax = json.max || 25;
       els.homeHint.textContent = reports.length
-        ? `Saqlangan hisobotlar (${reports.length}/${json.max || 5})`
+        ? `Oxirgi 3 ta ko'rsatiladi · ${reports.length}/${homeReportsMax} saqlangan`
         : "Hali hisobot yo'q. Yangi hisobot qo'shing.";
-      reports.forEach((rep) => els.reportList.appendChild(reportItem(rep)));
+      renderReports(reports, homeReportsMax);
+      reportsLoaded = true;
+      if (!routeRestoring) applyRouteFromHash();
     } catch (_) {
       els.homeHint.textContent = "Yuklashda xatolik";
     }
@@ -975,11 +1094,14 @@
 
   function showHome() {
     startOutboxLoop();
+    const route = parseRoute();
     state.reportId = null;
     els.reportName.textContent = "";
+    document.body.classList.remove("work-open");
     showScreen(null);          // hide menu / obshiy / top
     els.homeScreen.hidden = false;
     document.body.classList.add("locked");
+    if (!routeRestoring && (reportsLoaded || route.kind === "reports")) setRoute("/reports", !reportsLoaded);
     syncBackButton(); // home is the root → no back button
     loadTypes();
     loadReports();
@@ -988,10 +1110,63 @@
   // Only one report-level screen is visible at a time: 'menu' | 'obshiy' |
   // 'top' (or null to reveal the work area behind them).
   function showScreen(which) {
+    if (which !== null) document.body.classList.remove("work-open");
     els.menuScreen.hidden = which !== "menu";
     els.obshiyScreen.hidden = which !== "obshiy";
     els.topScreen.hidden = which !== "top";
     els.entriesScreen.hidden = true; // leaf overlay — drop it on any nav change
+  }
+
+  function workAreaVisible() {
+    return !!(
+      state.reportId &&
+      els.homeScreen.hidden &&
+      els.menuScreen.hidden &&
+      els.obshiyScreen.hidden &&
+      els.topScreen.hidden &&
+      els.entriesScreen.hidden
+    );
+  }
+
+  function applyRouteFromHash() {
+    const route = parseRoute();
+    if (route.kind === "reports") return false;
+    if (!reportsLoaded) return false;
+    const rep = findCachedReport(route.reportId);
+    if (!rep) {
+      routeRestoring = true;
+      try { showHome(); } finally { routeRestoring = false; }
+      setRoute("/reports", true);
+      return false;
+    }
+
+    routeRestoring = true;
+    try {
+      openReport(rep);
+      if (route.page === "kargo") {
+        openWork(route.section === "adjust" ? "lost" : "report");
+      } else if (route.page === "obshiy") {
+        if (OBSHIY_SECTIONS.includes(route.section)) openForm(route.section);
+        else showObshiy();
+      } else if (route.page === "entries") {
+        const section = route.section || "reys";
+        if (OBSHIY_SECTIONS.includes(section)) {
+          openForm(section);
+          openEntries(section);
+        } else {
+          openWork(section === "adjust" ? "lost" : "report");
+          openEntries(section);
+        }
+      } else if (route.page === "activity") {
+        openActivity();
+      } else {
+        showMenu();
+      }
+    } finally {
+      routeRestoring = false;
+      syncBackButton();
+    }
+    return true;
   }
 
   // Opening a report lands on its section menu (Obshiy ves / Kargolarga
@@ -1029,6 +1204,7 @@
     els.menuTitle.textContent = state.reportName;
     showScreen("menu");
     document.body.classList.add("locked");
+    if (state.reportId) setRoute(`/report/${state.reportId}/menu`);
     syncBackButton();
   }
 
@@ -1036,6 +1212,7 @@
   function showObshiy() {
     showScreen("obshiy");
     document.body.classList.add("locked");
+    if (state.reportId) setRoute(`/report/${state.reportId}/obshiy`);
     syncBackButton();
   }
 
@@ -1052,6 +1229,7 @@
     updateViewCount();
     showScreen("top");
     document.body.classList.add("locked");
+    if (state.reportId) setRoute(`/report/${state.reportId}/obshiy/${section}`);
     syncBackButton();
   }
 
@@ -1062,10 +1240,15 @@
   }
 
   // "Kargolarga tarqatish" → reveal the reys/adashgan tab work area.
-  function openWork() {
+  function openWork(tab) {
     showScreen(null);
+    document.body.classList.add("work-open");
     document.body.classList.remove("locked");
-    setTab("report");
+    const nextTab = tab || "report";
+    suppressTabRoute = true;
+    setTab(nextTab);
+    suppressTabRoute = false;
+    if (state.reportId) setRoute(`/report/${state.reportId}/kargo/${nextTab === "lost" ? "adjust" : "reys"}`);
     syncBackButton();
   }
 
@@ -1276,14 +1459,20 @@
     document.body.classList.add("locked");
     renderEntries();
     if (isBackendSection(viewerSection)) loadEntries(viewerSection);
+    if (state.reportId) setRoute(`/report/${state.reportId}/entries/${viewerSection}`);
     syncBackButton();
   }
   function closeEntries() {
+    const section = viewerSection;
     clearEntryUrls();
     selectedEntryIds = new Set();
     stopSendStatusPolling();
     els.entriesScreen.hidden = true;
     els.entriesActions.hidden = true;
+    if (state.reportId) {
+      if (OBSHIY_SECTIONS.includes(section)) setRoute(`/report/${state.reportId}/obshiy/${section}`, true);
+      else setRoute(`/report/${state.reportId}/kargo/${section === "adjust" ? "adjust" : "reys"}`, true);
+    }
     syncLock(); // form screen may still be open beneath; work area isn't locked
     syncBackButton();
   }
@@ -1365,13 +1554,13 @@
     els.entriesSendUnsentBtn.textContent = sendingBulk
       ? "Yuborishga tayyorlanmoqda..."
       : unsent
-        ? `Yuborilmaganlarni yuborish (${unsent})`
-        : "Yuborilmagan yo'q";
+        ? `Yuborish (${unsent})`
+        : "Yo'q";
     els.entriesResendSentBtn.textContent = sent
-      ? `Yuborilganlarni qayta yuborish (${sent})`
-      : "Qayta yuboriladigan yo'q";
+      ? `Qayta (${sent})`
+      : "Qayta yo'q";
     els.entriesSendSelectedBtn.textContent = selected
-      ? `Tanlanganlarni yuborish (${selected})`
+      ? `Tanlangan (${selected})`
       : "Tanlangan yo'q";
   }
 
@@ -1511,6 +1700,13 @@
     code.className = "entry-card__code";
     // Label by entry shape: transfer "from → to", reys tovar turi, or karobka kodi.
     code.textContent = e.from && e.to ? `${e.from} → ${e.to}` : (e.type || e.code || "—");
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "entry-card__title";
+    const coefTxt = e.type && e.boxWeight ? `karobka ${e.boxWeight}` : (e.type && e.coefficient ? `koef ${e.coefficient}` : "");
+    const metaTop = document.createElement("div");
+    metaTop.className = "entry-card__meta";
+    metaTop.textContent = [coefTxt, fmtTs(e.ts / 1000), `${files.length} rasm`].filter(Boolean).join(" · ");
+    titleWrap.append(code, metaTop);
     const val = document.createElement("div");
     val.className = "entry-card__val";
     val.innerHTML = `${(Math.round(Number(e.weight) * 100) / 100).toLocaleString("en-US")}<span> kg</span>`;
@@ -1520,7 +1716,7 @@
     menu.setAttribute("aria-label", "Amallar");
     menu.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>';
     menu.addEventListener("click", (ev) => { ev.stopPropagation(); openEntryActions(e); });
-    head.append(code, val, menu);
+    head.append(titleWrap, val, menu);
     card.appendChild(head);
 
     const foot = document.createElement("div");
@@ -1544,9 +1740,8 @@
       more.addEventListener("click", () => viewEntryPhotos(e, 5));
       thumbs.appendChild(more);
     }
-    const sub = document.createElement("div");
-    sub.className = "entry-card__sub";
-    const coefTxt = e.type && e.boxWeight ? `karobka ${e.boxWeight} · ` : (e.type && e.coefficient ? `koef ${e.coefficient} · ` : "");
+    const badges = document.createElement("div");
+    badges.className = "entry-card__badges";
     const statusBadge = document.createElement("span");
     statusBadge.className = "entry-status";
     const statusTxt = e.error
@@ -1562,13 +1757,12 @@
             : isBulkSection() && e.synced
               ? "yuborilmagan"
               : "";
-    sub.textContent = `${coefTxt}${fmtTs(e.ts / 1000)} · ${files.length} rasm`;
-    foot.append(thumbs, sub);
+    foot.append(thumbs);
     if (e.editedAt) {
       const editedBadge = document.createElement("span");
       editedBadge.className = "entry-status entry-status--edited";
       editedBadge.textContent = "tahrirlangan";
-      foot.appendChild(editedBadge);
+      badges.appendChild(editedBadge);
     }
     if (statusTxt) {
       statusBadge.textContent = statusTxt;
@@ -1576,9 +1770,10 @@
       statusBadge.classList.toggle("entry-status--pending", e.pending || e.syncing || e.sendStatus === "pending");
       statusBadge.classList.toggle("entry-status--err", !!e.error || !!e.sendError);
       if (e.sendError) statusBadge.title = e.sendError;
-      foot.appendChild(statusBadge);
+      badges.appendChild(statusBadge);
     }
     card.appendChild(foot);
+    if (badges.childNodes.length) card.appendChild(badges);
     return card;
   }
 
@@ -2124,7 +2319,7 @@
 
   // ---- Report section menu ----
   els.menuBackBtn.addEventListener("click", showHome);
-  els.menuDistBtn.addEventListener("click", openWork);
+  els.menuDistBtn.addEventListener("click", () => openWork("report"));
   els.menuDistXls.addEventListener("click", downloadKargoExcel);
   els.menuTotalBtn.addEventListener("click", showObshiy);
   els.menuTotalXls.addEventListener("click", downloadObshiyExcel);
@@ -2798,8 +2993,11 @@
 
   function openActivity() {
     if (!state.reportId) return;
+    const current = location.hash || "";
+    activityReturnRoute = parseRoute().page === "activity" ? `#/report/${state.reportId}/menu` : current;
     els.activityScreen.hidden = false;
     document.body.classList.add("locked");
+    setRoute(`/report/${state.reportId}/activity`);
     syncBackButton();
     loadActivityFor(todayStr()); // default: today only
   }
@@ -2809,7 +3007,14 @@
   els.actNext.addEventListener("click", () => loadActivityFor(shiftDay(els.actDate.value || todayStr(), 1)));
   function closeActivity() {
     els.activityScreen.hidden = true;
-    document.body.classList.remove("locked");
+    if (state.reportId) {
+      const fallback = `#/report/${state.reportId}/menu`;
+      const target = activityReturnRoute || fallback;
+      activityReturnRoute = "";
+      if (target.startsWith("#")) history.replaceState(null, "", target);
+      else setRoute(`/report/${state.reportId}/menu`, true);
+    }
+    syncLock();
     syncBackButton();
   }
   els.activityBtn.addEventListener("click", openActivity);
@@ -3152,6 +3357,18 @@
   });
   if (els.passkeyLoginBtn) els.passkeyLoginBtn.addEventListener("click", loginWithPasskey);
   if (els.passkeyAddBtn) els.passkeyAddBtn.addEventListener("click", registerPasskey);
+  window.addEventListener("hashchange", () => {
+    if (routeRestoring) return;
+    if (parseRoute().kind === "reports") {
+      showHome();
+      return;
+    }
+    if (!reportsLoaded) {
+      loadReports();
+      return;
+    }
+    applyRouteFromHash();
+  });
 
   // ---- Boot ----
   initTelegram();

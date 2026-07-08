@@ -417,6 +417,8 @@ async def api_reports_create(request: Request):
         rep = db.create_report(name)
     except db.DuplicateName:
         raise HTTPException(status_code=409, detail="bu nomli hisobot allaqachon bor")
+    except db.MaxReportsReached:
+        raise HTTPException(status_code=409, detail=f"maksimal {db.MAX_REPORTS} ta hisobot saqlanadi")
     return JSONResponse({"ok": True, "report": rep})
 
 

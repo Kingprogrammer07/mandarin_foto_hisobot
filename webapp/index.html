@@ -39,7 +39,7 @@
     <!-- ============ TAB 1: REYS HISOBOTI ============ -->
     <section class="panel is-active" id="panel-report" role="tabpanel">
       <!-- Photos -->
-      <div class="field">
+      <div class="field work-card work-card--photos">
         <div class="field__head">
           <span class="field__label">Rasmlar</span>
           <span class="counter" id="photoCounter">0/10</span>
@@ -70,7 +70,7 @@
       </div>
 
       <!-- Type (searchable select) -->
-      <div class="field">
+      <div class="field work-card work-card--type">
         <span class="field__label">Tovar turi</span>
         <div class="select-row">
           <button type="button" class="select" id="typeSelect">
@@ -84,7 +84,7 @@
       </div>
 
       <!-- Coefficient -->
-      <div class="field">
+      <div class="field work-card work-card--coef">
         <span class="field__label">Koeffitsient</span>
         <div class="chips" id="coefChips">
           <button type="button" class="chip is-active" data-mode="none" data-value="0">Ayirilmasin</button>
@@ -110,7 +110,7 @@
       </div>
 
       <!-- Weight -->
-      <div class="field">
+      <div class="field work-card work-card--weight">
         <label class="field__label" for="weight">Og'irlik</label>
         <div class="input-suffix input-suffix--save">
           <input
@@ -128,7 +128,7 @@
       </div>
 
       <!-- Single Save button (works in Telegram WebView and browser alike) -->
-      <button type="button" class="btn btn--primary save-btn" id="saveBtn">
+      <button type="button" class="btn btn--primary save-btn work-save" id="saveBtn">
         Saqlash
       </button>
     </section>
@@ -136,7 +136,7 @@
     <!-- ============ TAB 2: ADASHGAN YUKLAR ============ -->
     <section class="panel" id="panel-lost" role="tabpanel" hidden>
       <!-- Photos -->
-      <div class="field">
+      <div class="field work-card work-card--photos">
         <div class="field__head">
           <span class="field__label">Rasmlar</span>
           <span class="counter" id="adjPhotoCounter">0/10</span>
@@ -160,7 +160,7 @@
       </div>
 
       <!-- From type (subtract) -->
-      <div class="field">
+      <div class="field work-card work-card--from">
         <span class="field__label">Qaysi turdan ayirish</span>
         <button type="button" class="select" id="adjFromSelect">
           <span class="select__value select__value--muted" id="adjFromValue">Tanlang</span>
@@ -174,7 +174,7 @@
       </div>
 
       <!-- To type (add) -->
-      <div class="field">
+      <div class="field work-card work-card--to">
         <span class="field__label">Qaysi turga qo'shish</span>
         <button type="button" class="select" id="adjToSelect">
           <span class="select__value select__value--muted" id="adjToValue">Tanlang</span>
@@ -184,7 +184,7 @@
       </div>
 
       <!-- Weight -->
-      <div class="field">
+      <div class="field work-card work-card--weight">
         <label class="field__label" for="adjWeight">Og'irlik</label>
         <div class="input-suffix">
           <input type="text" inputmode="decimal" class="input" id="adjWeight" placeholder="0" />
@@ -192,10 +192,10 @@
         </div>
       </div>
 
-      <button type="button" class="btn btn--primary save-btn" id="adjSaveBtn">Saqlash</button>
+      <button type="button" class="btn btn--primary save-btn work-save" id="adjSaveBtn">Saqlash</button>
 
       <!-- Current stock (each tovar turi separately) -->
-      <div class="field">
+      <div class="field work-card work-card--balances">
         <span class="field__label">Ombor holati</span>
         <div class="balances" id="balances"></div>
       </div>
@@ -319,6 +319,7 @@
           </button>
           <button type="button" class="menu-xls" id="menuTotalXls" aria-label="Excel yuklash">
             <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>
+            <span>Excel</span>
           </button>
         </div>
         <div class="menu-row">
@@ -330,6 +331,7 @@
           </button>
           <button type="button" class="menu-xls" id="menuDistXls" aria-label="Kargolarga Excel yuklash">
             <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>
+            <span>Excel</span>
           </button>
         </div>
       </div>

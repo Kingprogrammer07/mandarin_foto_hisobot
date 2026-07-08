@@ -26,7 +26,7 @@ DEFAULT_TYPES = [
     "oneway", "x637", "x517", "redwing",
 ]
 DEFAULT_TYPE_SET = {t.lower() for t in DEFAULT_TYPES}
-MAX_REPORTS = 9999
+MAX_REPORTS = 25
 
 
 class InsufficientStock(Exception):
@@ -38,6 +38,10 @@ class InsufficientStock(Exception):
 
 
 class DuplicateName(Exception):
+    pass
+
+
+class MaxReportsReached(Exception):
     pass
 
 
@@ -302,12 +306,31 @@ def init() -> None:
 # Reports
 # --------------------------------------------------------------------------
 def _prune(c: sqlite3.Connection) -> None:
-    """Intentionally keep all reports.
-
-    Earlier builds auto-pruned old reports. That is too risky for cargo/photo
-    data, so this hook remains as a no-op migration point.
-    """
-    return
+    """Keep only the newest MAX_REPORTS reports, hard-deleting older ones."""
+    rows = c.execute(
+        """SELECT id FROM reports
+           WHERE deleted_at IS NULL
+           ORDER BY created_at ASC, id ASC"""
+    ).fetchall()
+    excess = len(rows) - MAX_REPORTS
+    if excess <= 0:
+        return
+    old_ids = [r["id"] for r in rows[:excess]]
+    placeholders = ",".join("?" for _ in old_ids)
+    entry_rows = c.execute(
+        f"SELECT id FROM activity WHERE report_id IN ({placeholders})",
+        old_ids,
+    ).fetchall()
+    entry_ids = [r["id"] for r in entry_rows]
+    if entry_ids:
+        entry_placeholders = ",".join("?" for _ in entry_ids)
+        c.execute(f"DELETE FROM send_queue WHERE entry_id IN ({entry_placeholders})", entry_ids)
+        c.execute(f"DELETE FROM entry_photos WHERE entry_id IN ({entry_placeholders})", entry_ids)
+        for entry_id in entry_ids:
+            _rmtree_photos(entry_id)
+    c.execute(f"DELETE FROM activity WHERE report_id IN ({placeholders})", old_ids)
+    c.execute(f"DELETE FROM inventory WHERE report_id IN ({placeholders})", old_ids)
+    c.execute(f"DELETE FROM reports WHERE id IN ({placeholders})", old_ids)
 
 
 def create_report(name: str) -> dict:
