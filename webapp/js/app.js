@@ -1852,6 +1852,14 @@
     });
   }
 
+  function updateCoefNoneLabel() {
+    const chip = els.coefChips.querySelector('.chip[data-mode="none"]');
+    if (!chip) return;
+    chip.textContent = state.coef.mode === "box" && Number(state.coef.boxWeight) > 0
+      ? `Ayirilmasin (${Number(state.coef.boxWeight)})`
+      : "Ayirilmasin";
+  }
+
   function setCoefUI(mode, value) {
     const chips = [...els.coefChips.querySelectorAll(".chip")];
     let boxWeight = 0;
@@ -1863,6 +1871,7 @@
     if (!target) { mode = "custom"; boxWeight = 0; target = chips.find((c) => c.dataset.mode === "custom"); }
     chips.forEach((c) => c.classList.toggle("is-active", c === target));
     state.coef = { mode, value: mode === "fixed" || mode === "custom" ? value : 0, boxWeight };
+    updateCoefNoneLabel();
     setCoefBoxMenu(false);
     els.coefCustomWrap.hidden = mode !== "custom";
     els.coefCustom.value = mode === "custom" ? String(value) : "";
@@ -2706,6 +2715,7 @@
     ev.stopImmediatePropagation();
     els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
     state.coef = { mode: "none", value: 0, boxWeight: 0 };
+    updateCoefNoneLabel();
     els.coefCustomWrap.hidden = true;
     const menu = ensureCoefBoxMenu();
     setCoefBoxMenu(menu ? menu.hidden : true);
@@ -2720,6 +2730,7 @@
       const mode = chip.dataset.mode;
       if (mode === "none") {
         state.coef = { mode: "none", value: 0, boxWeight: 0 };
+        updateCoefNoneLabel();
         els.coefCustomWrap.hidden = true;
         setCoefBoxMenu(els.coefBoxMenu ? els.coefBoxMenu.hidden : false);
         haptic("select");
@@ -2730,12 +2741,14 @@
       if (mode === "custom") {
         els.coefCustomWrap.hidden = false;
         state.coef.boxWeight = 0;
+        updateCoefNoneLabel();
         setTimeout(() => els.coefCustom.focus(), 60);
       } else {
         els.coefCustomWrap.hidden = true;
         const value = parseFloat(chip.dataset.value);
         state.coef.value = mode === "fixed" ? value : 0;
         state.coef.boxWeight = mode === "box" ? value : 0;
+        updateCoefNoneLabel();
       }
       haptic("select");
     });
@@ -2750,6 +2763,7 @@
           ? { mode: "box", value: 0, boxWeight }
           : { mode: "none", value: 0, boxWeight: 0 };
         els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c.dataset.mode === "none"));
+        updateCoefNoneLabel();
         els.coefCustomWrap.hidden = true;
         setCoefBoxMenu(false);
         haptic("select");
@@ -2764,6 +2778,7 @@
   els.coefCustom.addEventListener("input", (e) => {
     state.coef.value = parseFloat(e.target.value.replace(",", "."));
     state.coef.boxWeight = 0;
+    updateCoefNoneLabel();
   });
 
   els.topCoefChips.querySelectorAll(".chip").forEach((chip) => {
@@ -3167,6 +3182,7 @@
       els.coefCustomWrap.hidden = true;
       setCoefBoxMenu(false);
       els.coefChips.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-active", i === 0));
+      updateCoefNoneLabel();
     }
     renderPhotos("photos");
   }
