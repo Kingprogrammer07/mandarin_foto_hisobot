@@ -1824,8 +1824,8 @@
     menu.hidden = true;
     menu.innerHTML = [
       '<button type="button" class="coef-menu__item" data-box-value="0">Ayirilmasin</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1">1</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1.22">1.22</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1">Ayirilmasin (1)</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1.22">Ayirilmasin (1.22)</button>',
     ].join("");
     els.coefChips.insertAdjacentElement("afterend", menu);
     els.coefBoxMenu = menu;
@@ -1847,7 +1847,9 @@
     }
     els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
       const v = Number(btn.dataset.boxValue) || 0;
-      const on = state.coef.mode === "box" ? sameNum(v, state.coef.boxWeight || 0) : v === 0;
+      btn.textContent = v > 0 ? `Ayirilmasin (${v})` : "Ayirilmasin";
+      const on = (state.coef.mode === "none" && v === 0) ||
+        (state.coef.mode === "box" && sameNum(v, state.coef.boxWeight || 0));
       btn.classList.toggle("is-active", on);
     });
   }
@@ -2713,9 +2715,6 @@
     ev.preventDefault();
     ev.stopPropagation();
     ev.stopImmediatePropagation();
-    els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
-    state.coef = { mode: "none", value: 0, boxWeight: 0 };
-    updateCoefNoneLabel();
     els.coefCustomWrap.hidden = true;
     const menu = ensureCoefBoxMenu();
     setCoefBoxMenu(menu ? menu.hidden : true);
@@ -2776,6 +2775,7 @@
     });
   }
   els.coefCustom.addEventListener("input", (e) => {
+    state.coef.mode = "custom";
     state.coef.value = parseFloat(e.target.value.replace(",", "."));
     state.coef.boxWeight = 0;
     updateCoefNoneLabel();
