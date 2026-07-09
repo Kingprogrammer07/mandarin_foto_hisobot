@@ -1862,6 +1862,20 @@
       : "Ayirilmasin";
   }
 
+  function selectCoefBoxValue(rawValue) {
+    const boxWeight = Number(rawValue) || 0;
+    state.coef = boxWeight > 0
+      ? { mode: "box", value: 0, boxWeight }
+      : { mode: "none", value: 0, boxWeight: 0 };
+    els.coefChips.querySelectorAll(".chip").forEach((c) => {
+      c.classList.toggle("is-active", c.dataset.mode === "none");
+    });
+    updateCoefNoneLabel();
+    els.coefCustomWrap.hidden = true;
+    setCoefBoxMenu(false);
+    haptic("select");
+  }
+
   function setCoefUI(mode, value) {
     const chips = [...els.coefChips.querySelectorAll(".chip")];
     let boxWeight = 0;
@@ -2754,20 +2768,18 @@
   });
   ensureCoefBoxMenu();
   if (els.coefBoxMenu) {
-    els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const boxWeight = Number(btn.dataset.boxValue) || 0;
-        state.coef = boxWeight > 0
-          ? { mode: "box", value: 0, boxWeight }
-          : { mode: "none", value: 0, boxWeight: 0 };
-        els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c.dataset.mode === "none"));
-        updateCoefNoneLabel();
-        els.coefCustomWrap.hidden = true;
-        setCoefBoxMenu(false);
-        haptic("select");
-      });
-    });
+    let coefBoxPointerHandledAt = 0;
+    const onCoefBoxPick = (ev, fromPointer) => {
+      const btn = ev.target.closest && ev.target.closest("[data-box-value]");
+      if (!btn || !els.coefBoxMenu.contains(btn)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (fromPointer) coefBoxPointerHandledAt = Date.now();
+      else if (Date.now() - coefBoxPointerHandledAt < 400) return;
+      selectCoefBoxValue(btn.dataset.boxValue);
+    };
+    els.coefBoxMenu.addEventListener("pointerdown", (ev) => onCoefBoxPick(ev, true), true);
+    els.coefBoxMenu.addEventListener("click", (ev) => onCoefBoxPick(ev, false), true);
     document.addEventListener("click", (ev) => {
       if (els.coefBoxMenu.hidden) return;
       if (els.coefBoxMenu.contains(ev.target) || els.coefChips.contains(ev.target)) return;
