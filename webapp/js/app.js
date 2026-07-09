@@ -1665,6 +1665,10 @@
         if (!row) return;
         e.sendStatus = row.send_status || null;
         e.sendError = row.send_error || null;
+        e.sendErrorAt = row.send_error_at || null;
+        e.sendLastAttemptAt = row.send_last_attempt_at || null;
+        e.sendAttempts = row.send_attempts || null;
+        e.sendNextAt = row.send_next_at || null;
       });
       if (!els.entriesScreen.hidden && viewerSection === kind) renderEntries();
       if (!hasChannelPending(kind) && sendStatusPollKind === kind) stopSendStatusPolling();
@@ -1782,11 +1786,13 @@
       statusBadge.classList.toggle("entry-status--pending", e.pending || e.syncing || e.sendStatus === "pending");
       statusBadge.classList.toggle("entry-status--err", !!e.error || !!e.sendError);
       if (e.sendError) {
-        statusBadge.title = e.sendError;
-        statusBadge.setAttribute("aria-label", e.sendError);
+        const errAt = e.sendErrorAt ? ` (${fmtTs(e.sendErrorAt)})` : "";
+        const errorText = `${e.sendError}${errAt}`;
+        statusBadge.title = errorText;
+        statusBadge.setAttribute("aria-label", errorText);
         statusBadge.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          showToast(e.sendError, true);
+          showToast(errorText, true);
         });
       }
       badges.appendChild(statusBadge);
@@ -2195,6 +2201,10 @@
       editedAt: r.edited_at ? r.edited_at * 1000 : null,
       sendStatus: r.send_status || null,
       sendError: r.send_error || null,
+      sendErrorAt: r.send_error_at || null,
+      sendLastAttemptAt: r.send_last_attempt_at || null,
+      sendAttempts: r.send_attempts || null,
+      sendNextAt: r.send_next_at || null,
       synced: true,
     };
     if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };

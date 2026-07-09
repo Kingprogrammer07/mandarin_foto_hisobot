@@ -228,7 +228,43 @@ def init() -> None:
                  attempts   INTEGER NOT NULL DEFAULT 0,
                  next_at    INTEGER NOT NULL DEFAULT 0,
                  last_error TEXT,
+                 last_attempt_at INTEGER,
+                 last_error_at INTEGER,
                  created_at INTEGER NOT NULL)"""
+        )
+        _add_column(c, "send_queue", "last_attempt_at", "INTEGER")
+        _add_column(c, "send_queue", "last_error_at", "INTEGER")
+        c.execute(
+            """UPDATE send_queue
+               SET last_attempt_at = CASE
+                     WHEN next_at > 0 THEN next_at - CASE
+                       WHEN attempts <= 1 THEN 5
+                       WHEN attempts = 2 THEN 15
+                       WHEN attempts = 3 THEN 30
+                       WHEN attempts = 4 THEN 60
+                       WHEN attempts = 5 THEN 120
+                       WHEN attempts = 6 THEN 300
+                       WHEN attempts = 7 THEN 600
+                       ELSE 900
+                     END
+                     ELSE created_at
+                   END,
+                   last_error_at = CASE
+                     WHEN next_at > 0 THEN next_at - CASE
+                       WHEN attempts <= 1 THEN 5
+                       WHEN attempts = 2 THEN 15
+                       WHEN attempts = 3 THEN 30
+                       WHEN attempts = 4 THEN 60
+                       WHEN attempts = 5 THEN 120
+                       WHEN attempts = 6 THEN 300
+                       WHEN attempts = 7 THEN 600
+                       ELSE 900
+                     END
+                     ELSE created_at
+                   END
+               WHERE last_error IS NOT NULL
+                 AND COALESCE(attempts, 0) > 0
+                 AND (last_attempt_at IS NULL OR last_error_at IS NULL)"""
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_queue_pending ON send_queue(status, next_at)")
 
@@ -399,10 +435,13 @@ def delete_report(report_id: int) -> None:
         c.execute("UPDATE reports SET deleted_at = ? WHERE id = ?", (now, report_id))
         c.execute(
             """UPDATE send_queue
-               SET status = 'canceled', last_error = 'report soft-deleted'
+               SET status = 'canceled',
+                   last_error = 'report soft-deleted',
+                   last_attempt_at = ?,
+                   last_error_at = ?
                WHERE entry_id IN (SELECT id FROM activity WHERE report_id = ?)
                  AND status = 'pending'""",
-            (report_id,),
+            (now, now, report_id),
         )
 
 
@@ -721,9 +760,13 @@ def delete_entry(report_id: int, entry_id: int) -> dict:
         balances = _apply_balances(c, report_id, deltas) if deltas else _inventory(c, report_id)
         c.execute("UPDATE activity SET deleted_at = ? WHERE id = ?", (now, entry_id))
         c.execute(
-            "UPDATE send_queue SET status = 'canceled', last_error = 'entry soft-deleted' "
-            "WHERE entry_id = ? AND status = 'pending'",
-            (entry_id,),
+            """UPDATE send_queue
+               SET status = 'canceled',
+                   last_error = 'entry soft-deleted',
+                   last_attempt_at = ?,
+                   last_error_at = ?
+               WHERE entry_id = ? AND status = 'pending'""",
+            (now, now, entry_id),
         )
         return {"balances": balances}
 
@@ -902,12 +945,20 @@ def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
                 "SELECT idx, telegram_file_id FROM entry_photos WHERE entry_id = ? ORDER BY idx",
                 (r["id"],),
             )]
-            sq = c.execute("SELECT status, last_error FROM send_queue WHERE entry_id = ?", (r["id"],)).fetchone()
+            sq = c.execute(
+                """SELECT status, last_error, last_attempt_at, last_error_at, attempts, next_at
+                   FROM send_queue WHERE entry_id = ?""",
+                (r["id"],),
+            ).fetchone()
             d = dict(r)
             d["photo_idxs"] = [p["idx"] for p in photos]
             d["photo_file_ids"] = [p["telegram_file_id"] for p in photos]
             d["send_status"] = sq["status"] if sq else None
             d["send_error"] = sq["last_error"] if sq else None
+            d["send_last_attempt_at"] = sq["last_attempt_at"] if sq else None
+            d["send_error_at"] = sq["last_error_at"] if sq else None
+            d["send_attempts"] = sq["attempts"] if sq else None
+            d["send_next_at"] = sq["next_at"] if sq else None
             out.append(d)
     return out
 
@@ -915,7 +966,11 @@ def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
 def list_entry_statuses(report_id: int, action: str) -> list[dict]:
     with _db() as c:
         rows = c.execute(
-            """SELECT a.id, q.status AS send_status, q.last_error AS send_error
+            """SELECT a.id, q.status AS send_status, q.last_error AS send_error,
+                      q.last_attempt_at AS send_last_attempt_at,
+                      q.last_error_at AS send_error_at,
+                      q.attempts AS send_attempts,
+                      q.next_at AS send_next_at
                FROM activity a
                LEFT JOIN send_queue q ON q.entry_id = a.id
                WHERE a.report_id = ? AND a.action = ? AND a.deleted_at IS NULL
@@ -1008,23 +1063,45 @@ def next_send_job(now: int) -> dict | None:
 
 
 def mark_sent(entry_id: int) -> None:
+    now = int(time.time())
     with _db() as c:
-        c.execute("UPDATE send_queue SET status = 'sent', last_error = NULL WHERE entry_id = ?", (entry_id,))
+        c.execute(
+            """UPDATE send_queue
+               SET status = 'sent',
+                   last_error = NULL,
+                   last_attempt_at = ?,
+                   last_error_at = NULL
+               WHERE entry_id = ?""",
+            (now, entry_id),
+        )
 
 
 def mark_send_canceled(entry_id: int, error: str = "entry unavailable") -> None:
+    now = int(time.time())
     with _db() as c:
         c.execute(
-            "UPDATE send_queue SET status = 'canceled', last_error = ? WHERE entry_id = ?",
-            ((error or "")[:500], entry_id),
+            """UPDATE send_queue
+               SET status = 'canceled',
+                   last_error = ?,
+                   last_attempt_at = ?,
+                   last_error_at = ?
+               WHERE entry_id = ?""",
+            ((error or "")[:500], now, now, entry_id),
         )
 
 
 def mark_send_retry(entry_id: int, attempts: int, next_at: int, error: str) -> None:
+    now = int(time.time())
     with _db() as c:
         c.execute(
-            "UPDATE send_queue SET attempts = ?, next_at = ?, last_error = ? WHERE entry_id = ?",
-            (attempts, next_at, (error or "")[:500], entry_id),
+            """UPDATE send_queue
+               SET attempts = ?,
+                   next_at = ?,
+                   last_error = ?,
+                   last_attempt_at = ?,
+                   last_error_at = ?
+               WHERE entry_id = ?""",
+            (attempts, next_at, (error or "")[:500], now, now, entry_id),
         )
 
 
