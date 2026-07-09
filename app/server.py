@@ -679,6 +679,7 @@ async def submit_obshiy(
     code: str = Form(""),
     coefficient: float = Form(0),
     coefficient_mode: str = Form("fixed"),
+    box_weight: float = Form(0),
     weight: float = Form(...),
     photos: list[UploadFile] = [],  # noqa: B006
 ):
@@ -696,20 +697,26 @@ async def submit_obshiy(
         coefficient_mode = "none"
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
-    if not math.isfinite(coefficient) or coefficient < 0:
+    if not (math.isfinite(coefficient) and math.isfinite(box_weight)):
         raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
-    net = round(weight - coefficient, 4)
-    if net < 0:
-        raise HTTPException(status_code=400, detail="karobka og'irligi yukdan katta")
+    if coefficient < 0 or box_weight < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
+    if box_weight <= 0 and coefficient > 0:
+        box_weight = coefficient
+    coefficient = 0
+    if box_weight > 0 and coefficient_mode == "none":
+        coefficient_mode = "fixed"
+    net = round(weight, 4)
 
     photo_data = await _read_photos(photos)
-    result = db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data))
+    result = db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data), box_weight)
     entry_id = result["entry_id"]
     if photo_data:
         db.save_photos(entry_id, photo_data)
-    log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s coef=%s mode=%s photos=%d",
-             identity, rid, entry_id, section, code, weight, coefficient, coefficient_mode, len(photo_data))
+    log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s box=%s mode=%s photos=%d",
+             identity, rid, entry_id, section, code, weight, box_weight, coefficient_mode, len(photo_data))
     return JSONResponse({"ok": True, "entry_id": entry_id, "net": net,
+                         "box_weight": box_weight,
                          "photo_idxs": list(range(len(photo_data)))})
 
 
@@ -723,6 +730,7 @@ async def edit_obshiy_entry(
     code: str = Form(""),
     coefficient: float = Form(0),
     coefficient_mode: str = Form(""),
+    box_weight: float = Form(0),
     weight: float = Form(...),
 ):
     if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
@@ -739,18 +747,24 @@ async def edit_obshiy_entry(
         coefficient_mode = "none"
     if not (math.isfinite(weight) and weight > 0):
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
-    if not math.isfinite(coefficient) or coefficient < 0:
+    if not (math.isfinite(coefficient) and math.isfinite(box_weight)):
         raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
-    net = round(weight - coefficient, 4)
-    if net < 0:
-        raise HTTPException(status_code=400, detail="karobka og'irligi yukdan katta")
+    if coefficient < 0 or box_weight < 0:
+        raise HTTPException(status_code=400, detail="karobka og'irligi noto'g'ri")
+    if box_weight <= 0 and coefficient > 0:
+        box_weight = coefficient
+    coefficient = 0
+    if box_weight > 0 and coefficient_mode == "none":
+        coefficient_mode = "fixed"
+    net = round(weight, 4)
     try:
-        result = db.edit_obshiy(rid, entry_id, section, code, weight, coefficient, net)
+        result = db.edit_obshiy(rid, entry_id, section, code, weight, coefficient, net, box_weight)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
-    log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s coef=%s mode=%s",
-             identity, rid, entry_id, section, code, weight, coefficient, coefficient_mode)
+    log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s box=%s mode=%s",
+             identity, rid, entry_id, section, code, weight, box_weight, coefficient_mode)
     return JSONResponse({"ok": True, "entry_id": entry_id, "net": net,
+                         "box_weight": box_weight,
                          "edited": bool(result.get("edited"))})
 
 

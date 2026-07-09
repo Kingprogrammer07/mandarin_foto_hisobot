@@ -148,6 +148,11 @@
 
   const authHeaders = () => (inTelegram ? { "X-Telegram-Init-Data": tg.initData } : {});
 
+  function closestNode(node, selector) {
+    const el = node && node.nodeType === 1 ? node : node && node.parentElement;
+    return el && el.closest ? el.closest(selector) : null;
+  }
+
   let photoSeq = 0;
   let sheetOpen = false;
   let pendingClose = null; // { done, timer } for an in-flight close animation
@@ -687,10 +692,10 @@
         ? `${e.type.toUpperCase()} ${n2(e.weight)} - ${n2(coef)} = ${fmtKg(e.weight - coef)}`
         : `${e.type.toUpperCase()} ${fmtKg(e.weight)}`;
     } else {
-      const coef = Number(e.coefficient) || 0;
+      const boxWeight = Number(e.boxWeight) || 0;
       const n = (v) => String(Math.round(Number(v) * 100) / 100);
-      main = coef
-        ? `${e.code || "—"} · ${n(e.weight)} - ${n(coef)} = ${fmtKg(e.net != null ? e.net : e.weight - coef)}`
+      main = boxWeight
+        ? `${e.code || "—"} · ${fmtKg(e.weight)} · karobka ${n(boxWeight)}`
         : `${e.code || "—"} · ${fmtKg(e.weight)}`;
     }
     return { main, sub: `${fmtTs(e.ts / 1000)} · ${(e.files || []).length} rasm` };
@@ -827,7 +832,7 @@
     els.lightboxEdit.hidden = true;
     els.lightboxEditPanel.hidden = false;
     els.lbEditWeight.value = String(e.weight || "");
-    els.lbEditCoef.value = String(e.coefficient || "");
+    els.lbEditCoef.value = String(e.boxWeight || e.coefficient || "");
     if (lb.section === "reys") {
       els.lbEditTitle.textContent = "Kargolarga tarqatish";
       els.lbEditNameLabel.textContent = "Tovar turi";
@@ -855,8 +860,10 @@
     if (lb.section !== "reys" && SECTIONS[lb.section].codeRequired && !name) { showToast("Karobka kodini kiriting", true); return; }
     if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); return; }
     if (!isFinite(coefficient) || coefficient < 0) coefficient = 0;
-    const net = Math.round((weight - coefficient) * 1e4) / 1e4;
-    if (net < 0) { showToast("Koeffitsient og'irlikdan katta", true); return; }
+    const isReysEdit = lb.section === "reys";
+    const boxWeight = isReysEdit ? 0 : coefficient;
+    if (isReysEdit && weight - coefficient < 0) { showToast("Koeffitsient og'irlikdan katta", true); return; }
+    const net = isReysEdit ? Math.round((weight - coefficient) * 1e4) / 1e4 : weight;
 
     lbSaving = true;
     els.lbEditSave.disabled = true;
@@ -865,8 +872,9 @@
       fd.append("init_data", inTelegram ? tg.initData : "");
       fd.append("report_id", String(state.reportId));
       fd.append("weight", String(weight));
-      fd.append("coefficient", String(coefficient));
-      fd.append("coefficient_mode", coefficient ? "custom" : "none");
+      fd.append("coefficient", String(isReysEdit ? coefficient : 0));
+      fd.append("coefficient_mode", isReysEdit && coefficient ? "custom" : (boxWeight ? "custom" : "none"));
+      if (!isReysEdit) fd.append("box_weight", String(boxWeight || 0));
       const path = lb.section === "reys" ? `/api/report/${e.id}` : `/api/obshiy/${e.id}`;
       if (lb.section === "reys") {
         fd.append("type", name);
@@ -882,7 +890,7 @@
         if (json.inventory) state.inventory = json.inventory;
         loadInventory();
       } else {
-        Object.assign(e, { code: name, weight, coefficient, coefMode: coefficient ? "custom" : "none", net });
+        Object.assign(e, { code: name, weight, coefficient: 0, boxWeight, coefMode: boxWeight ? "custom" : "none", net });
       }
       if (json.edited) e.editedAt = Date.now();
       lb.caption = entryCaption(e);
@@ -1303,14 +1311,15 @@
     const cfg = SECTIONS[state.formSection];
     const code = els.topCode.value.trim();
     const weight = parseFloat(cleanDecimal(state.topWeightRaw));
-    const coefficient = topCoefValue();
-    const net = Math.round((weight - coefficient) * 1e4) / 1e4;
+    const boxWeight = topCoefValue();
+    const coefficient = 0;
+    const net = weight;
     if (cfg.codeRequired && !code) { showToast("Karobka kodini kiriting", true); haptic("rigid"); return; }
     if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); haptic("rigid"); return; }
-    if (state.topCoef.mode === "custom" && (!isFinite(coefficient) || coefficient <= 0)) {
+    if (state.topCoef.mode === "custom" && (!isFinite(boxWeight) || boxWeight <= 0)) {
       showToast("Karobka og'irligini kiriting", true); haptic("rigid"); return;
     }
-    if (!isFinite(coefficient) || coefficient < 0 || net < 0) {
+    if (!isFinite(boxWeight) || boxWeight < 0) {
       showToast("Karobka og'irligini tekshiring", true); haptic("rigid"); return;
     }
 
@@ -1324,7 +1333,7 @@
         sameText(editingEntry.code, code) &&
         sameNum(editingEntry.weight, weight) &&
         sameText(editingEntry.coefMode || "none", state.topCoef.mode || "none") &&
-        sameNum(editingEntry.coefficient || 0, coefficient)
+        sameNum(editingEntry.boxWeight || editingEntry.coefficient || 0, boxWeight)
       ) {
         const edited = editingEntry;
         editingEntry = null;
@@ -1345,11 +1354,12 @@
         fd.append("code", code);
         fd.append("coefficient", String(coefficient));
         fd.append("coefficient_mode", state.topCoef.mode);
+        fd.append("box_weight", String(boxWeight || 0));
         fd.append("weight", String(weight));
         const res = await fetch(`/api/obshiy/${editingEntry.id}`, { method: "PUT", body: fd });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
-        Object.assign(editingEntry, { code, weight, coefficient, coefMode: state.topCoef.mode, net });
+        Object.assign(editingEntry, { code, weight, coefficient, boxWeight, coefMode: state.topCoef.mode, net });
         if (json.edited) editingEntry.editedAt = Date.now();
         const edited = editingEntry;
         editingEntry = null;
@@ -1373,6 +1383,7 @@
           code,
           coefficient,
           coefficient_mode: state.topCoef.mode,
+          box_weight: boxWeight || 0,
           weight,
         }, files);
         showToast("Saqlandi ✓");
@@ -1390,10 +1401,11 @@
     if (editingEntry) {
       const changed = !sameText(editingEntry.code, code) ||
         !sameNum(editingEntry.weight, weight) ||
-        !sameNum(editingEntry.coefficient || 0, coefficient);
+        !sameNum(editingEntry.boxWeight || editingEntry.coefficient || 0, boxWeight);
       editingEntry.code = code;
       editingEntry.weight = weight;
       editingEntry.coefficient = coefficient;
+      editingEntry.boxWeight = boxWeight;
       editingEntry.coefMode = state.topCoef.mode;
       editingEntry.net = net;
       editingEntry.files = files;
@@ -1407,7 +1419,7 @@
       els.topSave.disabled = false;
       return; // no fast-mode camera reopen while editing
     }
-    state.entries[state.formSection].push({ code, weight, coefficient, coefMode: state.topCoef.mode, net, files, ts: Date.now() });
+    state.entries[state.formSection].push({ code, weight, coefficient, boxWeight, coefMode: state.topCoef.mode, net, files, ts: Date.now() });
     updateViewCount();
     showToast("Saqlandi ✓");
     resetTop(false);
@@ -1807,7 +1819,8 @@
     (entry.files || []).forEach((f) => state.topPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
     renderPhotos("topPhotos");
     els.topCode.value = entry.code || "";
-    setTopCoefUI(entry.coefMode || (entry.coefficient ? "fixed" : "none"), entry.coefficient || 0);
+    const boxWeight = entry.boxWeight || entry.coefficient || 0;
+    setTopCoefUI(entry.coefMode || (boxWeight ? "fixed" : "none"), boxWeight);
     els.topWeight.value = String(entry.weight);
     state.topWeightRaw = String(entry.weight);
     els.topSave.textContent = "Yangilash";
@@ -2038,9 +2051,10 @@
     const base = { localId: item.localId, files, ts: item.ts, synced: false, pending: true };
     if (item.kind === "adjust") return { ...base, from: f.from_type, to: f.to_type, weight: Number(f.weight) };
     if (OBSHIY_SECTIONS.includes(item.kind)) {
-      const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
-      return { ...base, code: f.code || "", coefMode: f.coefficient_mode || (coef ? "fixed" : "none"),
-        coefficient: coef, weight: w, net: Math.round((w - coef) * 1e4) / 1e4 };
+      const boxWeight = Number(f.box_weight) || Number(f.coefficient) || 0;
+      const w = Number(f.weight) || 0;
+      return { ...base, code: f.code || "", coefMode: f.coefficient_mode || (boxWeight ? "fixed" : "none"),
+        coefficient: 0, boxWeight, weight: w, net: w };
     }
     const coef = Number(f.coefficient) || 0, w = Number(f.weight) || 0;
     return {
@@ -2178,10 +2192,11 @@
     };
     if (kind === "adjust") return { ...base, from: r.from_type, to: r.to_type, weight: r.weight };
     if (OBSHIY_SECTIONS.includes(kind)) {
-      const coef = Number(r.coefficient) || 0, w = Number(r.weight) || 0;
-      const net = r.net == null ? Math.round((w - coef) * 1e4) / 1e4 : Number(r.net);
-      return { ...base, code: r.tovar_turi || "", coefMode: coef ? "fixed" : "none",
-        coefficient: coef, weight: w, net };
+      const boxWeight = Number(r.box_weight) || Number(r.coefficient) || 0;
+      const w = Number(r.weight) || 0;
+      const net = r.net == null ? w : Number(r.net);
+      return { ...base, code: r.tovar_turi || "", coefMode: boxWeight ? "fixed" : "none",
+        coefficient: 0, boxWeight, weight: w, net };
     }
     const coef = Number(r.coefficient) || 0;
     const boxWeight = Number(r.box_weight) || 0;
@@ -2724,7 +2739,7 @@
 
   // ---- Coefficient ----
   els.coefChips.addEventListener("click", (ev) => {
-    const chip = ev.target.closest && ev.target.closest('.chip[data-mode="none"]');
+    const chip = closestNode(ev.target, '.chip[data-mode="none"]');
     if (!chip || !els.coefChips.contains(chip)) return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -2770,19 +2785,21 @@
   if (els.coefBoxMenu) {
     let coefBoxPointerHandledAt = 0;
     const onCoefBoxPick = (ev, fromPointer) => {
-      const btn = ev.target.closest && ev.target.closest("[data-box-value]");
+      const btn = closestNode(ev.target, "[data-box-value]");
       if (!btn || !els.coefBoxMenu.contains(btn)) return;
       ev.preventDefault();
       ev.stopPropagation();
+      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
       if (fromPointer) coefBoxPointerHandledAt = Date.now();
       else if (Date.now() - coefBoxPointerHandledAt < 400) return;
       selectCoefBoxValue(btn.dataset.boxValue);
     };
-    els.coefBoxMenu.addEventListener("pointerdown", (ev) => onCoefBoxPick(ev, true), true);
+    els.coefBoxMenu.addEventListener("pointerup", (ev) => onCoefBoxPick(ev, true), true);
+    els.coefBoxMenu.addEventListener("touchend", (ev) => onCoefBoxPick(ev, true), true);
     els.coefBoxMenu.addEventListener("click", (ev) => onCoefBoxPick(ev, false), true);
     document.addEventListener("click", (ev) => {
       if (els.coefBoxMenu.hidden) return;
-      if (els.coefBoxMenu.contains(ev.target) || els.coefChips.contains(ev.target)) return;
+      if (closestNode(ev.target, "#coefBoxMenu") || closestNode(ev.target, "#coefChips")) return;
       setCoefBoxMenu(false);
     });
   }

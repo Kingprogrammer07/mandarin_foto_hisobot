@@ -142,10 +142,7 @@ def _sum_by_code(entries: list[dict]) -> tuple[dict[str, float], list[str]]:
 
 
 def _obshiy_value(entry: dict) -> float:
-    net = entry.get("net")
-    if net is not None:
-        return _num(net)
-    return round(_num(entry.get("weight")) - _num(entry.get("coefficient")), 4)
+    return _num(entry.get("weight"))
 
 
 def _sum_obshiy_values_by_code(entries: list[dict]) -> tuple[dict[str, float], list[str]]:
@@ -293,7 +290,10 @@ def _inventory_for_summary(report_id: int) -> dict[str, float]:
 
 
 def _summary_box_weight(obshiy_entries: dict[str, list[dict]], reys_entries: list[dict]) -> float:
-    obshiy_box = round(sum(_num(e.get("coefficient")) for e in obshiy_entries.get("bizda", [])), 4)
+    obshiy_box = round(
+        sum(_num(e.get("box_weight")) or _num(e.get("coefficient")) for e in obshiy_entries.get("bizda", [])),
+        4,
+    )
     kargo_box = round(sum(_num(e.get("box_weight")) for e in reys_entries), 4)
     return round(obshiy_box - kargo_box, 4)
 

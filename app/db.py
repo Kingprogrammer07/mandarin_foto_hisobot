@@ -256,6 +256,28 @@ def init() -> None:
                 (top_restore, int(time.time())),
             )
 
+        obshiy_box_restore = "restore_obshiy_box_weight_20260709"
+        if c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (obshiy_box_restore,)).fetchone() is None:
+            c.execute(
+                """UPDATE activity
+                   SET box_weight = CASE
+                         WHEN COALESCE(box_weight, 0) > 0 THEN box_weight
+                         ELSE COALESCE(coefficient, 0)
+                       END,
+                       coefficient = 0,
+                       net = weight
+                   WHERE action IN ('top', 'topchiqgan', 'bizda', 'chiqgan')
+                     AND weight IS NOT NULL
+                     AND (
+                       COALESCE(coefficient, 0) <> 0
+                       OR COALESCE(net, weight) <> weight
+                     )"""
+            )
+            c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (obshiy_box_restore, int(time.time())),
+            )
+
         custom_backfill = "custom_types_backfill_20260708"
         if c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (custom_backfill,)).fetchone() is None:
             rows = c.execute(
@@ -507,19 +529,21 @@ def adjust(report_id: int, actor: str, from_type: str, to_type: str, weight: flo
 
 def add_obshiy(report_id: int, actor: str, action: str, code: str,
                weight: float, coefficient: float = 0, net: float | None = None,
-               photos: int = 0) -> dict:
+               photos: int = 0, box_weight: float = 0) -> dict:
     if action not in OBSHIY_ACTIONS:
         raise ValueError("bad obshiy action")
-    if net is None:
-        net = round(weight - coefficient, 4)
-    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net) and weight > 0):
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(box_weight) and weight > 0):
         raise ValueError("non-finite value")
+    if box_weight <= 0 and coefficient > 0:
+        box_weight = coefficient
+    coefficient = 0
+    net = round(weight, 4)
     now = int(time.time())
     with _db() as c:
         cur = c.execute(
-            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, coefficient, net, photos)
-               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (report_id, now, actor, action, (code or "").strip(), weight, coefficient, net, photos),
+            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, weight, coefficient, net, photos, box_weight)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (report_id, now, actor, action, (code or "").strip(), weight, coefficient, net, photos, box_weight),
         )
         return {"entry_id": cur.lastrowid}
 
@@ -625,13 +649,16 @@ def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
 
 
 def edit_obshiy(report_id: int, entry_id: int, action: str, code: str,
-                weight: float, coefficient: float = 0, net: float | None = None) -> dict:
+                weight: float, coefficient: float = 0, net: float | None = None,
+                box_weight: float = 0) -> dict:
     if action not in OBSHIY_ACTIONS:
         raise ValueError("bad obshiy action")
-    if net is None:
-        net = round(weight - coefficient, 4)
-    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(net) and weight > 0):
+    if not (math.isfinite(weight) and math.isfinite(coefficient) and math.isfinite(box_weight) and weight > 0):
         raise ValueError("non-finite value")
+    if box_weight <= 0 and coefficient > 0:
+        box_weight = coefficient
+    coefficient = 0
+    net = round(weight, 4)
     now = int(time.time())
     with _db() as c:
         old = _get_entry(c, report_id, entry_id, action)
@@ -641,12 +668,13 @@ def edit_obshiy(report_id: int, entry_id: int, action: str, code: str,
             or not _same_num(old["weight"], weight)
             or not _same_num(old["coefficient"], coefficient)
             or not _same_num(old["net"], net)
+            or not _same_num(old["box_weight"], box_weight)
         )
         if not changed:
             return {"entry_id": entry_id, "edited": False}
         c.execute(
-            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, edited_at = ? WHERE id = ?",
-            (code, weight, coefficient, net, now, entry_id),
+            "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, box_weight = ?, edited_at = ? WHERE id = ?",
+            (code, weight, coefficient, net, box_weight, now, entry_id),
         )
         return {"entry_id": entry_id, "edited": True}
 
