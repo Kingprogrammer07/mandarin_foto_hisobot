@@ -1781,7 +1781,14 @@
       statusBadge.classList.toggle("entry-status--sent", e.sendStatus === "sent");
       statusBadge.classList.toggle("entry-status--pending", e.pending || e.syncing || e.sendStatus === "pending");
       statusBadge.classList.toggle("entry-status--err", !!e.error || !!e.sendError);
-      if (e.sendError) statusBadge.title = e.sendError;
+      if (e.sendError) {
+        statusBadge.title = e.sendError;
+        statusBadge.setAttribute("aria-label", e.sendError);
+        statusBadge.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          showToast(e.sendError, true);
+        });
+      }
       badges.appendChild(statusBadge);
     }
     card.appendChild(foot);
