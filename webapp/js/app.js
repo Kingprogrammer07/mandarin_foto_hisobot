@@ -481,6 +481,15 @@
 
   // ---- Photos (two independent sets: reys "photos", adashgan "adjPhotos") ----
   let activePk = "photos"; // which set the gallery/camera currently targets
+  let savingTop = false;
+
+  function updateTopSaveAvailability() {
+    if (!els.topSave) return;
+    const missingPhoto = state.topPhotos.length === 0;
+    els.topSave.disabled = savingTop || missingPhoto;
+    els.topSave.title = missingPhoto ? "Kamida 1 ta rasm qo'shing" : "";
+  }
+
   function photoEls(pk) {
     if (pk === "adjPhotos")
       return { grid: els.adjPhotoGrid, counter: els.adjPhotoCounter, bg: els.adjBtnGallery, bc: els.adjBtnCamera };
@@ -513,6 +522,7 @@
     const full = arr.length >= MAX_PHOTOS;
     e.bg.disabled = full;
     e.bc.disabled = full;
+    if (pk === "topPhotos") updateTopSaveAvailability();
   }
   function renderAllPhotos() { renderPhotos("photos"); renderPhotos("adjPhotos"); renderPhotos("topPhotos"); }
 
@@ -1301,7 +1311,6 @@
     els.topCoefCustom.value = mode === "custom" ? String(value || "") : "";
   }
 
-  let savingTop = false;
   let editingEntry = null; // shared-form entry being edited (null = creating)
   let editingReys = null;  // reys-tab entry being edited (backend PUT on save)
   let editingAdj = null;   // adashgan-tab entry being edited (backend PUT on save)
@@ -1314,6 +1323,7 @@
     const boxWeight = topCoefValue();
     const coefficient = 0;
     const net = weight;
+    if (!state.topPhotos.length) { showToast("Kamida 1 ta rasm qo'shing", true); haptic("rigid"); updateTopSaveAvailability(); return; }
     if (cfg.codeRequired && !code) { showToast("Karobka kodini kiriting", true); haptic("rigid"); return; }
     if (!isFinite(weight) || weight <= 0) { showToast("Og'irlikni to'g'ri kiriting", true); haptic("rigid"); return; }
     if (state.topCoef.mode === "custom" && (!isFinite(boxWeight) || boxWeight <= 0)) {
@@ -1324,7 +1334,7 @@
     }
 
     savingTop = true;
-    els.topSave.disabled = true;
+    updateTopSaveAvailability();
     // Entries hold the actual File objects (so photos can be viewed later);
     // object URLs are created on demand at render time. Backend isn't wired yet.
     const files = state.topPhotos.map((p) => p.file);
@@ -1342,7 +1352,7 @@
         resetTop(false);
         updateViewCount();
         savingTop = false;
-        els.topSave.disabled = false;
+        updateTopSaveAvailability();
         returnToEditedEntry(state.formSection, edited);
         return;
       }
@@ -1372,7 +1382,7 @@
         showToast(e.message || "Xatolik", true);
       } finally {
         savingTop = false;
-        els.topSave.disabled = false;
+        updateTopSaveAvailability();
       }
       return;
     }
@@ -1393,7 +1403,7 @@
         showToast(e.message || "Xatolik", true);
       } finally {
         savingTop = false;
-        els.topSave.disabled = false;
+        updateTopSaveAvailability();
       }
       return;
     }
@@ -1416,7 +1426,7 @@
       resetTop(false);
       updateViewCount();
       savingTop = false;
-      els.topSave.disabled = false;
+      updateTopSaveAvailability();
       return; // no fast-mode camera reopen while editing
     }
     state.entries[state.formSection].push({ code, weight, coefficient, boxWeight, coefMode: state.topCoef.mode, net, files, ts: Date.now() });
@@ -1424,7 +1434,7 @@
     showToast("Saqlandi ✓");
     resetTop(false);
     savingTop = false;
-    els.topSave.disabled = false;
+    updateTopSaveAvailability();
     // Fast mode: reopen the camera immediately for the next box.
     if (state.topFast) { activePk = "topPhotos"; openCamera(); }
   }

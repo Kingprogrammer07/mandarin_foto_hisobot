@@ -709,6 +709,8 @@ async def submit_obshiy(
     net = round(weight, 4)
 
     photo_data = await _read_photos(photos)
+    if not photo_data:
+        raise HTTPException(status_code=400, detail="kamida 1 ta rasm qo'shing")
     result = db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data), box_weight)
     entry_id = result["entry_id"]
     if photo_data:
