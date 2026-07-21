@@ -2134,6 +2134,69 @@ body.locked { overflow: hidden; }
   backdrop-filter: saturate(1.5) blur(24px);
   -webkit-backdrop-filter: saturate(1.5) blur(24px);
 }
+
+.sheet--tall {
+  max-height: min(88vh, 760px);
+  overflow: auto;
+}
+
+.outbox-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.outbox-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.outbox-summary {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.outbox-list {
+  display: grid;
+  gap: 10px;
+}
+
+.outbox-row {
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.outbox-row__title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.outbox-row__meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.outbox-row__fields {
+  margin: 0;
+  padding: 10px;
+  border-radius: 12px;
+  overflow: auto;
+  background: rgba(127, 127, 127, .1);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
 .sheet__handle {
   width: 44px;
   height: 5px;

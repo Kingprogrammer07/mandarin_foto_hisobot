@@ -321,6 +321,14 @@
     rememberToggle: $("#rememberToggle"),
     reysFastToggle: $("#reysFastToggle"),
     zeroCoefBtn: $("#zeroCoefBtn"),
+    outboxDiagBtn: $("#outboxDiagBtn"),
+    outboxBackdrop: $("#outboxBackdrop"),
+    outboxSheet: $("#outboxSheet"),
+    outboxClose: $("#outboxClose"),
+    outboxRefresh: $("#outboxRefresh"),
+    outboxSync: $("#outboxSync"),
+    outboxSummary: $("#outboxSummary"),
+    outboxList: $("#outboxList"),
     // adashgan photos
     adjPhotoGrid: $("#adjPhotoGrid"),
     adjPhotoCounter: $("#adjPhotoCounter"),
@@ -414,7 +422,7 @@
       sheetOpen ||
       !els.camModal.hidden || !els.lightbox.hidden || !els.activityScreen.hidden ||
       !els.entriesScreen.hidden || !els.entryActSheet.hidden ||
-      !els.nameSheet.hidden || !els.setSheet.hidden;
+      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden;
     if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
     else tg.BackButton.hide();
   }
@@ -429,7 +437,7 @@
       !els.homeScreen.hidden || !els.menuScreen.hidden || !els.obshiyScreen.hidden ||
       !els.topScreen.hidden || !els.entriesScreen.hidden || !els.activityScreen.hidden ||
       !els.camModal.hidden || !els.lightbox.hidden ||
-      !els.nameSheet.hidden || !els.setSheet.hidden || !els.entryActSheet.hidden
+      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden || !els.entryActSheet.hidden
     );
   }
   function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
@@ -446,6 +454,7 @@
     if (!els.lightbox.hidden) { closeLightbox(); return; }
     if (!els.camModal.hidden) { closeCamera(); return; }
     if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
+    if (!els.outboxSheet.hidden) { closeOutboxDiag(); return; }
     if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
     if (sheetOpen) { closeSheet(); return; }
@@ -2202,6 +2211,116 @@
     window.setInterval(syncOutbox, 15000);
   }
 
+  function outboxKindTitle(kind) {
+    return (SECTIONS[kind] && SECTIONS[kind].title) || kind || "noma'lum";
+  }
+
+  function outboxItemPhotos(item) {
+    return (item.blobs || []).map((b) => ({
+      name: b && b.name ? b.name : "",
+      type: b && b.type ? b.type : "",
+      size: b && b.size ? b.size : 0,
+    }));
+  }
+
+  function outboxSummaryText(items) {
+    if (!items.length && _idbLastError) return `Qurilma xotirasini ochib bo'lmadi: ${_idbLastError}`;
+    if (!items.length) return "Pending yozuv yo'q. Bu qurilmada serverga tushmagan outbox bo'sh.";
+    const groups = {};
+    items.forEach((it) => {
+      const key = `report ${it.reportId || "?"} · ${outboxKindTitle(it.kind)}`;
+      groups[key] = (groups[key] || 0) + 1;
+    });
+    return `${items.length} ta pending yozuv: ` + Object.entries(groups).map(([k, n]) => `${k}: ${n}`).join("; ");
+  }
+
+  async function renderOutboxDiag() {
+    els.outboxSummary.textContent = "Yuklanmoqda…";
+    els.outboxList.innerHTML = "";
+    const items = await idbAll();
+    items.sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
+    els.outboxSummary.textContent = outboxSummaryText(items);
+    els.outboxSync.disabled = !items.length;
+    if (!items.length) return;
+
+    const frag = document.createDocumentFragment();
+    items.forEach((item, idx) => {
+      const row = document.createElement("div");
+      row.className = "outbox-row";
+
+      const title = document.createElement("div");
+      title.className = "outbox-row__title";
+      title.textContent = `${idx + 1}. ${outboxKindTitle(item.kind)} · report_id=${item.reportId || "?"}`;
+
+      const meta = document.createElement("div");
+      meta.className = "outbox-row__meta";
+      const ts = item.ts ? new Date(item.ts) : null;
+      const photos = outboxItemPhotos(item);
+      const photoBytes = photos.reduce((s, p) => s + (Number(p.size) || 0), 0);
+      meta.textContent = [
+        ts ? ts.toLocaleString("uz-UZ") : "vaqt yo'q",
+        `${photos.length} rasm`,
+        photoBytes ? `${Math.round(photoBytes / 1024)} KB` : "",
+      ].filter(Boolean).join(" · ");
+
+      const pre = document.createElement("pre");
+      pre.className = "outbox-row__fields";
+      pre.textContent = JSON.stringify({
+        localId: item.localId,
+        fields: item.fields || {},
+        photos,
+      }, null, 2);
+
+      row.append(title, meta, pre);
+      frag.appendChild(row);
+    });
+    els.outboxList.appendChild(frag);
+  }
+
+  function openOutboxDiag() {
+    if (!els.setSheet.hidden) closeSettings();
+    els.outboxBackdrop.hidden = false;
+    els.outboxSheet.hidden = false;
+    renderOutboxDiag();
+    syncBackButton();
+  }
+
+  function closeOutboxDiag() {
+    els.outboxSheet.hidden = true;
+    els.outboxBackdrop.hidden = true;
+    syncBackButton();
+  }
+
+  async function syncOutboxFromDiag() {
+    const items = await idbAll();
+    if (!items.length) { renderOutboxDiag(); return; }
+    const ok = await confirmDialog(`${items.length} ta pending yozuv serverga qayta yuborilsinmi?`);
+    if (!ok) return;
+    els.outboxSync.disabled = true;
+    let sent = 0, failed = 0;
+    for (const item of items) {
+      try {
+        const { res, json } = await uploadCreateRaw(item);
+        if (!res.ok || !json.ok) {
+          failed += 1;
+          continue;
+        }
+        await idbDelete(item.localId);
+        sent += 1;
+      } catch (_) {
+        failed += 1;
+      }
+    }
+    showToast(failed ? `${sent} ta yuborildi, ${failed} ta xato` : `${sent} ta yuborildi`);
+    await renderOutboxDiag();
+    if (state.reportId) {
+      OBSHIY_SECTIONS.forEach(loadEntries);
+      loadEntries("reys");
+      loadEntries("adjust");
+      loadInventory();
+    }
+  }
+
   // ---- Load saved entries from the server (history survives a reload) ----
   function serverEntry(kind, r, files) {
     const base = {
@@ -2503,6 +2622,11 @@
     }
   }
   els.zeroCoefBtn.addEventListener("click", zeroTopCoefficients);
+  els.outboxDiagBtn.addEventListener("click", openOutboxDiag);
+  els.outboxClose.addEventListener("click", closeOutboxDiag);
+  els.outboxBackdrop.addEventListener("click", closeOutboxDiag);
+  els.outboxRefresh.addEventListener("click", renderOutboxDiag);
+  els.outboxSync.addEventListener("click", syncOutboxFromDiag);
 
   // ---- Adashgan reset ----
   function resetAdjust(full) {
