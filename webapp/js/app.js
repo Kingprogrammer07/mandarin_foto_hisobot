@@ -1859,8 +1859,8 @@
     closeEntries(); // reveal the form (still under the entries screen)
   }
 
-  // Restore a coefficient into the chips row (none / fixed 0.94 / fixed 1.22 /
-  // custom). A fixed value with no matching chip falls back to custom.
+  // Restore a coefficient into the chips row. A fixed value with no matching
+  // chip falls back to custom.
   function ensureCoefBoxMenu() {
     if (els.coefBoxMenu) return els.coefBoxMenu;
     const menu = document.createElement("div");
@@ -1871,6 +1871,7 @@
       '<button type="button" class="coef-menu__item" data-box-value="0">Ayirilmasin</button>',
       '<button type="button" class="coef-menu__item" data-box-value="1">Ayirilmasin (1)</button>',
       '<button type="button" class="coef-menu__item" data-box-value="1.22">Ayirilmasin (1.22)</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1.4">Ayirilmasin (1.4)</button>',
     ].join("");
     els.coefChips.insertAdjacentElement("afterend", menu);
     els.coefBoxMenu = menu;
