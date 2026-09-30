@@ -119,7 +119,9 @@ R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "").strip()
 R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "").strip()
 R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
 R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "").strip()
-R2_PUBLIC_DOMAIN: str = os.getenv("R2_PUBLIC_DOMAIN", "").strip().rstrip("/")
+_raw_public = (os.getenv("R2_PUBLIC_DOMAIN", "") or os.getenv("R2_PUBLIC_URL", "")).strip().rstrip("/")
+# Note: r2.cloudflarestorage.com is the S3 API endpoint, not a public web CDN.
+R2_PUBLIC_DOMAIN: str = "" if "r2.cloudflarestorage.com" in _raw_public else _raw_public
 R2_ENDPOINT_URL: str = (
     f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
 )

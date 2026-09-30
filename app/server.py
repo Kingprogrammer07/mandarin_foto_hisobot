@@ -951,6 +951,13 @@ async def api_entry_photo(request: Request, entry_id: int, idx: int):
         path, mime = res
         return FileResponse(str(path), media_type=mime,
                             headers={"Cache-Control": "private, max-age=86400"})
+    if data is None and r2_key:
+        from . import storage
+        res_r2 = await storage.get_photo_bytes(r2_key, entry_id, idx)
+        if res_r2 is not None:
+            r2_bytes, r2_mime = res_r2
+            return Response(content=r2_bytes, media_type=r2_mime,
+                            headers={"Cache-Control": "private, max-age=86400"})
     if data is None:
         raise HTTPException(status_code=404, detail="rasm topilmadi")
     return Response(content=data, media_type=mime,
