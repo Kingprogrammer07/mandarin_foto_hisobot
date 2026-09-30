@@ -30,7 +30,24 @@ def _s3_client():
     )
 
 
-def build_key(entry_id: int, idx: int, ext: str = "webp") -> str:
+def build_key(
+    entry_id: int,
+    idx: int,
+    ext: str = "webp",
+    action: str | None = None,
+    report_id: int | None = None,
+) -> str:
+    """Build a clean, structured R2 object key.
+
+    Hierarchy: {action}/report_{report_id}/{entry_id}/{idx}.{ext}
+    Example:   top/report_44/5915/0.webp
+    Fallback:  entries/{entry_id}/{idx}.{ext}
+    """
+    clean_action = str(action).strip().lower() if action else None
+    if clean_action and report_id is not None:
+        return f"{clean_action}/report_{report_id}/{entry_id}/{idx}.{ext}"
+    if clean_action:
+        return f"{clean_action}/{entry_id}/{idx}.{ext}"
     return f"entries/{entry_id}/{idx}.{ext}"
 
 
@@ -43,13 +60,20 @@ def photo_public_url(key: str, entry_id: int, idx: int) -> str:
     return f"/api/entry/{entry_id}/photo/{idx}"
 
 
-async def upload_photo(entry_id: int, idx: int, data: bytes, mime: str = "image/webp") -> tuple[str, str]:
+async def upload_photo(
+    entry_id: int,
+    idx: int,
+    data: bytes,
+    mime: str = "image/webp",
+    action: str | None = None,
+    report_id: int | None = None,
+) -> tuple[str, str]:
     """Upload photo bytes.
 
     Returns (r2_key, public_or_endpoint_url).
     """
     ext = "webp" if "webp" in mime else ("png" if "png" in mime else "jpg")
-    key = build_key(entry_id, idx, ext=ext)
+    key = build_key(entry_id, idx, ext=ext, action=action, report_id=report_id)
 
     if config.r2_enabled():
         try:

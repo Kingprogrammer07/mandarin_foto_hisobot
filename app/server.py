@@ -535,7 +535,7 @@ async def submit_report(
     if photo_data:
         r2_meta = []
         for idx, (data, mime) in enumerate(photo_data):
-            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            key, url = await storage.upload_photo(entry_id, idx, data, mime, action="reys", report_id=rid)
             r2_meta.append((key, url))
         await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("reys by %s [r%s e%s]: %s +%s (weight=%s coef=%s photos=%d)",
@@ -635,7 +635,7 @@ async def submit_adjust(
     if photo_data:
         r2_meta = []
         for idx, (data, mime) in enumerate(photo_data):
-            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            key, url = await storage.upload_photo(entry_id, idx, data, mime, action="adjust", report_id=rid)
             r2_meta.append((key, url))
         await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("adjust by %s [r%s e%s]: %s -> %s %s kg photos=%d",
@@ -732,7 +732,7 @@ async def submit_obshiy(
     if photo_data:
         r2_meta = []
         for idx, (data, mime) in enumerate(photo_data):
-            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            key, url = await storage.upload_photo(entry_id, idx, data, mime, action=section, report_id=rid)
             r2_meta.append((key, url))
         await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s box=%s mode=%s photos=%d",

@@ -92,8 +92,14 @@ async def run_migration(dry_run: bool = False, purge_local: bool = False, batch_
             failed_count += 1
             continue
 
+        # Look up action and report_id from activity
+        cursor = await c.execute("SELECT report_id, action FROM activity WHERE id = ?", (entry_id,))
+        act_row = await cursor.fetchone()
+        action = act_row[1] if act_row else None
+        report_id = act_row[0] if act_row else None
+
         upload_data, upload_mime = images.optimize_to_webp(data, quality=95)
-        key = storage.build_key(entry_id, idx, ext="webp")
+        key = storage.build_key(entry_id, idx, ext="webp", action=action, report_id=report_id)
 
         # 2. Upload to R2
         try:

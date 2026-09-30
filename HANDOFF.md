@@ -61,8 +61,29 @@ reys_hisoboti_v2/
 
 ### B. Rasmlar Ombori (`app/storage.py`, `app/storage_migrate.py` & Cloudflare R2)
 - Rasmlar Cloudflare R2 bucket-ga yuklanadi.
-- Agar R2 sozlamalari (`.env`) kiritilmagan bo'lsa, tizim avtomatik ravishda lokal diskka (`data/photos/<entry_id>/<idx>`) yozadi (**Graceful Fallback**).
-- Mini App rasmlarni to'g'ridan-to'g'ri R2 CDN URL orqali yoki `/api/entry/{id}/photo/{idx}` orqali yuklaydi.
+- **Tartibli Papkalar Ierarxiyasi (Clean Folder Structure)**:
+  - Format: `{action}/report_{report_id}/{entry_id}/{idx}.webp`
+  - Masalan:
+    - `top/report_44/5915/0.webp`
+    - `reys/report_44/5916/0.webp`
+    - `bizda/report_44/5917/0.webp`
+    - `chiqgan/report_44/5918/0.webp`
+    - `adjust/report_44/5919/0.webp`
+  - Bu orqali Cloudflare Dashboardda har bir bo'lim va hisobot bo'yicha rasmlar alohida papkalarda toza va tartibli saqlanadi.
+- **R2 CORS Siyosati (Cross-Origin Resource Sharing)**:
+  - Agar rasmlar to'g'ridan-to'g'ri R2 CDN public domenidan (`R2_PUBLIC_URL`) brauzer va Telegram Mini Appga yuklansa, brauzer `fetch()` yoki canvas xatosi bermasligi uchun Cloudflare R2 da quyidagi CORS sozlanishi tavsiya etiladi:
+    ```json
+    [
+      {
+        "AllowedOrigins": ["*"],
+        "AllowedMethods": ["GET", "HEAD"],
+        "AllowedHeaders": ["*"],
+        "MaxAgeSeconds": 3600
+      }
+    ]
+    ```
+  - Agar `R2_PUBLIC_URL` bo'sh qolsa, FastAPI serveri rasmlarni o'zidan `/api/entry/{id}/photo/{idx}` orqali stream qilib beradi (CORS talab etilmaydi).
+- **Graceful Local Fallback**: Agar R2 sozlamalari (`.env`) kiritilmagan bo'lsa yoki R2 vaqtincha uzilsa, tizim avtomatik ravishda lokal diskka (`data/photos/<entry_id>/<idx>`) yozadi.
 - **Xavfsiz R2 ga ko'chirish (`python -m app.storage_migrate`)**:
   - **Zero Data Loss Kafolati**: Sukut bo'yicha lokal fayllar va bazadagi BLOB hech qachon o'chirilmaydi.
   - Har bir rasm R2 ga yuklangach, `head_object` orqali baytma-bayt to'liq tekshiriladi; faqat 100% muvaffaqiyatli tekshiruvdan keyingina SQLite da `r2_key`/`r2_url` yoziladi.

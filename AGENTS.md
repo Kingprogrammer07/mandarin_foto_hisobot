@@ -89,7 +89,10 @@ Cargo/photo data must never disappear silently — keep that property.
 ### Storage (`app/storage.py`, `app/storage_migrate.py`)
 
 Async S3/Cloudflare R2 integration via `aioboto3`. Uploads photos to R2 bucket
-and stores direct public CDN URLs if configured.
+with clean hierarchical folder keys (`{action}/report_{report_id}/{entry_id}/{idx}.webp`),
+e.g. `top/report_44/5915/0.webp` or `reys/report_44/5916/0.webp`.
+Direct public CDN URLs are stored if `R2_PUBLIC_URL` is configured.
+If direct CDN is used, standard R2 CORS (`GET`/`HEAD`) should be allowed on the bucket.
 **Transparent local fallback**: If `R2_*` credentials are empty or unconfigured,
 automatically falls back to storing photos on local disk (`data/photos/<entry_id>/<idx>`).
 **Zero Data Loss Migration**: `python -m app.storage_migrate` verifies every upload
