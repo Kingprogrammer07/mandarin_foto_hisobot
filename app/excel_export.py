@@ -273,7 +273,7 @@ def _summary_type_key(tovar_turi: str) -> str:
         return "oneway"
     if key == "uztez":
         return "uzt"
-    if key.startswith("x"):
+    if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
         return "xabib"
     return key
 
