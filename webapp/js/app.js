@@ -2181,6 +2181,7 @@
       '<button type="button" class="coef-menu__item" data-box-value="1">Ayirilmasin (1)</button>',
       '<button type="button" class="coef-menu__item" data-box-value="1.22">Ayirilmasin (1.22)</button>',
       '<button type="button" class="coef-menu__item" data-box-value="1.4">Ayirilmasin (1.4)</button>',
+      '<button type="button" class="coef-menu__item" data-box-value="1.05">Ayirilmasin (1.05)</button>',
     ].join("");
     els.coefChips.insertAdjacentElement("afterend", menu);
     els.coefBoxMenu = menu;
