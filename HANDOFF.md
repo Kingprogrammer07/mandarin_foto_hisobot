@@ -182,6 +182,21 @@ reys_hisoboti_v2/
   - `#panel-report` va `#topScreen` formalarida tezkor rejim faollashganda Neon Volt (`#c8ff3d`) yorug'lik taratuvchi banner paydo bo'ladi.
   - Banner saqlashdan so'ng keyingi yuk uchun kamera avtomatik ochilishini doimo eslatib turadi va bosilganda tezkor rejimni to'g'ridan-to'g'ri o'chiradi/yoqadi.
 
+### K. Server Deploy va Cloudflare R2 / CORS Arxitekturasi
+- **Ishlab chiqarish serveri holati (`89.167.37.232`)**:
+  - Supervisor dasturi: `report` (`127.0.0.1:5555`), Nginx reverse-proxy (`https://report.xckep.uz`).
+  - Ma'lumotlar to'liq zaxirasi: `/root/mandarin_foto_hisobot/data_backup_20260930_pre_pull/` (422MB SQLite `data/reys.db` va 3,998 ta rasm papkalari saqlangan).
+  - Maxsus Redis porti: `127.0.0.1:6385`, parol `Mandarin2026!`. Alohida xavfsiz instansiya, boshqa loyihalarga tegmaydi.
+- **Cloudflare R2 Folder Tuzilishi**:
+  - `{action}/report_{report_id}/{entry_id}/{idx}.webp`
+  - Bo'limlar bo'yicha toza kataloglash:
+    - Obshiy ves: `top/report_44/5915/0.webp`, `bizda/report_44/5916/0.webp`, `chiqgan/report_44/5917/0.webp`, `topchiqgan/report_44/5918/0.webp`
+    - Kargolarga tarqatish: `reys/report_44/5919/0.webp`
+    - Adashgan yuklar (razves): `adjust/report_44/5920/0.webp`
+- **R2 CORS (Cross-Origin Resource Sharing) Qoidalari**:
+  - **Server orqali proksi (standart holat)**: `R2_PUBLIC_DOMAIN` belgilanmaganda rasmlar `/api/entry/{id}/photo/{idx}` orqali server tomonidan uzatiladi. Bu holatda **CORS umuman shart emas**, R2 bucketni public qilish ham kerak emas.
+  - **Direct Public CDN / Custom Domain qo'llanilganda**: Agar R2 ga ommaviy havola (masalan, `pub-xxx.r2.dev` yoki `cdn.xckep.uz`) ulanib `.env` ga berilsa, Mini App brauzerida rasm yuklanishi va canvas tahlilida bloklanmasligi uchun Cloudflare R2 bucket settingsda CORS policy (`GET`, `HEAD`, `*`) yoqilishi shart.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
