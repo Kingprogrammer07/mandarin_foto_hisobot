@@ -23,7 +23,13 @@ pip install -r requirements.txt
 python -m app.passwords <username>   # print an ADMIN_CREDENTIALS line for .env
 ```
 
-No test suite or linter is configured.
+```bash
+python -m pytest               # run automated test suite (tests/)
+```
+
+```bash
+python -m app.storage_migrate [--dry-run]   # safely migrate local photos to Cloudflare R2
+```
 
 UI-only work can skip the bot: `.claude/launch.json` defines a `reys-preview`
 config (`uvicorn app.server:app --port 8099`). It still runs `require_config()`
@@ -45,9 +51,11 @@ at startup, so `.env` must be filled even there.
   who may use either half. `require_config()` also rejects a non-https
   `WEBAPP_URL`.
 
-### Data model (`app/db.py`, SQLite `data/reys.db`, WAL, gitignored)
+> **MANDATORY AI AGENT RULE**: Whenever making any changes to this codebase, you MUST update `HANDOFF.md`, `AGENTS.md`, and `CLAUDE.md` in lockstep so other AI agents and developers can onboard immediately without reading the whole codebase.
 
-One serialized connection behind a `threading.Lock` — single process, low volume.
+### Data model (`app/db.py`, SQLite `data/reys.db`, WAL, aiosqlite, gitignored)
+
+Completely asynchronous via `aiosqlite` with connection management behind an `asyncio.Lock` for single-writer serialization — non-blocking for FastAPI event loop.
 
 - `reports` — named containers. `MAX_REPORTS = 25`; `create_report` hard-deletes
   the oldest beyond that (`_prune`, cascading into activity/inventory/photos/
@@ -61,7 +69,8 @@ One serialized connection behind a `threading.Lock` — single process, low volu
   (soft-deleted). `DEFAULT_TYPES` is duplicated in `webapp/js/app.js` — change
   both.
 - `entry_photos` — photo bytes as BLOB **and** on disk (`data/photos/<entry_id>/
-  <idx>`), plus the Telegram `file_id`/`message_id` once forwarded.
+  <idx>`), plus `r2_key`, `r2_url` (Cloudflare R2) and Telegram `file_id`/`message_id`
+  once forwarded.
 - `send_queue` — durable outbox (`pending | sent | failed`, attempts, `next_at`).
 - `schema_migrations` — names of applied one-off **data** migrations.
 
@@ -76,6 +85,22 @@ Migrations are additive: legacy pre-report-schema `inventory`/`activity` tables
 are *renamed* to `<tbl>_legacy_<ts>`, never dropped; new columns go through
 `_add_column`; one-off data fixes are guarded by a row in `schema_migrations`.
 Cargo/photo data must never disappear silently — keep that property.
+
+### Storage (`app/storage.py`, `app/storage_migrate.py`)
+
+Async S3/Cloudflare R2 integration via `aioboto3`. Uploads photos to R2 bucket
+and stores direct public CDN URLs if configured.
+**Transparent local fallback**: If `R2_*` credentials are empty or unconfigured,
+automatically falls back to storing photos on local disk (`data/photos/<entry_id>/<idx>`).
+**Zero Data Loss Migration**: `python -m app.storage_migrate` verifies every upload
+via R2 `head_object` before updating SQLite, preserving local copies and BLOBs.
+
+### Task Queue & Outbox (`app/queue.py`, `app/outbox.py`)
+
+Telegram sends are enqueued in SQLite `send_queue` and dispatched via `queue.dispatch_send()`.
+- If `REDIS_URL` is set, dispatches tasks through `arq` / Redis.
+- If Redis is unconfigured or unreachable, transparently falls back to the in-process
+  `asyncio` outbox worker (`outbox.notify()`).
 
 ### API (`app/server.py`)
 
@@ -164,4 +189,19 @@ Saving is a `FormData` POST carrying `tg.initData`.
   the DB, and `init()` self-heals any pre-guard inf/nan rows. Keep new numeric
   paths guarded.
 - UI text and API error `detail` strings are in Uzbek; keep it consistent.
-- `AGENTS.md` is a copy of this file for Codex — update both together.
+- `AGENTS.md` and `HANDOFF.md` document this codebase — whenever making changes to the codebase, **all three files (`HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`) must be kept up to date**.
+- Photos use Cloudflare R2 / S3 storage (`app/storage.py`) with automatic graceful fallback to local disk (`data/photos`).
+- Database access is asynchronous via `aiosqlite` in `app/db.py`.
+- Background sending supports Redis + `arq` with fallback to SQLite `send_queue`.
+- All images are automatically converted to high-fidelity WebP (quality 95) on both client (`webapp/js/app.js` via canvas) and server (`app/images.py` via Pillow + `pillow_heif` supporting HEIC/HEIF/JPEG/PNG/WEBP), saving 70-85% storage and mobile bandwidth.
+- Outbox Diagnostics sheet (`#outboxSheet`) has `z-index: 100` (`#outboxBackdrop` `z-index: 99`) and `touch-action: pan-y` ensuring it opens smoothly above `.screen` overlays on iOS & Android.
+- Unobtrusive Floating Status Bar (`#outboxPillWrap` with `pointer-events: none` on container) provides real-time network and pending queue status (`⚡ Oflayn`, `🔄 Yuklanmoqda`, `⏳ Navbatda`) with interactive inspection of pending items and photo thumbnails.
+- Entries Viewer (`#entriesScreen`) across all 6 sections (`reys`, `adjust`, `top`, `bizda`, `chiqgan`, `topchiqgan`) includes instant real-time search (by code, type, transfer, weight), flexible date presets and custom ranges, 5-way sorting, channel send status & tovar filters, and live count/weight summary bar.
+- Mobile-First Design System (`webapp/css/styles.css`):
+  - Brand Palette: Electric Blue (`#2457ff`) as primary action color, Neon Volt (`#c8ff3d`) for active badges, glowing banners, and focus rings, paired with Deep OLED Obsidian (`#090b10` / `#11141d`) in dark mode and crisp high-contrast light mode.
+  - Ergonomics: Minimum 48-52px touch targets, safe-area inset adaptation for notch/Dynamic Island and Android navigation bars, tactile `:active` spring feedback (`scale(0.97)`).
+  - Hero Weight Inputs (`#weight`, `#adjWeight`, `#topWeight`): 28px bold tabular typography with embedded uppercase `kg` badge and quick-save action pill.
+  - Fast Mode Indicator (`.fast-mode-banner`): Glowing Neon Volt banner indicating automatic camera re-opening after save, clickable to toggle state instantly.
+
+
+

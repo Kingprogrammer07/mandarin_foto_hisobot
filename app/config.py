@@ -114,6 +114,29 @@ WEBAUTHN_RP_ID: str = os.getenv("WEBAUTHN_RP_ID", "").strip() or (urlparse(WEBAP
 WEBAUTHN_RP_NAME: str = os.getenv("WEBAUTHN_RP_NAME", "Reys hisoboti").strip()
 WEBAUTHN_ORIGIN: str = WEBAPP_URL.rstrip("/")
 
+# Cloudflare R2 / S3 Object Storage
+R2_ACCOUNT_ID: str = os.getenv("R2_ACCOUNT_ID", "").strip()
+R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
+R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "").strip()
+R2_PUBLIC_DOMAIN: str = os.getenv("R2_PUBLIC_DOMAIN", "").strip().rstrip("/")
+R2_ENDPOINT_URL: str = (
+    f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
+)
+
+
+def r2_enabled() -> bool:
+    return bool(R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME and R2_ENDPOINT_URL)
+
+
+# Redis connection URL for background queues (optional)
+REDIS_URL: str = os.getenv("REDIS_URL", "").strip()
+
+
+def redis_enabled() -> bool:
+    return bool(REDIS_URL)
+
+
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS

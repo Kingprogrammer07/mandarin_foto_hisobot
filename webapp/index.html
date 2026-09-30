@@ -11,6 +11,14 @@
   <link rel="stylesheet" href="/css/styles.css?v=outboxdiag1" />
 </head>
 <body>
+  <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
+  <div class="outbox-pill-wrap" id="outboxPillWrap" hidden>
+    <button type="button" class="outbox-pill" id="outboxPill" aria-label="Qurilma xotirasi holati">
+      <span class="outbox-pill__dot" aria-hidden="true"></span>
+      <span class="outbox-pill__text" id="outboxPillText">Navbatda yozuvlar bor</span>
+    </button>
+  </div>
+
   <!-- Top bar: actions row on top, centered tabs below -->
   <header class="topbar">
     <div class="topbar__actions">
@@ -38,6 +46,12 @@
   <main class="content">
     <!-- ============ TAB 1: REYS HISOBOTI ============ -->
     <section class="panel is-active" id="panel-report" role="tabpanel">
+      <!-- Fast mode banner -->
+      <div class="fast-mode-banner" id="reysFastBanner" hidden>
+        <span class="fast-mode-banner__icon">⚡</span>
+        <span class="fast-mode-banner__text">Tezkor rejim faol: Saqlagach keyingi yuk uchun kamera ochiladi</span>
+      </div>
+
       <!-- Photos -->
       <div class="field work-card work-card--photos">
         <div class="field__head">
@@ -389,6 +403,12 @@
       <button type="button" class="theme-btn js-theme" id="topThemeBtn" aria-label="Mavzu"></button>
     </header>
     <div class="screen__body">
+      <!-- Fast mode banner -->
+      <div class="fast-mode-banner" id="topFastBanner" hidden>
+        <span class="fast-mode-banner__icon">⚡</span>
+        <span class="fast-mode-banner__text">Tezkor rejim faol: Saqlagach kamera avtomatik ochiladi</span>
+      </div>
+
       <!-- Photos -->
       <div class="field">
         <div class="field__head">
@@ -480,6 +500,88 @@
       <span class="screen__title" id="entriesTitle">Yuklanganlar</span>
       <button type="button" class="theme-btn js-theme" id="entriesThemeBtn" aria-label="Mavzu"></button>
     </header>
+    <div class="entries-toolbar" id="entriesToolbar">
+      <!-- Search row with search icon, input, clear button, and filter toggle button -->
+      <div class="entries-search">
+        <svg viewBox="0 0 24 24" class="ic entries-search__icon"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 12 14 9.5 14Z"/></svg>
+        <input type="search" id="entriesSearchInput" class="entries-search__input" placeholder="Kod yoki tovar bo'yicha qidiruv…" autocomplete="off" />
+        <button type="button" id="entriesSearchClear" class="entries-search__clear" aria-label="Tozalash" hidden>×</button>
+        <button type="button" id="entriesFilterToggle" class="entries-filter-toggle" aria-label="Filtrlar">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M10 18h4v-2h-4v2ZM3 6v2h18V6H3Zm3 7h12v-2H6v2Z"/></svg>
+          <span class="filter-dot" id="entriesFilterDot" hidden></span>
+        </button>
+      </div>
+
+      <!-- Collapsible Filters Drawer -->
+      <div class="entries-filter-panel" id="entriesFilterPanel" hidden>
+        <!-- Date Chips -->
+        <div class="filter-group">
+          <span class="filter-group__label">Sana:</span>
+          <div class="filter-chips" id="entriesDateChips">
+            <button type="button" class="filter-chip is-active" data-date="all">Barchasi</button>
+            <button type="button" class="filter-chip" data-date="today">Bugun</button>
+            <button type="button" class="filter-chip" data-date="yesterday">Kecha</button>
+            <button type="button" class="filter-chip" data-date="week">7 kun</button>
+            <button type="button" class="filter-chip" data-date="custom">Oraliq…</button>
+          </div>
+        </div>
+
+        <!-- Custom Date Range (from / to) -->
+        <div class="filter-group filter-date-range" id="entriesCustomDateRow" hidden>
+          <div class="filter-date-col">
+            <label for="entriesDateFrom" class="filter-sublabel">Dan</label>
+            <input type="date" id="entriesDateFrom" class="input filter-date-input" />
+          </div>
+          <div class="filter-date-col">
+            <label for="entriesDateTo" class="filter-sublabel">Gacha</label>
+            <input type="date" id="entriesDateTo" class="input filter-date-input" />
+          </div>
+        </div>
+
+        <!-- Controls grid: Sort & Status & Tovar -->
+        <div class="filter-grid">
+          <div class="filter-field">
+            <label for="entriesSortSelect" class="filter-sublabel">Saralash</label>
+            <select id="entriesSortSelect" class="select filter-select">
+              <option value="newest" selected>⏳ Yangilari oldin</option>
+              <option value="oldest">⌛ Eskilari oldin</option>
+              <option value="weight_desc">⚖️ Og'irlari oldin</option>
+              <option value="weight_asc">🪶 Yengillari oldin</option>
+              <option value="code_asc">🔤 Kod / Tovar (A-Z)</option>
+            </select>
+          </div>
+
+          <div class="filter-field">
+            <label for="entriesStatusSelect" class="filter-sublabel">Kanal / Holat</label>
+            <select id="entriesStatusSelect" class="select filter-select">
+              <option value="all" selected>Barcha holatlar</option>
+              <option value="unsent">📤 Yuborilmaganlar</option>
+              <option value="sent">✅ Yuborilganlar</option>
+              <option value="has_photos">🖼️ Faqat rasmlilar</option>
+            </select>
+          </div>
+
+          <div class="filter-field" id="entriesTypeField">
+            <label for="entriesTypeSelect" class="filter-sublabel">Tovar turi</label>
+            <select id="entriesTypeSelect" class="select filter-select">
+              <option value="all" selected>Barcha tovarlar</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-actions-row">
+          <button type="button" class="btn btn--ghost filter-btn-reset" id="entriesFilterReset">Filtrlarni tozalash</button>
+          <button type="button" class="btn btn--primary filter-btn-apply" id="entriesFilterApply">Yopish</button>
+        </div>
+      </div>
+
+      <!-- Live summary bar (Records count, Total Weight, Reset badge) -->
+      <div class="entries-summary-bar" id="entriesSummaryBar">
+        <span class="entries-summary-count" id="entriesSummaryCount">0 ta yozuv</span>
+        <span class="entries-summary-weight" id="entriesSummaryWeight">Jami: 0 kg</span>
+        <button type="button" class="entries-summary-clear" id="entriesQuickReset" hidden aria-label="Filtrni bekor qilish">Tozalash</button>
+      </div>
+    </div>
     <div class="screen__body">
       <div class="entries" id="entriesList"></div>
     </div>

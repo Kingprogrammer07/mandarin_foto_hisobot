@@ -75,12 +75,12 @@ def _caption(entry: dict, report_name: str) -> str:
     return f"{head}\n\n{body}"
 
 
-def _remember_telegram_photo(entry_id: int, idx: int, message) -> None:
+async def _remember_telegram_photo(entry_id: int, idx: int, message) -> None:
     photos = getattr(message, "photo", None) or []
     if not photos:
         return
     photo = photos[-1]
-    db.mark_photo_telegram(
+    await db.mark_photo_telegram(
         entry_id,
         idx,
         getattr(photo, "file_id", None),
@@ -90,23 +90,23 @@ def _remember_telegram_photo(entry_id: int, idx: int, message) -> None:
 
 
 async def _send_one(entry_id: int) -> None:
-    entry = db.get_entry_any(entry_id)
+    entry = await db.get_entry_any(entry_id)
     if entry is None:
-        db.mark_send_canceled(entry_id)
+        await db.mark_send_canceled(entry_id)
         return
     chat = config.channel_for_action(entry["action"])
     if chat is None:
         raise RuntimeError(f"channel not configured for {entry['action']}")
 
-    caption = _caption(entry, db.report_name(entry["report_id"]) or "")
-    blobs = db.photo_blobs(entry_id)
+    caption = _caption(entry, await db.report_name(entry["report_id"]) or "")
+    blobs = await db.photo_blobs(entry_id)
 
     if not blobs:
         await _bot.send_message(chat, caption)
     elif len(blobs) == 1:
         data, _mime = blobs[0]
         msg = await _bot.send_photo(chat, BufferedInputFile(data, filename="photo.jpg"), caption=caption)
-        _remember_telegram_photo(entry_id, 0, msg)
+        await _remember_telegram_photo(entry_id, 0, msg)
     else:
         media = [
             InputMediaPhoto(
@@ -117,20 +117,20 @@ async def _send_one(entry_id: int) -> None:
         ]
         messages = await _bot.send_media_group(chat, media)
         for i, msg in enumerate(messages or []):
-            _remember_telegram_photo(entry_id, i, msg)
+            await _remember_telegram_photo(entry_id, i, msg)
 
 
 async def worker() -> None:
     global _wake
     _wake = asyncio.Event()
-    log.info("outbox worker started (pending=%s)", db.pending_send_count())
+    log.info("outbox worker started (pending=%s)", await db.pending_send_count())
     while True:
         if _bot is None:
             await asyncio.sleep(5)
             continue
 
         now = int(time.time())
-        job = db.next_send_job(now)
+        job = await db.next_send_job(now)
         if job is None:
             _wake.clear()
             try:
@@ -142,13 +142,13 @@ async def worker() -> None:
         entry_id = job["entry_id"]
         try:
             await _send_one(entry_id)
-            db.mark_sent(entry_id)
+            await db.mark_sent(entry_id)
             log.info("channel send ok: entry=%s", entry_id)
         except Exception as exc:  # noqa: BLE001
             attempts = job["attempts"] + 1
             retry_after = getattr(exc, "retry_after", None)
             delay = int(retry_after) if retry_after else _BACKOFF[min(attempts - 1, len(_BACKOFF) - 1)]
-            db.mark_send_retry(entry_id, attempts, now + delay, str(exc))
+            await db.mark_send_retry(entry_id, attempts, now + delay, str(exc))
             log.warning("channel send failed: entry=%s attempt=%s err=%s retry_in=%ss",
                         entry_id, attempts, exc, delay)
             await asyncio.sleep(1)

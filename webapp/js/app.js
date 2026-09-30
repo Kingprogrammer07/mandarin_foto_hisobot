@@ -290,6 +290,7 @@
     topCoefCustom: $("#topCoefCustom"),
     topWeight: $("#topWeight"),
     topFast: $("#topFast"),
+    topFastBanner: $("#topFastBanner"),
     topSave: $("#topSave"),
     // Saved-entries viewer
     entriesScreen: $("#entriesScreen"),
@@ -304,6 +305,27 @@
     entriesPrev: $("#entriesPrev"),
     entriesNext: $("#entriesNext"),
     entriesPageLabel: $("#entriesPageLabel"),
+    // entries filter & search toolbar
+    entriesToolbar: $("#entriesToolbar"),
+    entriesSearchInput: $("#entriesSearchInput"),
+    entriesSearchClear: $("#entriesSearchClear"),
+    entriesFilterToggle: $("#entriesFilterToggle"),
+    entriesFilterDot: $("#entriesFilterDot"),
+    entriesFilterPanel: $("#entriesFilterPanel"),
+    entriesDateChips: $("#entriesDateChips"),
+    entriesCustomDateRow: $("#entriesCustomDateRow"),
+    entriesDateFrom: $("#entriesDateFrom"),
+    entriesDateTo: $("#entriesDateTo"),
+    entriesSortSelect: $("#entriesSortSelect"),
+    entriesStatusSelect: $("#entriesStatusSelect"),
+    entriesTypeField: $("#entriesTypeField"),
+    entriesTypeSelect: $("#entriesTypeSelect"),
+    entriesFilterReset: $("#entriesFilterReset"),
+    entriesFilterApply: $("#entriesFilterApply"),
+    entriesSummaryBar: $("#entriesSummaryBar"),
+    entriesSummaryCount: $("#entriesSummaryCount"),
+    entriesSummaryWeight: $("#entriesSummaryWeight"),
+    entriesQuickReset: $("#entriesQuickReset"),
     // entry actions (kebab menu)
     entryActBackdrop: $("#entryActBackdrop"),
     entryActSheet: $("#entryActSheet"),
@@ -320,6 +342,7 @@
     setClose: $("#setClose"),
     rememberToggle: $("#rememberToggle"),
     reysFastToggle: $("#reysFastToggle"),
+    reysFastBanner: $("#reysFastBanner"),
     zeroCoefBtn: $("#zeroCoefBtn"),
     outboxDiagBtn: $("#outboxDiagBtn"),
     outboxBackdrop: $("#outboxBackdrop"),
@@ -329,6 +352,9 @@
     outboxSync: $("#outboxSync"),
     outboxSummary: $("#outboxSummary"),
     outboxList: $("#outboxList"),
+    outboxPillWrap: $("#outboxPillWrap"),
+    outboxPill: $("#outboxPill"),
+    outboxPillText: $("#outboxPillText"),
     // adashgan photos
     adjPhotoGrid: $("#adjPhotoGrid"),
     adjPhotoCounter: $("#adjPhotoCounter"),
@@ -535,14 +561,74 @@
   }
   function renderAllPhotos() { renderPhotos("photos"); renderPhotos("adjPhotos"); renderPhotos("topPhotos"); }
 
-  function addFiles(fileList, pk) {
-    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
-    if (!files.length) return;
+  async function convertFileToWebP(file, quality = 0.95) {
+    if (!file || !file.type.startsWith("image/")) return file;
+    if (file.type === "image/webp") return file;
+    try {
+      let bmp = null;
+      if (typeof createImageBitmap === "function") {
+        try { bmp = await createImageBitmap(file); } catch (_) {}
+      }
+      let width, height, source;
+      if (bmp) {
+        width = bmp.width;
+        height = bmp.height;
+        source = bmp;
+      } else {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        await new Promise((res, rej) => {
+          img.onload = () => res();
+          img.onerror = rej;
+          img.src = url;
+        });
+        URL.revokeObjectURL(url);
+        width = img.naturalWidth || img.width;
+        height = img.naturalHeight || img.height;
+        source = img;
+      }
+      if (!width || !height) return file;
+      const maxDim = 2560;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(source, 0, 0, width, height);
+      if (bmp && bmp.close) bmp.close();
+
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/webp", quality));
+      if (blob && blob.size > 0 && blob.size < file.size) {
+        const baseName = (file.name || "photo").replace(/\.[^.]+$/, "");
+        return new File([blob], `${baseName}.webp`, { type: "image/webp" });
+      }
+    } catch (_) {
+      // Browser canvas couldn't decode format (e.g. raw HEIC on older Safari),
+      // keep original file so server Pillow/pillow_heif converts it safely.
+    }
+    return file;
+  }
+
+  async function addFiles(fileList, pk) {
+    const rawFiles = Array.from(fileList || []).filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name || ""));
+    if (!rawFiles.length) return;
     const arr = state[pk];
     const room = MAX_PHOTOS - arr.length;
     if (room <= 0) { showToast(`Maksimal ${MAX_PHOTOS} ta rasm`, true); return; }
-    if (files.length > room) showToast(`Faqat ${room} ta rasm qo'shildi`, true);
-    files.slice(0, room).forEach((file) => {
+    if (rawFiles.length > room) showToast(`Faqat ${room} ta rasm qo'shildi`, true);
+    const toProcess = rawFiles.slice(0, room);
+
+    // Convert to WebP in parallel
+    const converted = await Promise.all(toProcess.map((f) => convertFileToWebP(f, 0.95)));
+    converted.forEach((file) => {
       arr.push({ id: ++photoSeq, file, url: URL.createObjectURL(file) });
     });
     renderPhotos(pk);
@@ -654,11 +740,11 @@
     const pk = activePk;
     canvas.toBlob((blob) => {
       if (blob) {
-        const file = new File([blob], `cam_${blob.size}_${state[pk].length}.jpg`, { type: "image/jpeg" });
+        const file = new File([blob], `cam_${Date.now()}_${state[pk].length}.webp`, { type: "image/webp" });
         addFiles([file], pk);
       }
       closeCamera(); // hide modal, keep stream alive for the next shot
-    }, "image/jpeg", 0.92);
+    }, "image/webp", 0.95);
   }
 
   async function flipCamera() {
@@ -1253,6 +1339,7 @@
     els.topCode.placeholder = cfg.codeRequired ? "Masalan: 12345" : "Ixtiyoriy";
     resetTop(true);
     els.topFast.checked = state.topFast;
+    syncFastModeBanners();
     updateViewCount();
     showScreen("top");
     document.body.classList.add("locked");
@@ -1275,6 +1362,7 @@
     suppressTabRoute = true;
     setTab(nextTab);
     suppressTabRoute = false;
+    syncFastModeBanners();
     if (state.reportId) setRoute(`/report/${state.reportId}/kargo/${nextTab === "lost" ? "adjust" : "reys"}`);
     syncBackButton();
   }
@@ -1481,7 +1569,11 @@
   function entriesScroller() { return els.entriesList ? els.entriesList.parentElement : null; }
 
   function openEntries(section, focusId) {
+    const prevSection = viewerSection;
     viewerSection = section || state.formSection;
+    if (prevSection !== viewerSection) {
+      resetEntriesFilters(true);
+    }
     entriesFocusId = focusId == null ? null : String(focusId);
     if (!entriesFocusId) entriesPage = 0;
     selectedEntryIds = new Set();
@@ -1524,34 +1616,251 @@
     openEntries(targetSection, entryId);
     editReturn = null;
   }
+
+  // ---- Entries filter & sort state ----
+  const entriesFilterState = {
+    search: "",
+    datePreset: "all", // all | today | yesterday | week | custom
+    dateFrom: "",
+    dateTo: "",
+    sort: "newest", // newest | oldest | weight_desc | weight_asc | code_asc
+    status: "all", // all | unsent | sent | has_photos
+    type: "all",
+  };
+
+  function isEntriesFilterActive() {
+    return Boolean(
+      (entriesFilterState.search && entriesFilterState.search.trim()) ||
+      entriesFilterState.datePreset !== "all" ||
+      entriesFilterState.dateFrom ||
+      entriesFilterState.dateTo ||
+      entriesFilterState.sort !== "newest" ||
+      entriesFilterState.status !== "all" ||
+      entriesFilterState.type !== "all"
+    );
+  }
+
+  function matchesDate(ts) {
+    if (!ts) return entriesFilterState.datePreset === "all";
+    const d = new Date(ts);
+    const now = new Date();
+
+    if (entriesFilterState.datePreset === "today") {
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+    if (entriesFilterState.datePreset === "yesterday") {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      return (
+        d.getFullYear() === y.getFullYear() &&
+        d.getMonth() === y.getMonth() &&
+        d.getDate() === y.getDate()
+      );
+    }
+    if (entriesFilterState.datePreset === "week") {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      cutoff.setHours(0, 0, 0, 0);
+      return ts >= cutoff.getTime();
+    }
+    if (entriesFilterState.datePreset === "custom") {
+      if (entriesFilterState.dateFrom) {
+        const from = new Date(entriesFilterState.dateFrom + "T00:00:00");
+        if (ts < from.getTime()) return false;
+      }
+      if (entriesFilterState.dateTo) {
+        const to = new Date(entriesFilterState.dateTo + "T23:59:59.999");
+        if (ts > to.getTime()) return false;
+      }
+      return true;
+    }
+    return true; // "all"
+  }
+
+  function matchesSearch(e, q) {
+    if (!q) return true;
+    if (e.code && String(e.code).toLowerCase().includes(q)) return true;
+    if (e.type && String(e.type).toLowerCase().includes(q)) return true;
+    if (e.from && String(e.from).toLowerCase().includes(q)) return true;
+    if (e.to && String(e.to).toLowerCase().includes(q)) return true;
+    if (e.weight != null && String(e.weight).includes(q)) return true;
+    return false;
+  }
+
+  function matchesStatus(e, status) {
+    if (status === "all") return true;
+    if (status === "unsent") return canSendUnsent(e);
+    if (status === "sent") return canResendSent(e);
+    if (status === "has_photos") return (e.files || []).length > 0;
+    return true;
+  }
+
+  function matchesType(e, type) {
+    if (type === "all") return true;
+    if (e.type && e.type === type) return true;
+    if (e.from && e.from === type) return true;
+    if (e.to && e.to === type) return true;
+    return false;
+  }
+
+  function sortEntries(a, b, sort) {
+    if (sort === "oldest") {
+      return Number(a.ts || 0) - Number(b.ts || 0);
+    }
+    if (sort === "weight_desc") {
+      return Number(b.weight || 0) - Number(a.weight || 0);
+    }
+    if (sort === "weight_asc") {
+      return Number(a.weight || 0) - Number(b.weight || 0);
+    }
+    if (sort === "code_asc") {
+      const valA = String(a.code || a.type || a.from || "");
+      const valB = String(b.code || b.type || b.from || "");
+      return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: "base" });
+    }
+    // Default newest
+    return Number(b.ts || 0) - Number(a.ts || 0);
+  }
+
+  function getFilteredEntries() {
+    const rawList = state.entries[viewerSection] || [];
+    const q = (entriesFilterState.search || "").trim().toLowerCase();
+
+    const filtered = rawList.filter((e) => {
+      if (!matchesSearch(e, q)) return false;
+      if (!matchesDate(e.ts)) return false;
+      if (!matchesStatus(e, entriesFilterState.status)) return false;
+      if (!matchesType(e, entriesFilterState.type)) return false;
+      return true;
+    });
+
+    filtered.sort((a, b) => sortEntries(a, b, entriesFilterState.sort));
+    return filtered;
+  }
+
+  function updateTypeOptions(rawList) {
+    if (!els.entriesTypeField || !els.entriesTypeSelect) return;
+    const typesSet = new Set();
+    rawList.forEach((e) => {
+      if (e.type) typesSet.add(e.type);
+      if (e.from) typesSet.add(e.from);
+      if (e.to) typesSet.add(e.to);
+    });
+
+    if (typesSet.size === 0) {
+      els.entriesTypeField.hidden = true;
+      return;
+    }
+    els.entriesTypeField.hidden = false;
+
+    const currentVal = entriesFilterState.type;
+    const sortedTypes = Array.from(typesSet).sort();
+
+    els.entriesTypeSelect.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "all";
+    allOpt.textContent = "Barcha tovarlar";
+    els.entriesTypeSelect.appendChild(allOpt);
+
+    sortedTypes.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      els.entriesTypeSelect.appendChild(opt);
+    });
+
+    if (typesSet.has(currentVal)) {
+      els.entriesTypeSelect.value = currentVal;
+    } else {
+      entriesFilterState.type = "all";
+      els.entriesTypeSelect.value = "all";
+    }
+  }
+
+  function resetEntriesFilters(skipRender) {
+    entriesFilterState.search = "";
+    entriesFilterState.datePreset = "all";
+    entriesFilterState.dateFrom = "";
+    entriesFilterState.dateTo = "";
+    entriesFilterState.sort = "newest";
+    entriesFilterState.status = "all";
+    entriesFilterState.type = "all";
+
+    if (els.entriesSearchInput) els.entriesSearchInput.value = "";
+    if (els.entriesSearchClear) els.entriesSearchClear.hidden = true;
+    if (els.entriesDateFrom) els.entriesDateFrom.value = "";
+    if (els.entriesDateTo) els.entriesDateTo.value = "";
+    if (els.entriesCustomDateRow) els.entriesCustomDateRow.hidden = true;
+    if (els.entriesSortSelect) els.entriesSortSelect.value = "newest";
+    if (els.entriesStatusSelect) els.entriesStatusSelect.value = "all";
+    if (els.entriesTypeSelect) els.entriesTypeSelect.value = "all";
+
+    if (els.entriesDateChips) {
+      els.entriesDateChips.querySelectorAll(".filter-chip").forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.date === "all");
+      });
+    }
+
+    entriesPage = 0;
+    if (!skipRender) renderEntries();
+  }
+
   function renderEntries() {
-    const list = state.entries[viewerSection];
-    const liveIds = new Set(list.filter((e) => e.synced && e.id != null).map((e) => String(e.id)));
+    const rawList = state.entries[viewerSection] || [];
+    updateTypeOptions(rawList);
+
+    const filtered = getFilteredEntries();
+    const liveIds = new Set(filtered.filter((e) => e.synced && e.id != null).map((e) => String(e.id)));
     selectedEntryIds = new Set([...selectedEntryIds].filter((id) => liveIds.has(id)));
-    const ordered = list.slice().reverse(); // newest first
+
     if (entriesFocusId) {
-      const focusIdx = ordered.findIndex((e) => String(e.id || e.localId) === entriesFocusId);
+      const focusIdx = filtered.findIndex((e) => String(e.id || e.localId) === entriesFocusId);
       if (focusIdx !== -1) entriesPage = Math.floor(focusIdx / ENTRIES_PAGE);
     }
-    const pages = Math.max(1, Math.ceil(list.length / ENTRIES_PAGE));
+    const totalCount = filtered.length;
+    const pages = Math.max(1, Math.ceil(totalCount / ENTRIES_PAGE));
     entriesPage = Math.min(Math.max(entriesPage, 0), pages - 1);
     clearEntryUrls();
     els.entriesList.innerHTML = "";
-    renderBulkSendState(list);
-    if (!list.length) {
+    renderBulkSendState(filtered);
+
+    // Update Summary Bar & badges
+    const active = isEntriesFilterActive();
+    if (els.entriesFilterDot) els.entriesFilterDot.hidden = !active;
+    if (els.entriesQuickReset) els.entriesQuickReset.hidden = !active;
+    if (els.entriesSearchClear) els.entriesSearchClear.hidden = !(entriesFilterState.search || "").trim();
+
+    if (els.entriesSummaryCount) {
+      els.entriesSummaryCount.textContent = `${totalCount} ta yozuv${active ? ` (jami ${rawList.length} tadan)` : ""}`;
+    }
+    if (els.entriesSummaryWeight) {
+      const totalWeight = filtered.reduce((s, e) => s + (Number(e.weight) || 0), 0);
+      const weightFmt = (Math.round(totalWeight * 100) / 100).toLocaleString("en-US");
+      els.entriesSummaryWeight.textContent = `Jami: ${weightFmt} kg`;
+    }
+
+    if (!totalCount) {
       const p = document.createElement("p");
       p.className = "entries__empty";
-      p.textContent = "Hali yozuv yo'q";
+      p.textContent = active
+        ? "Tanlangan filtr bo'yicha hech qanday yozuv topilmadi."
+        : "Hali yozuv yo'q";
       els.entriesList.appendChild(p);
       els.entriesPager.hidden = true;
       return;
     }
+
     const start = entriesPage * ENTRIES_PAGE;
-    ordered.slice(start, start + ENTRIES_PAGE).forEach((e) => els.entriesList.appendChild(entryCard(e)));
+    filtered.slice(start, start + ENTRIES_PAGE).forEach((e) => els.entriesList.appendChild(entryCard(e)));
     els.entriesPager.hidden = pages <= 1;
     els.entriesPageLabel.textContent = `${entriesPage + 1}/${pages}`;
     els.entriesPrev.disabled = entriesPage <= 0;
     els.entriesNext.disabled = entriesPage >= pages - 1;
+
     if (entriesFocusId) {
       const safeId = window.CSS && CSS.escape ? CSS.escape(entriesFocusId) : entriesFocusId.replace(/"/g, '\\"');
       const target = els.entriesList.querySelector(`[data-entry-id="${safeId}"]`);
@@ -2069,8 +2378,14 @@
       }
     }));
   }
-  const idbPut = (item) => idbReq("readwrite", (s) => s.put(item));
-  const idbDelete = (localId) => idbReq("readwrite", (s) => s.delete(localId));
+  const idbPut = (item) => idbReq("readwrite", (s) => s.put(item)).then((res) => {
+    updateOutboxPill();
+    return res;
+  });
+  const idbDelete = (localId) => idbReq("readwrite", (s) => s.delete(localId)).then((res) => {
+    updateOutboxPill();
+    return res;
+  });
   const idbAll = () => idbReq("readonly", (s) => s.getAll()).then((v) => v || []);
 
   let _uidSeq = 0;
@@ -2165,11 +2480,44 @@
 
   let _syncing = false;
   const _syncingLocalIds = new Set();
+  let _diagBlobUrls = [];
+  function cleanupDiagBlobUrls() {
+    _diagBlobUrls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    _diagBlobUrls = [];
+  }
+
+  async function updateOutboxPill() {
+    if (!els.outboxPillWrap) return;
+    const items = await idbAll();
+    if (!items || !items.length) {
+      els.outboxPillWrap.hidden = true;
+      return;
+    }
+    const isOffline = typeof navigator.onLine === "boolean" && !navigator.onLine;
+    const isSyncing = _syncing || _syncingLocalIds.size > 0;
+
+    els.outboxPill.className = "outbox-pill " + (
+      isOffline ? "outbox-pill--offline" : (isSyncing ? "outbox-pill--syncing" : "outbox-pill--pending")
+    );
+
+    let text;
+    if (isOffline) {
+      text = `⚡ ${items.length} ta kutilmoqda (Oflayn)`;
+    } else if (isSyncing) {
+      text = `🔄 ${items.length} ta yozuv yuklanmoqda…`;
+    } else {
+      text = `⏳ ${items.length} ta yozuv navbatda`;
+    }
+    if (els.outboxPillText) els.outboxPillText.textContent = text;
+    els.outboxPillWrap.hidden = false;
+  }
+
   async function trySync(item, entry) {
     if (_syncingLocalIds.has(item.localId)) return;
     if (entry && entry.syncing) return;
     _syncingLocalIds.add(item.localId);
     if (entry) entry.syncing = true;
+    updateOutboxPill();
     try {
       const { res, json } = await uploadCreateRaw(item);
       if (!res.ok || !json.ok) {
@@ -2190,6 +2538,7 @@
     } finally {
       if (entry) entry.syncing = false;
       _syncingLocalIds.delete(item.localId);
+      updateOutboxPill();
     }
   }
 
@@ -2197,19 +2546,25 @@
   async function syncOutbox() {
     if (_syncing || (typeof navigator.onLine === "boolean" && !navigator.onLine)) return;
     _syncing = true;
+    updateOutboxPill();
     try {
       const items = await idbAll();
       for (const item of items) await trySync(item, findByLocalId(item.localId));
-    } finally { _syncing = false; }
+    } finally {
+      _syncing = false;
+      updateOutboxPill();
+    }
   }
 
   let _outboxLoopStarted = false;
   function startOutboxLoop() {
     if (_outboxLoopStarted) return;
     _outboxLoopStarted = true;
+    updateOutboxPill();
     syncOutbox();
-    window.addEventListener("online", syncOutbox);
-    window.setInterval(syncOutbox, 15000);
+    window.addEventListener("online", () => { updateOutboxPill(); syncOutbox(); });
+    window.addEventListener("offline", updateOutboxPill);
+    window.setInterval(() => { updateOutboxPill(); syncOutbox(); }, 15000);
   }
 
   function outboxKindTitle(kind) {
@@ -2229,13 +2584,16 @@
     if (!items.length) return "Pending yozuv yo'q. Bu qurilmada serverga tushmagan outbox bo'sh.";
     const groups = {};
     items.forEach((it) => {
-      const key = `report ${it.reportId || "?"} · ${outboxKindTitle(it.kind)}`;
+      const rep = (state.reports || []).find((r) => r.id === it.reportId);
+      const repName = rep ? rep.name : (it.reportId ? `Reys #${it.reportId}` : "Reys yo'q");
+      const key = `${repName} · ${outboxKindTitle(it.kind)}`;
       groups[key] = (groups[key] || 0) + 1;
     });
     return `${items.length} ta pending yozuv: ` + Object.entries(groups).map(([k, n]) => `${k}: ${n}`).join("; ");
   }
 
   async function renderOutboxDiag() {
+    cleanupDiagBlobUrls();
     els.outboxSummary.textContent = "Yuklanmoqda…";
     els.outboxList.innerHTML = "";
     const items = await idbAll();
@@ -2244,37 +2602,158 @@
     els.outboxSync.disabled = !items.length;
     if (!items.length) return;
 
+    const isOffline = typeof navigator.onLine === "boolean" && !navigator.onLine;
     const frag = document.createDocumentFragment();
+
     items.forEach((item, idx) => {
-      const row = document.createElement("div");
-      row.className = "outbox-row";
+      const card = document.createElement("div");
+      card.className = "outbox-card";
+
+      // Report name lookup
+      const rep = (state.reports || []).find((r) => r.id === item.reportId);
+      const repName = rep ? rep.name : (item.reportId ? `Reys #${item.reportId}` : "Reys tanlanmagan");
+
+      // Head: Title & Status badge
+      const head = document.createElement("div");
+      head.className = "outbox-card__head";
 
       const title = document.createElement("div");
-      title.className = "outbox-row__title";
-      title.textContent = `${idx + 1}. ${outboxKindTitle(item.kind)} · report_id=${item.reportId || "?"}`;
+      title.className = "outbox-card__title";
+      title.textContent = `${idx + 1}. ${outboxKindTitle(item.kind)} · ${repName}`;
 
-      const meta = document.createElement("div");
-      meta.className = "outbox-row__meta";
+      const badge = document.createElement("span");
+      const isSyncingItem = _syncingLocalIds.has(item.localId);
+      if (isSyncingItem) {
+        badge.className = "outbox-badge outbox-badge--syncing";
+        badge.textContent = "Yuklanmoqda…";
+      } else if (isOffline) {
+        badge.className = "outbox-badge outbox-badge--offline";
+        badge.textContent = "Oflayn";
+      } else {
+        badge.className = "outbox-badge outbox-badge--pending";
+        badge.textContent = "Navbatda";
+      }
+      head.append(title, badge);
+
+      // Details
+      const f = item.fields || {};
+      const details = document.createElement("div");
+      details.className = "outbox-card__details";
+
+      if (f.code) {
+        const d = document.createElement("span");
+        d.className = "outbox-card__detail-item";
+        const strong = document.createElement("strong");
+        strong.textContent = f.code;
+        d.append("Kod: ", strong);
+        details.appendChild(d);
+      }
+      if (f.type || f.tovar_turi) {
+        const d = document.createElement("span");
+        d.className = "outbox-card__detail-item";
+        const strong = document.createElement("strong");
+        strong.textContent = f.type || f.tovar_turi;
+        d.append("Tovar: ", strong);
+        details.appendChild(d);
+      }
+      if (f.from_type && f.to_type) {
+        const d = document.createElement("span");
+        d.className = "outbox-card__detail-item";
+        const strong = document.createElement("strong");
+        strong.textContent = `${f.from_type} → ${f.to_type}`;
+        d.append("O'tkazish: ", strong);
+        details.appendChild(d);
+      }
+      if (f.weight != null && f.weight !== "") {
+        const d = document.createElement("span");
+        d.className = "outbox-card__detail-item";
+        const strong = document.createElement("strong");
+        strong.textContent = `${f.weight} kg`;
+        d.append("Og'irlik: ", strong);
+        details.appendChild(d);
+      }
+      const coef = f.box_weight || f.coefficient;
+      if (coef && Number(coef) !== 0) {
+        const d = document.createElement("span");
+        d.className = "outbox-card__detail-item";
+        const strong = document.createElement("strong");
+        strong.textContent = String(coef);
+        d.append("Koef: ", strong);
+        details.appendChild(d);
+      }
+
+      // Photos thumbnails strip
+      const blobs = item.blobs || [];
+      let thumbsWrap = null;
+      if (blobs.length) {
+        thumbsWrap = document.createElement("div");
+        thumbsWrap.className = "outbox-thumbs";
+        blobs.forEach((b) => {
+          const w = document.createElement("div");
+          w.className = "outbox-thumb-wrap";
+          const img = document.createElement("img");
+          img.className = "outbox-thumb";
+          img.loading = "lazy";
+          try {
+            const u = URL.createObjectURL(b);
+            _diagBlobUrls.push(u);
+            img.src = u;
+          } catch (_) {
+            img.alt = "rasm";
+          }
+          w.appendChild(img);
+          thumbsWrap.appendChild(w);
+        });
+      }
+
+      // Foot: time, size, and actions
+      const foot = document.createElement("div");
+      foot.className = "outbox-card__foot";
+
+      const meta = document.createElement("span");
       const ts = item.ts ? new Date(item.ts) : null;
-      const photos = outboxItemPhotos(item);
-      const photoBytes = photos.reduce((s, p) => s + (Number(p.size) || 0), 0);
+      const photoBytes = blobs.reduce((s, b) => s + (Number(b.size) || 0), 0);
       meta.textContent = [
-        ts ? ts.toLocaleString("uz-UZ") : "vaqt yo'q",
-        `${photos.length} rasm`,
+        ts ? ts.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "vaqt yo'q",
+        `${blobs.length} ta rasm`,
         photoBytes ? `${Math.round(photoBytes / 1024)} KB` : "",
       ].filter(Boolean).join(" · ");
 
-      const pre = document.createElement("pre");
-      pre.className = "outbox-row__fields";
-      pre.textContent = JSON.stringify({
-        localId: item.localId,
-        fields: item.fields || {},
-        photos,
-      }, null, 2);
+      const actions = document.createElement("div");
+      actions.className = "outbox-card__actions";
 
-      row.append(title, meta, pre);
-      frag.appendChild(row);
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "outbox-mini-btn outbox-mini-btn--sync";
+      retryBtn.textContent = "Yuborish";
+      retryBtn.disabled = isSyncingItem;
+      retryBtn.addEventListener("click", async () => {
+        retryBtn.disabled = true;
+        await trySync(item, findByLocalId(item.localId));
+        await renderOutboxDiag();
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "outbox-mini-btn outbox-mini-btn--delete";
+      delBtn.textContent = "O'chirish";
+      delBtn.addEventListener("click", async () => {
+        const ok = await confirmDialog("Haqiqatan ham bu navbatdagi yozuvni o'chirmoqchimisiz?");
+        if (!ok) return;
+        await idbDelete(item.localId);
+        await renderOutboxDiag();
+      });
+
+      actions.append(retryBtn, delBtn);
+      foot.append(meta, actions);
+
+      card.append(head, details);
+      if (thumbsWrap) card.appendChild(thumbsWrap);
+      card.appendChild(foot);
+
+      frag.appendChild(card);
     });
+
     els.outboxList.appendChild(frag);
   }
 
@@ -2284,12 +2763,15 @@
     els.outboxSheet.hidden = false;
     renderOutboxDiag();
     syncBackButton();
+    syncLock();
   }
 
   function closeOutboxDiag() {
     els.outboxSheet.hidden = true;
     els.outboxBackdrop.hidden = true;
+    cleanupDiagBlobUrls();
     syncBackButton();
+    syncLock();
   }
 
   async function syncOutboxFromDiag() {
@@ -2314,6 +2796,7 @@
     }
     showToast(failed ? `${sent} ta yuborildi, ${failed} ta xato` : `${sent} ta yuborildi`);
     await renderOutboxDiag();
+    updateOutboxPill();
     if (state.reportId) {
       OBSHIY_SECTIONS.forEach(loadEntries);
       loadEntries("reys");
@@ -2358,17 +2841,19 @@
     };
   }
   async function fetchEntryFiles(entryId, idxs) {
-    const files = [];
-    for (const i of idxs) {
+    if (!idxs || !idxs.length) return [];
+    const promises = idxs.map(async (i) => {
       try {
         const res = await fetch(`/api/entry/${entryId}/photo/${i}`, { headers: authHeaders() });
         if (res.ok) {
           const blob = await res.blob();
-          files.push(new File([blob], `p${i}.jpg`, { type: blob.type || "image/jpeg" }));
+          return new File([blob], `p${i}.jpg`, { type: blob.type || "image/jpeg" });
         }
       } catch (_) {}
-    }
-    return files;
+      return null;
+    });
+    const files = await Promise.all(promises);
+    return files.filter(Boolean);
   }
   async function loadEntries(kind) {
     const rid = state.reportId;
@@ -2378,8 +2863,9 @@
       const json = await res.json().catch(() => ({}));
       rows = (res.ok && json.entries) || [];
     } catch (_) { return; }
-    const loaded = [];
-    for (const r of rows) loaded.push(serverEntry(kind, r, await fetchEntryFiles(r.id, r.photo_idxs || [])));
+    const loaded = await Promise.all(
+      rows.map(async (r) => serverEntry(kind, r, await fetchEntryFiles(r.id, r.photo_idxs || [])))
+    );
     if (state.reportId !== rid) return; // report changed while loading → discard
     // Server rows are newest-first; store oldest-first (renderEntries reverses),
     // then append any still-pending outbox items for this report.
@@ -2539,6 +3025,94 @@
   els.entriesSendUnsentBtn.addEventListener("click", () => sendEntriesBulk("unsent"));
   els.entriesResendSentBtn.addEventListener("click", () => sendEntriesBulk("sent"));
   els.entriesSendSelectedBtn.addEventListener("click", sendEntriesSelected);
+
+  // ---- Entries filter & search toolbar listeners ----
+  if (els.entriesSearchInput) {
+    els.entriesSearchInput.addEventListener("input", (e) => {
+      entriesFilterState.search = e.target.value;
+      if (els.entriesSearchClear) els.entriesSearchClear.hidden = !e.target.value.trim();
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesSearchClear) {
+    els.entriesSearchClear.addEventListener("click", () => {
+      entriesFilterState.search = "";
+      els.entriesSearchInput.value = "";
+      els.entriesSearchClear.hidden = true;
+      entriesPage = 0;
+      renderEntries();
+      els.entriesSearchInput.focus();
+    });
+  }
+  if (els.entriesFilterToggle) {
+    els.entriesFilterToggle.addEventListener("click", () => {
+      const willOpen = els.entriesFilterPanel.hidden;
+      els.entriesFilterPanel.hidden = !willOpen;
+      els.entriesFilterToggle.classList.toggle("is-active", willOpen);
+    });
+  }
+  if (els.entriesFilterApply) {
+    els.entriesFilterApply.addEventListener("click", () => {
+      els.entriesFilterPanel.hidden = true;
+      els.entriesFilterToggle.classList.remove("is-active");
+    });
+  }
+  if (els.entriesDateChips) {
+    els.entriesDateChips.addEventListener("click", (e) => {
+      const btn = e.target.closest(".filter-chip");
+      if (!btn) return;
+      const dateType = btn.dataset.date;
+      entriesFilterState.datePreset = dateType;
+      els.entriesDateChips.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+
+      if (dateType === "custom") {
+        if (els.entriesCustomDateRow) els.entriesCustomDateRow.hidden = false;
+      } else {
+        if (els.entriesCustomDateRow) els.entriesCustomDateRow.hidden = true;
+        entriesPage = 0;
+        renderEntries();
+      }
+    });
+  }
+  if (els.entriesDateFrom) {
+    els.entriesDateFrom.addEventListener("change", (e) => {
+      entriesFilterState.dateFrom = e.target.value;
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesDateTo) {
+    els.entriesDateTo.addEventListener("change", (e) => {
+      entriesFilterState.dateTo = e.target.value;
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesSortSelect) {
+    els.entriesSortSelect.addEventListener("change", (e) => {
+      entriesFilterState.sort = e.target.value;
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesStatusSelect) {
+    els.entriesStatusSelect.addEventListener("change", (e) => {
+      entriesFilterState.status = e.target.value;
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesTypeSelect) {
+    els.entriesTypeSelect.addEventListener("change", (e) => {
+      entriesFilterState.type = e.target.value;
+      entriesPage = 0;
+      renderEntries();
+    });
+  }
+  if (els.entriesFilterReset) els.entriesFilterReset.addEventListener("click", () => resetEntriesFilters(false));
+  if (els.entriesQuickReset) els.entriesQuickReset.addEventListener("click", () => resetEntriesFilters(false));
   els.entryActBackdrop.addEventListener("click", closeEntryActions);
   els.entryEditBtn.addEventListener("click", () => { const e = actionEntry; closeEntryActions(); if (e) startEditEntry(e); });
   els.entryDeleteBtn.addEventListener("click", async () => {
@@ -2563,10 +3137,27 @@
     if (v !== e.target.value) e.target.value = v;
     state.topWeightRaw = v;
   });
+  function syncFastModeBanners() {
+    if (els.topFastBanner) els.topFastBanner.hidden = !state.topFast;
+    if (els.reysFastBanner) els.reysFastBanner.hidden = !state.reysFast;
+  }
+
   els.topFast.addEventListener("change", () => {
     state.topFast = els.topFast.checked;
     try { localStorage.setItem("reys-top-fast", state.topFast ? "1" : "0"); } catch (_) {}
+    syncFastModeBanners();
+    haptic("light");
   });
+  if (els.topFastBanner) {
+    els.topFastBanner.addEventListener("click", () => {
+      state.topFast = !state.topFast;
+      els.topFast.checked = state.topFast;
+      try { localStorage.setItem("reys-top-fast", state.topFast ? "1" : "0"); } catch (_) {}
+      syncFastModeBanners();
+      showToast(state.topFast ? "⚡ Tezkor rejim yoqildi" : "Tezkor rejim o'chirildi");
+      haptic("medium");
+    });
+  }
   els.topSave.addEventListener("click", onFormSave);
 
   // ---- Settings (remember toggle) ----
@@ -2585,10 +3176,24 @@
     remember = els.rememberToggle.checked;
     try { localStorage.setItem("reys-remember", remember ? "1" : "0"); } catch (_) {}
   });
-  if (els.reysFastToggle) els.reysFastToggle.addEventListener("change", () => {
-    state.reysFast = els.reysFastToggle.checked;
-    try { localStorage.setItem("reys-fast", state.reysFast ? "1" : "0"); } catch (_) {}
-  });
+  if (els.reysFastToggle) {
+    els.reysFastToggle.addEventListener("change", () => {
+      state.reysFast = els.reysFastToggle.checked;
+      try { localStorage.setItem("reys-fast", state.reysFast ? "1" : "0"); } catch (_) {}
+      syncFastModeBanners();
+      haptic("light");
+    });
+  }
+  if (els.reysFastBanner) {
+    els.reysFastBanner.addEventListener("click", () => {
+      state.reysFast = !state.reysFast;
+      if (els.reysFastToggle) els.reysFastToggle.checked = state.reysFast;
+      try { localStorage.setItem("reys-fast", state.reysFast ? "1" : "0"); } catch (_) {}
+      syncFastModeBanners();
+      showToast(state.reysFast ? "⚡ Tezkor rejim yoqildi" : "Tezkor rejim o'chirildi");
+      haptic("medium");
+    });
+  }
 
   function zeroLocalTopCoefficients() {
     (state.entries.top || []).forEach((e) => {
@@ -2628,6 +3233,7 @@
   els.outboxBackdrop.addEventListener("click", closeOutboxDiag);
   els.outboxRefresh.addEventListener("click", renderOutboxDiag);
   els.outboxSync.addEventListener("click", syncOutboxFromDiag);
+  if (els.outboxPill) els.outboxPill.addEventListener("click", openOutboxDiag);
 
   // ---- Adashgan reset ----
   function resetAdjust(full) {
@@ -3569,6 +4175,7 @@
 
   // ---- Boot ----
   initTelegram();
+  syncFastModeBanners();
   renderAllPhotos();
   renderAdjust();
   renderBalances();

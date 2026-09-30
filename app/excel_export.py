@@ -209,14 +209,13 @@ def _write_obshiy_sheet(ws, rows: list[tuple[str, float, float]], transfer_heade
     total_cell.number_format = "0.00"
 
 
-def build_obshiy_excel(report_id: int) -> tuple[bytes, str]:
+async def build_obshiy_excel(report_id: int) -> tuple[bytes, str]:
     from openpyxl import Workbook, load_workbook
 
-    report_name = db.report_name(report_id) or "Hisobot"
-    entries_by_action = {
-        action: list(reversed(db.list_entries(report_id, action, limit=2000)))
-        for action in OBSHIY_ACTION_ORDER
-    }
+    report_name = await db.report_name(report_id) or "Hisobot"
+    entries_by_action = {}
+    for action in OBSHIY_ACTION_ORDER:
+        entries_by_action[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
     top, top_order = _sum_obshiy_values_by_code(entries_by_action["top"])
     topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(entries_by_action["topchiqgan"])
     bizda, bizda_order = _sum_obshiy_values_by_code(entries_by_action["bizda"])
@@ -279,9 +278,9 @@ def _summary_type_key(tovar_turi: str) -> str:
     return key
 
 
-def _inventory_for_summary(report_id: int) -> dict[str, float]:
+async def _inventory_for_summary(report_id: int) -> dict[str, float]:
     inv: dict[str, float] = {}
-    for tovar_turi, value in db.get_inventory(report_id).items():
+    for tovar_turi, value in (await db.get_inventory(report_id)).items():
         key = _summary_type_key(tovar_turi)
         if not key:
             continue
@@ -311,15 +310,14 @@ def _copy_row_style(ws, source_row: int, target_row: int, max_col: int) -> None:
         dst.border = copy(src.border)
 
 
-def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
+async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     from datetime import date
     from openpyxl import Workbook, load_workbook
 
-    report_name = db.report_name(report_id) or "Hisobot"
-    obshiy_entries = {
-        action: list(reversed(db.list_entries(report_id, action, limit=2000)))
-        for action in OBSHIY_ACTION_ORDER
-    }
+    report_name = await db.report_name(report_id) or "Hisobot"
+    obshiy_entries = {}
+    for action in OBSHIY_ACTION_ORDER:
+        obshiy_entries[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
     topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
     bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
     chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
@@ -331,9 +329,9 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     )
 
     bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 4)
-    reys_entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
+    reys_entries = list(reversed(await db.list_entries(report_id, "reys", limit=2000)))
     box_weight_total = _summary_box_weight(obshiy_entries, reys_entries)
-    inv = _inventory_for_summary(report_id)
+    inv = await _inventory_for_summary(report_id)
     top_inventory = _num(inv.get("top", 0))
     inv["top"] = 0.0
 
@@ -430,14 +428,14 @@ def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     return out.getvalue(), _safe_umumiy_filename(report_name)
 
 
-def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
+async def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
     from openpyxl import Workbook, load_workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
-    report_name = db.report_name(report_id) or "Hisobot"
-    entries = list(reversed(db.list_entries(report_id, "reys", limit=2000)))
-    adjusts = list(reversed(db.list_entries(report_id, "adjust", limit=2000)))
+    report_name = await db.report_name(report_id) or "Hisobot"
+    entries = list(reversed(await db.list_entries(report_id, "reys", limit=2000)))
+    adjusts = list(reversed(await db.list_entries(report_id, "adjust", limit=2000)))
 
     slots: dict[str, list[dict]] = {}
     custom_types: list[str] = []

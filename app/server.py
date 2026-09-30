@@ -11,10 +11,11 @@ import json as _json
 import logging
 import math
 import time
+from contextlib import asynccontextmanager
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from webauthn import (
     generate_authentication_options,
@@ -31,7 +32,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import config, db, excel_export, outbox, passkeys
+from . import config, db, excel_export, images, outbox, passkeys, queue, storage
 from .security import (
     InitDataError,
     authenticate_admin,
@@ -50,7 +51,20 @@ _CHUNK = 64 * 1024
 
 SESSION_COOKIE = "reys_session"
 
-app = FastAPI(title="Reys hisoboti")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Enforce required config even when launched via `uvicorn app.server:app`
+    # (bypassing app/__main__.py). Prevents a fail-open empty-token deploy.
+    config.require_config()
+    await db.init()
+    # Drain any queued channel sends (idles until a bot is set by __main__).
+    outbox.ensure_started()
+    yield
+    await queue.close_redis_pool()
+
+
+app = FastAPI(title="Reys hisoboti", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -131,16 +145,6 @@ def _set_session_cookie(resp: JSONResponse, token: str) -> None:
     )
 
 
-@app.on_event("startup")
-async def _startup() -> None:
-    # Enforce required config even when launched via `uvicorn app.server:app`
-    # (bypassing app/__main__.py). Prevents a fail-open empty-token deploy.
-    config.require_config()
-    db.init()
-    # Drain any queued channel sends (idles until a bot is set by __main__).
-    outbox.ensure_started()
-
-
 # Static assets (css/, js/).
 app.mount("/css", StaticFiles(directory=str(config.WEBAPP_DIR / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(config.WEBAPP_DIR / "js")), name="js")
@@ -162,7 +166,8 @@ async def _read_capped(upload: UploadFile, remaining_total: int) -> bytes:
 
 
 async def _read_photos(photos: list[UploadFile]) -> list[tuple[bytes, str]]:
-    """Validate count + read all photos into memory as [(bytes, mime), …]."""
+    """Validate count + read all photos into memory as [(bytes, mime), …],
+    automatically converting to high-fidelity WebP format."""
     if len(photos) > MAX_PHOTOS:
         raise HTTPException(status_code=413, detail=f"max {MAX_PHOTOS} photos")
     out: list[tuple[bytes, str]] = []
@@ -170,7 +175,8 @@ async def _read_photos(photos: list[UploadFile]) -> list[tuple[bytes, str]]:
     for f in photos:
         content = await _read_capped(f, MAX_TOTAL_BYTES - total)
         total += len(content)
-        out.append((content, f.content_type or "image/jpeg"))
+        webp_bytes, mime = images.optimize_to_webp(content, quality=95)
+        out.append((webp_bytes, mime))
     return out
 
 
@@ -371,12 +377,12 @@ def _auth_or_403(request: Request, init_data: str = "", state_changing: bool = T
 # ---------------------------------------------------------------------------
 # Reports (named containers; each has its own inventory, starts at 0)
 # ---------------------------------------------------------------------------
-def _require_report(report_id) -> int:
+async def _require_report(report_id) -> int:
     try:
         rid = int(report_id)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="hisobot tanlanmagan")
-    if not db.report_exists(rid):
+    if not await db.report_exists(rid):
         raise HTTPException(status_code=404, detail="hisobot topilmadi")
     return rid
 
@@ -396,7 +402,7 @@ def _entry_action(kind: str) -> str:
 @app.get("/api/reports")
 async def api_reports_list(request: Request):
     _auth_or_403(request, state_changing=False)
-    return {"reports": db.list_reports(), "max": db.MAX_REPORTS}
+    return {"reports": await db.list_reports(), "max": db.MAX_REPORTS}
 
 
 @app.post("/api/reports")
@@ -414,7 +420,7 @@ async def api_reports_create(request: Request):
     if len(name) > 60:
         raise HTTPException(status_code=400, detail="nom juda uzun")
     try:
-        rep = db.create_report(name)
+        rep = await db.create_report(name)
     except db.DuplicateName:
         raise HTTPException(status_code=409, detail="bu nomli hisobot allaqachon bor")
     except db.MaxReportsReached:
@@ -425,7 +431,7 @@ async def api_reports_create(request: Request):
 @app.delete("/api/reports/{report_id}")
 async def api_reports_delete(request: Request, report_id: int):
     identity = _auth_or_403(request, state_changing=True)  # cookie path requires same-origin
-    db.delete_report(report_id)
+    await db.delete_report(report_id)
     log.info("report %s deleted by %s", report_id, identity)
     return {"ok": True}
 
@@ -439,8 +445,8 @@ async def api_reports_zero_top_coefficients(request: Request, report_id: int):
     except Exception:
         body = {}
     identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
-    rid = _require_report(report_id)
-    changed = db.zero_top_coefficients(rid)
+    rid = await _require_report(report_id)
+    changed = await db.zero_top_coefficients(rid)
     log.info("top coefficients zeroed by %s [r%s]: %s entries", identity, rid, changed)
     return {"ok": True, "changed": changed}
 
@@ -448,7 +454,7 @@ async def api_reports_zero_top_coefficients(request: Request, report_id: int):
 @app.get("/api/types")
 async def api_types_list(request: Request):
     _auth_or_403(request, state_changing=False)
-    return db.list_types()
+    return await db.list_types()
 
 
 @app.post("/api/types")
@@ -466,10 +472,11 @@ async def api_types_add(request: Request):
     if len(name) > 40:
         raise HTTPException(status_code=400, detail="tovar turi juda uzun")
     try:
-        name = db.add_custom_type(name)
+        name = await db.add_custom_type(name)
     except ValueError:
         raise HTTPException(status_code=400, detail="tovar turi noto'g'ri")
-    return {"ok": True, "name": name, **db.list_types()}
+    types = await db.list_types()
+    return {"ok": True, "name": name, **types}
 
 
 @app.delete("/api/types/{name}")
@@ -478,10 +485,11 @@ async def api_types_delete(request: Request, name: str):
         raise HTTPException(status_code=429, detail="too many requests")
     _auth_or_403(request, state_changing=True)
     try:
-        db.delete_custom_type(name)
+        await db.delete_custom_type(name)
     except ValueError:
         raise HTTPException(status_code=400, detail="default tovar turini o'chirib bo'lmaydi")
-    return {"ok": True, **db.list_types()}
+    types = await db.list_types()
+    return {"ok": True, **types}
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +511,7 @@ async def submit_report(
         raise HTTPException(status_code=429, detail="too many requests")
 
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
 
     tovar_turi = (type or "").strip()
     if not tovar_turi:
@@ -522,10 +530,14 @@ async def submit_report(
 
     photo_data = await _read_photos(photos)
 
-    result = db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photo_data), box_weight)
+    result = await db.add_reys(rid, identity, tovar_turi, weight, coefficient, net, len(photo_data), box_weight)
     entry_id = result["entry_id"]
     if photo_data:
-        db.save_photos(entry_id, photo_data)  # persisted to disk (survives a crash)
+        r2_meta = []
+        for idx, (data, mime) in enumerate(photo_data):
+            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            r2_meta.append((key, url))
+        await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("reys by %s [r%s e%s]: %s +%s (weight=%s coef=%s photos=%d)",
              identity, rid, entry_id, tovar_turi, net, weight, coefficient, len(photo_data))
     return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
@@ -551,7 +563,7 @@ async def edit_report_entry(
         raise HTTPException(status_code=429, detail="too many requests")
 
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
 
     tovar_turi = (type or "").strip()
     if not tovar_turi:
@@ -567,7 +579,7 @@ async def edit_report_entry(
         raise HTTPException(status_code=400, detail="koeffitsient og'irlikdan katta")
 
     try:
-        result = db.edit_reys(rid, entry_id, tovar_turi, weight, coefficient, net, box_weight)
+        result = await db.edit_reys(rid, entry_id, tovar_turi, weight, coefficient, net, box_weight)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
     except db.InsufficientStock as exc:
@@ -599,7 +611,7 @@ async def submit_adjust(
         raise HTTPException(status_code=429, detail="too many requests")
 
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     from_type = from_type.strip()
     to_type = to_type.strip()
 
@@ -613,7 +625,7 @@ async def submit_adjust(
     photo_data = await _read_photos(photos)
 
     try:
-        result = db.adjust(rid, identity, from_type, to_type, weight, len(photo_data))
+        result = await db.adjust(rid, identity, from_type, to_type, weight, len(photo_data))
     except db.InsufficientStock as exc:
         raise HTTPException(
             status_code=409,
@@ -621,7 +633,11 @@ async def submit_adjust(
         )
     entry_id = result["entry_id"]
     if photo_data:
-        db.save_photos(entry_id, photo_data)
+        r2_meta = []
+        for idx, (data, mime) in enumerate(photo_data):
+            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            r2_meta.append((key, url))
+        await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("adjust by %s [r%s e%s]: %s -> %s %s kg photos=%d",
              identity, rid, entry_id, from_type, to_type, weight, len(photo_data))
     return JSONResponse({"ok": True, "balances": result["balances"], "entry_id": entry_id,
@@ -644,7 +660,7 @@ async def edit_adjust_entry(
         raise HTTPException(status_code=429, detail="too many requests")
 
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     from_type = from_type.strip()
     to_type = to_type.strip()
 
@@ -656,7 +672,7 @@ async def edit_adjust_entry(
         raise HTTPException(status_code=400, detail="og'irlik noto'g'ri")
 
     try:
-        result = db.edit_adjust(rid, entry_id, from_type, to_type, weight)
+        result = await db.edit_adjust(rid, entry_id, from_type, to_type, weight)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
     except db.InsufficientStock as exc:
@@ -686,7 +702,7 @@ async def submit_obshiy(
     if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
         raise HTTPException(status_code=429, detail="too many requests")
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     section = str(section or "").strip()
     if section not in OBSHIY_KINDS:
         raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
@@ -711,10 +727,14 @@ async def submit_obshiy(
     photo_data = await _read_photos(photos)
     if not photo_data:
         raise HTTPException(status_code=400, detail="kamida 1 ta rasm qo'shing")
-    result = db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data), box_weight)
+    result = await db.add_obshiy(rid, identity, section, code, weight, coefficient, net, len(photo_data), box_weight)
     entry_id = result["entry_id"]
     if photo_data:
-        db.save_photos(entry_id, photo_data)
+        r2_meta = []
+        for idx, (data, mime) in enumerate(photo_data):
+            key, url = await storage.upload_photo(entry_id, idx, data, mime)
+            r2_meta.append((key, url))
+        await db.save_photos(entry_id, photo_data, r2_meta)
     log.info("obshiy by %s [r%s e%s %s]: code=%s weight=%s box=%s mode=%s photos=%d",
              identity, rid, entry_id, section, code, weight, box_weight, coefficient_mode, len(photo_data))
     return JSONResponse({"ok": True, "entry_id": entry_id, "net": net,
@@ -738,7 +758,7 @@ async def edit_obshiy_entry(
     if not _rate_ok(f"obshiy:{_client_ip(request)}", limit=80, window=60):
         raise HTTPException(status_code=429, detail="too many requests")
     identity = _auth_or_403(request, init_data)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     section = str(section or "").strip()
     if section not in OBSHIY_KINDS:
         raise HTTPException(status_code=400, detail="bo'lim noto'g'ri")
@@ -760,7 +780,7 @@ async def edit_obshiy_entry(
         coefficient_mode = "fixed"
     net = round(weight, 4)
     try:
-        result = db.edit_obshiy(rid, entry_id, section, code, weight, coefficient, net, box_weight)
+        result = await db.edit_obshiy(rid, entry_id, section, code, weight, coefficient, net, box_weight)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
     log.info("obshiy edit by %s [r%s e%s %s]: code=%s weight=%s box=%s mode=%s",
@@ -776,9 +796,9 @@ async def delete_entry(request: Request, entry_id: int, report_id: int | None = 
     if not _rate_ok(f"adjust:{_client_ip(request)}", limit=60, window=60):
         raise HTTPException(status_code=429, detail="too many requests")
     identity = _auth_or_403(request, state_changing=True)  # cookie path requires same-origin
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     try:
-        result = db.delete_entry(rid, entry_id)
+        result = await db.delete_entry(rid, entry_id)
     except db.ActivityNotFound:
         raise HTTPException(status_code=404, detail="yozuv topilmadi")
     except db.InsufficientStock as exc:
@@ -795,25 +815,27 @@ async def api_entries(request: Request, report_id: int | None = None, kind: str 
     """Saved reys/adashgan rows for the 'Yuklanganlar' viewer (survives reload).
     Photos are fetched separately via /api/entry/{id}/photo/{idx}."""
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     action = _entry_action(kind)
-    return {"entries": db.list_entries(rid, action)}
+    entries = await db.list_entries(rid, action)
+    return {"entries": entries}
 
 
 @app.get("/api/entries/status")
 async def api_entries_status(request: Request, report_id: int | None = None, kind: str = "reys"):
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     action = _entry_action(kind)
-    return {"entries": db.list_entry_statuses(rid, action)}
+    entries = await db.list_entry_statuses(rid, action)
+    return {"entries": entries}
 
 
 @app.get("/api/export/kargo")
 async def api_export_kargo(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     try:
-        content, filename = excel_export.build_kargo_excel(rid)
+        content, filename = await excel_export.build_kargo_excel(rid)
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="excel namunasi topilmadi")
     except ModuleNotFoundError as exc:
@@ -838,9 +860,9 @@ async def api_export_kargo(request: Request, report_id: int | None = None):
 @app.get("/api/export/obshiy")
 async def api_export_obshiy(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     try:
-        content, filename = excel_export.build_obshiy_excel(rid)
+        content, filename = await excel_export.build_obshiy_excel(rid)
     except ModuleNotFoundError as exc:
         log.exception("obshiy excel export dependency missing")
         raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
@@ -863,9 +885,9 @@ async def api_export_obshiy(request: Request, report_id: int | None = None):
 @app.get("/api/export/summary")
 async def api_export_summary(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
+    rid = await _require_report(report_id)
     try:
-        content, filename = excel_export.build_umumiy_excel(rid)
+        content, filename = await excel_export.build_umumiy_excel(rid)
     except ModuleNotFoundError as exc:
         log.exception("summary excel export dependency missing")
         raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
@@ -894,7 +916,7 @@ async def api_send_bulk(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="invalid json")
     identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
-    rid = _require_report(body.get("report_id"))
+    rid = await _require_report(body.get("report_id"))
     kind = str(body.get("kind", "reys"))
     action = _entry_action(kind)
     mode = str(body.get("mode", "unsent"))
@@ -904,10 +926,10 @@ async def api_send_bulk(request: Request):
     if entry_ids is not None:
         if not isinstance(entry_ids, list):
             raise HTTPException(status_code=400, detail="entry_ids noto'g'ri")
-        count = db.enqueue_selected_send(rid, action, entry_ids)
+        count = await db.enqueue_selected_send(rid, action, entry_ids)
     else:
-        count = db.enqueue_bulk_send(rid, action, mode=mode)
-    outbox.notify()
+        count = await db.enqueue_bulk_send(rid, action, mode=mode)
+    await queue.dispatch_send()
     log.info("channel send queued by %s [r%s %s %s]: %s entries", identity, rid, action, mode, count)
     return {"ok": True, "queued": count}
 
@@ -917,15 +939,20 @@ async def api_entry_photo(request: Request, entry_id: int, idx: int):
     """Serve one persisted photo. Auth via cookie (browser) or the
     X-Telegram-Init-Data header — the client fetches these as blobs."""
     _auth_or_403(request, state_changing=False)
-    res = db.photo_file(entry_id, idx)
+    p_data = await db.photo_data(entry_id, idx)
+    if p_data is None:
+        raise HTTPException(status_code=404, detail="rasm topilmadi")
+    data, mime, r2_key, r2_url = p_data
+    if r2_url and config.R2_PUBLIC_DOMAIN:
+        return RedirectResponse(r2_url, status_code=307)
+
+    res = await db.photo_file(entry_id, idx)
     if res is not None:
         path, mime = res
         return FileResponse(str(path), media_type=mime,
                             headers={"Cache-Control": "private, max-age=86400"})
-    blob = db.photo_data(entry_id, idx)
-    if blob is None:
+    if data is None:
         raise HTTPException(status_code=404, detail="rasm topilmadi")
-    data, mime = blob
     return Response(content=data, media_type=mime,
                     headers={"Cache-Control": "private, max-age=86400"})
 
@@ -933,16 +960,16 @@ async def api_entry_photo(request: Request, entry_id: int, idx: int):
 @app.get("/api/inventory")
 async def api_inventory(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
-    return {"inventory": db.get_inventory(rid)}
+    rid = await _require_report(report_id)
+    return {"inventory": await db.get_inventory(rid)}
 
 
 @app.get("/api/activity")
 async def api_activity(request: Request, report_id: int | None = None,
                        start: int | None = None, end: int | None = None):
     identity = _auth_or_403(request, state_changing=False)
-    rid = _require_report(report_id)
-    return {"activity": db.get_activity(rid, actor=identity, limit=500, ts_from=start, ts_to=end)}
+    rid = await _require_report(report_id)
+    return {"activity": await db.get_activity(rid, actor=identity, limit=500, ts_from=start, ts_to=end)}
 
 
 @app.exception_handler(Exception)
