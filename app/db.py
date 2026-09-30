@@ -890,10 +890,11 @@ async def list_unmigrated_photos(limit: int = 2000) -> list[dict]:
     """Return rows from entry_photos that do not have an r2_key."""
     async with _db() as c:
         async with c.execute(
-            """SELECT entry_id, idx, mime, data
-               FROM entry_photos
-               WHERE r2_key IS NULL OR r2_key = ''
-               ORDER BY entry_id, idx
+            """SELECT ep.entry_id, ep.idx, ep.mime, ep.data, a.report_id, a.action
+               FROM entry_photos ep
+               LEFT JOIN activity a ON a.id = ep.entry_id
+               WHERE ep.r2_key IS NULL OR ep.r2_key = ''
+               ORDER BY ep.entry_id, ep.idx
                LIMIT ?""",
             (limit,),
         ) as cur:
