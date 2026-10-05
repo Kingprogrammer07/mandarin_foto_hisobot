@@ -212,6 +212,19 @@ reys_hisoboti_v2/
 - **Backend 422 Handler (`app/server.py`)**:
   - `RequestValidationError` uchun maxsus handler qo'shilib, xom Pydantic JSON massivlari o'rniga doim standart `{"ok": false, "detail": "..."}` qaytariladi.
 
+### M. 200 Reyslar Limiti, Reys Nomini Tahrirlash (Rename) va Tezkor Qidiruv (Oktyabr 2026)
+- **Maksimal Hisobotlar Limiti 200 taga ko'tarildi**:
+  - `app/config.py` va `app/db.py` da `MAX_REPORTS = int(os.getenv("MAX_REPORTS", "200"))` qilib sozlandi.
+  - `.env.example` ga `MAX_REPORTS=200` kiritildi.
+  - Mini App interfeysi `homeReportsMax = 200` bilan ishlaydi va serverdan olingan limitni aks ettiradi.
+- **Reys Nomini O'zgartirish (Rename Report)**:
+  - Backend: `app/db.py` da `rename_report(report_id, new_name)` qo'shildi (takroriy nom, bo'sh nom va uzunlik cheklovlari tekshiriladi). Barcha yozuvlar `report_id` ga bog'langanligi sababli nom o'zgartirish mutlaqo xavfsiz.
+  - API: `PATCH /api/reports/{report_id}` endpointi yaratildi (admin auth, rate limiting, xatoliklar tekshiruvi bilan).
+  - Frontend: Har bir reys kartasida **✏️ Nom** tugmasi va reys menyusida sarlavha yonida `#menuRenameBtn` qalamchasi qo'shildi. Bosilganda ochiluvchi modal orqali nom bir zumda o'zgartiriladi va toast bildirishnomasi chiqadi.
+- **Hisobotlar Bo'yicha Jonli Qidiruv (Live Search)**:
+  - Bosh ekranda `#homeSearchInput` qidiruv paneli joylashtirildi.
+  - Foydalanuvchi nom yozishi bilan reyslar ro'yxati jonli ravishda filtrlanadi va topilganlar soni (`N ta hisobot topildi`) ko'rsatiladi. Tozalash tugmasi (`&times;`) mavjud.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

@@ -38,7 +38,7 @@ DEFAULT_TYPES = [
     "oneway", "x637", "x517", "redwing",
 ]
 DEFAULT_TYPE_SET = {t.lower() for t in DEFAULT_TYPES}
-MAX_REPORTS = 25
+MAX_REPORTS = config.MAX_REPORTS
 
 
 class InsufficientStock(Exception):
@@ -444,6 +444,30 @@ async def delete_report(report_id: int) -> None:
                  AND status = 'pending'""",
             (now, now, report_id),
         )
+
+
+async def rename_report(report_id: int, new_name: str) -> dict:
+    new_name = new_name.strip()
+    if not new_name:
+        raise ValueError("empty name")
+    if len(new_name) > 60:
+        raise ValueError("name too long")
+    async with _db() as c:
+        async with c.execute("SELECT id, name FROM reports WHERE id = ? AND deleted_at IS NULL", (report_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise ReportNotFound(f"report {report_id} not found")
+        if row["name"] == new_name:
+            return {"id": report_id, "name": new_name}
+        async with c.execute(
+            "SELECT 1 FROM reports WHERE name = ? COLLATE NOCASE AND id != ? AND deleted_at IS NULL",
+            (new_name, report_id),
+        ) as cur:
+            exists = await cur.fetchone()
+        if exists:
+            raise DuplicateName(new_name)
+        await c.execute("UPDATE reports SET name = ? WHERE id = ?", (new_name, report_id))
+        return {"id": report_id, "name": new_name}
 
 
 async def list_types() -> dict:

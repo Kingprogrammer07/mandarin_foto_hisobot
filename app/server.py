@@ -439,6 +439,32 @@ async def api_reports_delete(request: Request, report_id: int):
     return {"ok": True}
 
 
+@app.patch("/api/reports/{report_id}")
+async def api_reports_rename(request: Request, report_id: int):
+    if not _rate_ok(f"report_rename:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="hisobot nomini kiriting")
+    if len(name) > 60:
+        raise HTTPException(status_code=400, detail="nom juda uzun")
+    try:
+        updated = await db.rename_report(report_id, name)
+    except db.DuplicateName:
+        raise HTTPException(status_code=409, detail="bu nomli hisobot allaqachon bor")
+    except db.ReportNotFound:
+        raise HTTPException(status_code=404, detail="hisobot topilmadi")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    log.info("report %s renamed to %r by %s", report_id, name, identity)
+    return JSONResponse({"ok": True, "report": updated})
+
+
 @app.post("/api/reports/{report_id}/zero-top-coefficients")
 async def api_reports_zero_top_coefficients(request: Request, report_id: int):
     if not _rate_ok(f"zero-coef:{_client_ip(request)}", limit=10, window=60):

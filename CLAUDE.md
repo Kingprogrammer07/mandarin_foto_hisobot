@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -192,7 +192,7 @@ Saving is a `FormData` POST carrying `tg.initData`.
   the DB, and `init()` self-heals any pre-guard inf/nan rows. Keep new numeric
   paths guarded.
 - UI text and API error `detail` strings are in Uzbek; keep it consistent.
-- `AGENTS.md` and `HANDOFF.md` document this codebase — whenever making changes to the codebase, **all three files (`HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`) must be kept up to date**.
+- `CLAUDE.md` and `HANDOFF.md` document this codebase — whenever making changes to the codebase, **all three files (`HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`) must be kept up to date**.
 - Photos use Cloudflare R2 / S3 storage (`app/storage.py`) with automatic graceful fallback to local disk (`data/photos`).
 - Database access is asynchronous via `aiosqlite` in `app/db.py`.
 - Background sending supports Redis + `arq` with fallback to SQLite `send_queue`.
@@ -206,3 +206,4 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Hero Weight Inputs (`#weight`, `#adjWeight`, `#topWeight`): 28px bold tabular typography with embedded uppercase `kg` badge and quick-save action pill.
   - Fast Mode Indicator (`.fast-mode-banner`): Glowing Neon Volt banner indicating automatic camera re-opening after save, clickable to toggle state instantly.
 - iOS & Offline Photo Stability: Photos in IndexedDB outbox use safe Blob slices (`file.slice`) with explicit metadata to avoid WebKit `DataCloneError`; camera uses WebP -> JPEG fallback; online saves use optimistic direct upload; server 422 errors are sanitized via `formatApiError` and unified `RequestValidationError` handler so `[object Object]` never appears.
+- Reports Capacity & Management: MAX_REPORTS = 200 (env configurable via MAX_REPORTS); report renaming via PATCH /api/reports/{id} and frontend edit modal; instant real-time live search filter (#homeSearchInput) across all reports on home screen.

@@ -73,3 +73,45 @@ async def test_db_lifecycle_and_balances():
 
     finally:
         await db.delete_report(rid)
+
+
+@pytest.mark.asyncio
+async def test_report_rename_and_max_limit():
+    await db.init()
+    assert config.MAX_REPORTS >= 200
+    assert db.MAX_REPORTS == config.MAX_REPORTS
+
+    ts = int(time.time() * 1000)
+    rep1 = await db.create_report(f"Rename Test 1 {ts}")
+    rep2 = await db.create_report(f"Rename Test 2 {ts}")
+    rid1 = rep1["id"]
+    rid2 = rep2["id"]
+
+    try:
+        # Successful rename
+        renamed = await db.rename_report(rid1, f"Renamed 1 {ts}")
+        assert renamed["name"] == f"Renamed 1 {ts}"
+
+        # Same name is a no-op
+        same = await db.rename_report(rid1, f"Renamed 1 {ts}")
+        assert same["name"] == f"Renamed 1 {ts}"
+
+        # Duplicate name raises DuplicateName
+        with pytest.raises(db.DuplicateName):
+            await db.rename_report(rid1, f"Rename Test 2 {ts}")
+
+        # Empty name raises ValueError
+        with pytest.raises(ValueError):
+            await db.rename_report(rid1, "   ")
+
+        # Name too long raises ValueError
+        with pytest.raises(ValueError):
+            await db.rename_report(rid1, "A" * 65)
+
+        # Non-existent report raises ReportNotFound
+        with pytest.raises(db.ReportNotFound):
+            await db.rename_report(9999999, "Non existent")
+    finally:
+        await db.delete_report(rid1)
+        await db.delete_report(rid2)
+

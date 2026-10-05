@@ -312,6 +312,11 @@
         <svg viewBox="0 0 24 24" class="ic"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
         Yangi hisobot qo'shish
       </button>
+      <div class="home-search" id="homeSearchWrap">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M10 18a8 8 0 1 1 5.3-2l5.4 5.3-1.4 1.4-5.3-5.4A8 8 0 0 1 10 18Zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
+        <input type="text" id="homeSearchInput" class="home-search__input" placeholder="Reys nomini qidirish…" autocomplete="off" />
+        <button type="button" class="home-search__clear" id="homeSearchClear" hidden aria-label="Tozalash">&times;</button>
+      </div>
       <p class="home__hint" id="homeHint"></p>
       <ul class="report-list" id="reportList"></ul>
     </div>
@@ -323,7 +328,12 @@
       <button type="button" class="theme-btn" id="menuBackBtn" aria-label="Hisobotlar">
         <svg viewBox="0 0 24 24" class="ic"><path d="m14 6-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
       </button>
-      <span class="screen__title" id="menuTitle"></span>
+      <div class="screen__title-wrap" id="menuTitleWrap">
+        <span class="screen__title" id="menuTitle"></span>
+        <button type="button" class="theme-btn menu-rename-btn" id="menuRenameBtn" aria-label="Nomni o'zgartirish" title="Nomni o'zgartirish">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        </button>
+      </div>
       <button type="button" class="theme-btn js-theme" id="menuThemeBtn" aria-label="Mavzu"></button>
     </header>
     <div class="screen__body">
@@ -618,7 +628,7 @@
   <div class="sheet" id="nameSheet" hidden role="dialog" aria-modal="true">
     <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
     <div class="sheet__top">
-      <span class="sheet__title">Yangi hisobot</span>
+      <span class="sheet__title" id="nameSheetTitle">Yangi hisobot</span>
       <button type="button" class="sheet__close" id="nameClose" aria-label="Yopish">
         <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
       </button>

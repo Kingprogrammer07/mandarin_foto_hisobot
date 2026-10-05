@@ -84,7 +84,8 @@
   try { state.topFast = localStorage.getItem("reys-top-fast") === "1"; } catch (_) {}
   try { state.reysFast = localStorage.getItem("reys-fast") === "1"; } catch (_) {}
   let homeReports = [];
-  let homeReportsMax = 25;
+  let homeReportsMax = 200;
+  let homeSearchQuery = "";
   let homeArchiveOpen = false;
   let homeRenderKey = "";
   let reportsLoaded = false;
@@ -270,11 +271,15 @@
     homeScreen: $("#homeScreen"),
     homeThemeBtn: $("#homeThemeBtn"),
     newReportBtn: $("#newReportBtn"),
+    homeSearchWrap: $("#homeSearchWrap"),
+    homeSearchInput: $("#homeSearchInput"),
+    homeSearchClear: $("#homeSearchClear"),
     homeHint: $("#homeHint"),
     reportList: $("#reportList"),
     // report section menu
     menuScreen: $("#menuScreen"),
     menuTitle: $("#menuTitle"),
+    menuRenameBtn: $("#menuRenameBtn"),
     menuBackBtn: $("#menuBackBtn"),
     menuTotalBtn: $("#menuTotalBtn"),
     menuTotalXls: $("#menuTotalXls"),
@@ -348,6 +353,7 @@
     entryDeleteBtn: $("#entryDeleteBtn"),
     nameBackdrop: $("#nameBackdrop"),
     nameSheet: $("#nameSheet"),
+    nameSheetTitle: $("#nameSheetTitle"),
     nameClose: $("#nameClose"),
     nameInput: $("#nameInput"),
     nameSave: $("#nameSave"),
@@ -1162,6 +1168,13 @@
     main.append(head, sub);
     const actions = document.createElement("div");
     actions.className = "report-item__actions";
+    const edit = document.createElement("button");
+    edit.className = "report-item__edit";
+    edit.type = "button";
+    edit.setAttribute("aria-label", "Nomni o'zgartirish");
+    edit.title = "Nomni o'zgartirish";
+    edit.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg><span>Nom</span>';
+    edit.addEventListener("click", (e) => { e.stopPropagation(); openRenameSheet(rep); });
     const xls = document.createElement("button");
     xls.className = "report-item__xls";
     xls.type = "button";
@@ -1175,7 +1188,7 @@
     del.setAttribute("aria-label", "O'chirish");
     del.innerHTML = "<svg viewBox=\"0 0 24 24\" class=\"ic\"><path d=\"M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z\"/></svg><span>O'chirish</span>";
     del.addEventListener("click", (e) => { e.stopPropagation(); deleteReport(rep); });
-    actions.append(xls, del);
+    actions.append(edit, xls, del);
     main.append(actions);
     li.append(main);
     li.addEventListener("click", () => openReport(rep));
@@ -1197,16 +1210,45 @@
     return li;
   }
 
+  function updateHomeHint() {
+    const q = (homeSearchQuery || "").trim().toLowerCase();
+    if (q) {
+      const count = homeReports.filter((r) => (r.name || "").toLowerCase().includes(q)).length;
+      els.homeHint.textContent = `${count} ta hisobot topildi (${homeReports.length} tadan)`;
+    } else {
+      els.homeHint.textContent = homeReports.length
+        ? `Oxirgi 3 ta ko'rsatiladi · ${homeReports.length}/${homeReportsMax} saqlangan`
+        : "Hali hisobot yo'q. Yangi hisobot qo'shing.";
+    }
+  }
+
   function renderReports(reports, max, force) {
+    const q = (homeSearchQuery || "").trim().toLowerCase();
     const key = JSON.stringify({
       ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at]),
       max,
       open: homeArchiveOpen,
+      q,
     });
     if (!force && key === homeRenderKey) return;
     homeRenderKey = key;
     els.reportList.innerHTML = "";
     const frag = document.createDocumentFragment();
+
+    if (q) {
+      const filtered = reports.filter((r) => (r.name || "").toLowerCase().includes(q));
+      if (!filtered.length) {
+        const empty = document.createElement("li");
+        empty.className = "report-empty";
+        empty.textContent = "Bunday nomli hisobot topilmadi";
+        frag.appendChild(empty);
+      } else {
+        filtered.forEach((rep) => frag.appendChild(reportItem(rep)));
+      }
+      els.reportList.appendChild(frag);
+      return;
+    }
+
     reports.slice(0, 3).forEach((rep) => frag.appendChild(reportItem(rep)));
     const archived = reports.slice(3);
     if (archived.length) {
@@ -1231,10 +1273,8 @@
       const json = await res.json().catch(() => ({}));
       const reports = (res.ok && json.reports) || [];
       homeReports = reports;
-      homeReportsMax = json.max || 25;
-      els.homeHint.textContent = reports.length
-        ? `Oxirgi 3 ta ko'rsatiladi · ${reports.length}/${homeReportsMax} saqlangan`
-        : "Hali hisobot yo'q. Yangi hisobot qo'shing.";
+      homeReportsMax = json.max || 200;
+      updateHomeHint();
       renderReports(reports, homeReportsMax);
       reportsLoaded = true;
       if (!routeRestoring) applyRouteFromHash();
@@ -2990,8 +3030,15 @@
     } catch (_) { showToast("O'chirib bo'lmadi", true); }
   }
 
-  // Naming sheet
+  // Naming sheet (Create / Rename)
+  let nameSheetMode = "create";
+  let renamingReport = null;
+
   function openNameSheet() {
+    nameSheetMode = "create";
+    renamingReport = null;
+    if (els.nameSheetTitle) els.nameSheetTitle.textContent = "Yangi hisobot";
+    els.nameSave.textContent = "Yaratish";
     els.nameError.hidden = true;
     els.nameInput.value = "";
     els.nameBackdrop.hidden = false;
@@ -2999,34 +3046,118 @@
     syncBackButton();
     setTimeout(() => els.nameInput.focus(), 80);
   }
-  function closeNameSheet() { els.nameSheet.hidden = true; els.nameBackdrop.hidden = true; syncBackButton(); }
-  async function createReport() {
+
+  function openRenameSheet(rep) {
+    if (!rep || !rep.id) return;
+    nameSheetMode = "rename";
+    renamingReport = rep;
+    if (els.nameSheetTitle) els.nameSheetTitle.textContent = "Hisobot nomini o'zgartirish";
+    els.nameSave.textContent = "Saqlash";
+    els.nameError.hidden = true;
+    els.nameInput.value = rep.name || "";
+    els.nameBackdrop.hidden = false;
+    els.nameSheet.hidden = false;
+    syncBackButton();
+    setTimeout(() => {
+      els.nameInput.focus();
+      els.nameInput.select();
+    }, 80);
+  }
+
+  function closeNameSheet() {
+    els.nameSheet.hidden = true;
+    els.nameBackdrop.hidden = true;
+    renamingReport = null;
+    nameSheetMode = "create";
+    syncBackButton();
+  }
+
+  async function submitNameSheet() {
     const name = els.nameInput.value.trim();
-    if (!name) { els.nameError.textContent = "Nom kiriting"; els.nameError.hidden = false; return; }
+    if (!name) {
+      els.nameError.textContent = "Nom kiriting";
+      els.nameError.hidden = false;
+      return;
+    }
+    if (name.length > 60) {
+      els.nameError.textContent = "Nom 60 belgidan oshmasin";
+      els.nameError.hidden = false;
+      return;
+    }
     els.nameSave.disabled = true;
     els.nameError.hidden = true;
     try {
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ init_data: inTelegram ? tg.initData : "", name }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
-      closeNameSheet();
-      openReport(json.report);
+      if (nameSheetMode === "rename" && renamingReport) {
+        if (name === renamingReport.name) {
+          closeNameSheet();
+          return;
+        }
+        const res = await fetch(`/api/reports/${renamingReport.id}`, {
+          method: "PATCH",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ init_data: inTelegram ? tg.initData : "", name }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Nomni o'zgartirib bo'lmadi"));
+
+        renamingReport.name = name;
+        if (state.reportId === renamingReport.id) {
+          state.reportName = name;
+          els.reportName.textContent = name;
+          if (els.menuTitle) els.menuTitle.textContent = name;
+        }
+        closeNameSheet();
+        homeRenderKey = "";
+        renderReports(homeReports, homeReportsMax, true);
+        showToast("Nom yangilandi ✓");
+      } else {
+        const res = await fetch("/api/reports", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ init_data: inTelegram ? tg.initData : "", name }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Xatolik"));
+        closeNameSheet();
+        openReport(json.report);
+      }
     } catch (e) {
-      els.nameError.textContent = e.message || "Xatolik";
+      els.nameError.textContent = formatApiError(e.message, "Xatolik");
       els.nameError.hidden = false;
     } finally {
       els.nameSave.disabled = false;
     }
   }
+
   els.newReportBtn.addEventListener("click", openNameSheet);
-  els.nameSave.addEventListener("click", createReport);
+  els.nameSave.addEventListener("click", submitNameSheet);
   els.nameClose.addEventListener("click", closeNameSheet);
   els.nameBackdrop.addEventListener("click", closeNameSheet);
-  els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createReport(); } });
+  els.nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitNameSheet(); } });
+  if (els.menuRenameBtn) {
+    els.menuRenameBtn.addEventListener("click", () => {
+      const rep = findCachedReport(state.reportId);
+      if (rep) openRenameSheet(rep);
+    });
+  }
+  if (els.homeSearchInput) {
+    els.homeSearchInput.addEventListener("input", (e) => {
+      homeSearchQuery = e.target.value.trim();
+      if (els.homeSearchClear) els.homeSearchClear.hidden = !homeSearchQuery;
+      updateHomeHint();
+      renderReports(homeReports, homeReportsMax, true);
+    });
+  }
+  if (els.homeSearchClear) {
+    els.homeSearchClear.addEventListener("click", () => {
+      homeSearchQuery = "";
+      els.homeSearchInput.value = "";
+      els.homeSearchClear.hidden = true;
+      updateHomeHint();
+      renderReports(homeReports, homeReportsMax, true);
+      els.homeSearchInput.focus();
+    });
+  }
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
 
   function filenameFromDisposition(header, fallback) {

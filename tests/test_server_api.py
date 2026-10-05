@@ -101,3 +101,52 @@ async def test_validation_error_formatting():
         assert res.get("ok") is False
         assert isinstance(res.get("detail"), str)
         assert "Rasm" in res["detail"] or "fayli" in res["detail"]
+
+
+@pytest.mark.asyncio
+async def test_api_report_rename():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        ts = int(time.time() * 1000)
+        # Create 2 reports
+        r1 = await client.post("/api/reports", json={"name": f"ApiRep1 {ts}"}, cookies=cookies, headers=headers)
+        assert r1.status_code == 200
+        rid1 = r1.json()["report"]["id"]
+
+        r2 = await client.post("/api/reports", json={"name": f"ApiRep2 {ts}"}, cookies=cookies, headers=headers)
+        assert r2.status_code == 200
+        rid2 = r2.json()["report"]["id"]
+
+        try:
+            # 1. Successful rename
+            patch_res = await client.patch(f"/api/reports/{rid1}", json={"name": f"ApiRep1 Renamed {ts}"}, cookies=cookies, headers=headers)
+            assert patch_res.status_code == 200
+            assert patch_res.json()["report"]["name"] == f"ApiRep1 Renamed {ts}"
+
+            # 2. Duplicate name -> 409
+            dup_res = await client.patch(f"/api/reports/{rid1}", json={"name": f"ApiRep2 {ts}"}, cookies=cookies, headers=headers)
+            assert dup_res.status_code == 409
+
+            # 3. Empty name -> 400
+            empty_res = await client.patch(f"/api/reports/{rid1}", json={"name": "   "}, cookies=cookies, headers=headers)
+            assert empty_res.status_code == 400
+
+            # 4. Non-existent report -> 404
+            nf_res = await client.patch("/api/reports/9999999", json={"name": "New Name"}, cookies=cookies, headers=headers)
+            assert nf_res.status_code == 404
+
+            # 5. Check reports list returns max >= 200
+            list_res = await client.get("/api/reports", cookies=cookies)
+            assert list_res.status_code == 200
+            assert list_res.json()["max"] >= 200
+        finally:
+            await client.delete(f"/api/reports/{rid1}", cookies=cookies, headers=headers)
+            await client.delete(f"/api/reports/{rid2}", cookies=cookies, headers=headers)
+

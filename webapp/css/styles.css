@@ -1378,6 +1378,7 @@ body.locked { overflow: hidden; }
   padding-top: 12px;
   border-top: 1px solid color-mix(in srgb, var(--separator) 70%, transparent);
 }
+.report-item__edit,
 .report-item__xls,
 .report-item__del {
   width: auto;
@@ -1389,14 +1390,126 @@ body.locked { overflow: hidden; }
   align-items: center;
   gap: 6px;
   background: var(--fill);
+  border: 1px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform var(--speed) var(--ease), background var(--speed) var(--ease);
 }
+.report-item__edit:active,
+.report-item__xls:active,
+.report-item__del:active {
+  transform: scale(0.96);
+}
+.report-item__edit span,
 .report-item__xls span,
 .report-item__del span {
   font-size: 13px;
   font-weight: 750;
 }
+.report-item__edit {
+  color: var(--accent);
+}
 .report-item__del {
   color: var(--destructive);
+}
+.report-item__edit .ic,
+.report-item__xls .ic,
+.report-item__del .ic {
+  width: 17px;
+  height: 17px;
+}
+
+/* Home search bar */
+.home-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.home-search .ic {
+  position: absolute;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  color: var(--hint);
+  pointer-events: none;
+}
+.home-search__input {
+  width: 100%;
+  height: 42px;
+  padding: 0 36px 0 38px;
+  background: var(--fill);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+.home-search__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.home-search__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hint) 25%, transparent);
+  border: 0;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.home-search__clear:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+/* Screen Title with Rename button */
+.screen__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+.menu-rename-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hint);
+  border: 0;
+  cursor: pointer;
+}
+.menu-rename-btn:active {
+  background: var(--fill);
+  color: var(--accent);
+}
+.menu-rename-btn .ic {
+  width: 18px;
+  height: 18px;
+}
+.report-empty {
+  list-style: none;
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--hint);
+  font-size: 14px;
 }
 .report-archive { list-style: none; }
 .report-archive__btn {

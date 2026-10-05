@@ -103,6 +103,9 @@ INITDATA_MAX_AGE: int = int(os.getenv("INITDATA_MAX_AGE", "86400"))
 # individually; removing a user's ADMIN_CREDENTIALS line kills their sessions).
 SESSION_TTL: int = int(os.getenv("SESSION_TTL", str(12 * 3600)))  # 12 hours
 
+# Maximum active reports to retain before pruning oldest (default: 200)
+MAX_REPORTS: int = int(os.getenv("MAX_REPORTS", "200"))
+
 # IPs of trusted reverse proxies whose forwarding headers we honor. Empty means
 # we never trust client-supplied forwarding headers (use the direct peer IP).
 TRUSTED_PROXIES: set[str] = _parse_proxies(os.getenv("TRUSTED_PROXIES", ""))
