@@ -39,6 +39,21 @@
   };
   const ENTRIES_PAGE = 15;
 
+  function formatApiError(detail, fallback = "Xatolik") {
+    if (!detail) return fallback;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail
+        .map((d) => (d && (d.msg || d.detail || d.message)) || (typeof d === "string" ? d : ""))
+        .filter(Boolean);
+      return msgs.length ? msgs.join(", ") : fallback;
+    }
+    if (typeof detail === "object") {
+      return detail.msg || detail.detail || detail.message || fallback;
+    }
+    return String(detail);
+  }
+
   // ---- App state ----
   const state = {
     activeTab: "report",
@@ -738,13 +753,36 @@
     canvas.height = Math.round(sh);
     canvas.getContext("2d").drawImage(v, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     const pk = activePk;
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], `cam_${Date.now()}_${state[pk].length}.webp`, { type: "image/webp" });
+
+    function handleCapturedBlob(blob, mime) {
+      if (blob && blob.size > 0) {
+        const ext = (mime || "").includes("webp") ? "webp" : "jpg";
+        const file = new File([blob], `cam_${Date.now()}_${state[pk].length}.${ext}`, { type: mime || "image/jpeg" });
         addFiles([file], pk);
       }
-      closeCamera(); // hide modal, keep stream alive for the next shot
-    }, "image/webp", 0.95);
+      closeCamera();
+    }
+
+    try {
+      canvas.toBlob((blob) => {
+        if (blob && blob.size > 0) {
+          handleCapturedBlob(blob, "image/webp");
+        } else {
+          // iOS Safari WebKit fallback: encode to JPEG if WebP returns null or 0-size
+          try {
+            canvas.toBlob((jpgBlob) => handleCapturedBlob(jpgBlob, "image/jpeg"), "image/jpeg", 0.92);
+          } catch (_) {
+            closeCamera();
+          }
+        }
+      }, "image/webp", 0.95);
+    } catch (_) {
+      try {
+        canvas.toBlob((jpgBlob) => handleCapturedBlob(jpgBlob, "image/jpeg"), "image/jpeg", 0.92);
+      } catch (_) {
+        closeCamera();
+      }
+    }
   }
 
   async function flipCamera() {
@@ -989,7 +1027,7 @@
       }
       const res = await fetch(path, { method: "PUT", body: fd });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) throw new Error(json.detail || "Yangilab bo'lmadi");
+      if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Yangilab bo'lmadi"));
       if (lb.section === "reys") {
         Object.assign(e, { type: name, weight, coefficient, coefMode: coefficient ? "custom" : "none", net });
         if (json.inventory) state.inventory = json.inventory;
@@ -1465,7 +1503,7 @@
         fd.append("weight", String(weight));
         const res = await fetch(`/api/obshiy/${editingEntry.id}`, { method: "PUT", body: fd });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
+        if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Xatolik"));
         Object.assign(editingEntry, { code, weight, coefficient, boxWeight, coefMode: state.topCoef.mode, net });
         if (json.edited) editingEntry.editedAt = Date.now();
         const edited = editingEntry;
@@ -2395,8 +2433,16 @@
   // Build a display entry from raw fields (optimistic save + outbox replay).
   function outboxEntry(item) {
     const f = item.fields;
-    const files = (item.blobs || []).map((b, i) =>
-      b instanceof File ? b : new File([b], (b && b.name) || `photo_${i}.jpg`, { type: (b && b.type) || "image/jpeg" }));
+    const files = (item.blobs || []).map((b, i) => {
+      if (b instanceof File) return b;
+      const rawBlob = b instanceof Blob ? b : (b && b.blob instanceof Blob ? b.blob : null);
+      const name = (b && b.name) || `photo_${i}.jpg`;
+      const type = (b && b.type) || (rawBlob && rawBlob.type) || "image/jpeg";
+      if (rawBlob && rawBlob.size > 0) {
+        try { return new File([rawBlob], name, { type }); } catch (_) { return rawBlob; }
+      }
+      return null;
+    }).filter(Boolean);
     const base = { localId: item.localId, files, ts: item.ts, synced: false, pending: true };
     if (item.kind === "adjust") return { ...base, from: f.from_type, to: f.to_type, weight: Number(f.weight) };
     if (OBSHIY_SECTIONS.includes(item.kind)) {
@@ -2430,7 +2476,20 @@
     fd.append("init_data", inTelegram ? tg.initData : "");
     fd.append("report_id", String(item.reportId));
     Object.entries(item.fields).forEach(([k, v]) => fd.append(k, String(v)));
-    (item.blobs || []).forEach((b, i) => fd.append("photos", b, (b && b.name) || `photo_${i}.jpg`));
+    (item.blobs || []).forEach((b, i) => {
+      let blob = null;
+      let name = `photo_${i}.jpg`;
+      if (b instanceof Blob) {
+        blob = b;
+        name = b.name || name;
+      } else if (b && b.blob instanceof Blob) {
+        blob = b.blob;
+        name = b.name || name;
+      }
+      if (blob && blob.size > 0) {
+        fd.append("photos", blob, name);
+      }
+    });
     const path = item.kind === "adjust" ? "/api/adjust" : (OBSHIY_SECTIONS.includes(item.kind) ? "/api/obshiy" : "/api/report");
     const res = await fetch(path, { method: "POST", body: fd });
     const json = await res.json().catch(() => ({}));
@@ -2456,13 +2515,49 @@
 
   // Persist + optimistically show a new entry, then try to upload it now.
   async function enqueueCreate(kind, fields, files) {
-    const item = { localId: uid(), kind, reportId: state.reportId, fields, blobs: files, ts: Date.now() };
-    const storedKey = await idbPut(item);
+    // Convert files to pure Blobs with name/type metadata to prevent WebKit DataCloneError
+    const safeBlobs = (files || []).map((f, i) => {
+      if (!f) return null;
+      const name = f.name || `photo_${i}.jpg`;
+      const type = f.type || "image/jpeg";
+      const blob = f instanceof Blob ? f.slice(0, f.size, type) : null;
+      return blob ? { name, type, blob } : null;
+    }).filter(Boolean);
+
+    const item = { localId: uid(), kind, reportId: state.reportId, fields, blobs: safeBlobs, ts: Date.now() };
     const entry = outboxEntry(item);
-    if (storedKey == null) {
+    const isOnline = typeof navigator.onLine !== "boolean" || navigator.onLine;
+
+    // Fast-path: if online, attempt immediate direct upload
+    if (isOnline) {
       try {
         const { res, json } = await uploadCreateRaw(item);
-        if (!res.ok || !json.ok) throw new Error(json.detail || "Serverga saqlab bo'lmadi");
+        if (res.ok && json.ok) {
+          markEntrySynced(entry, item, json);
+          state.entries[kind].push(entry);
+          updateViewCount();
+          refreshViewer(kind);
+          return entry;
+        }
+        // If server responded with permanent rejection (4xx except 429), surface clear error
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          throw new Error(formatApiError(json.detail, "Saqlashda xato"));
+        }
+      } catch (err) {
+        const errMsg = err && err.message ? err.message : "";
+        if (errMsg && !errMsg.includes("Failed to fetch") && !errMsg.includes("Load failed") && !errMsg.includes("NetworkError")) {
+          throw err;
+        }
+      }
+    }
+
+    // Offline or network dropped: persist to IndexedDB outbox queue
+    const storedKey = await idbPut(item);
+    if (storedKey == null) {
+      // If IndexedDB completely failed (e.g. disabled private mode on iOS)
+      try {
+        const { res, json } = await uploadCreateRaw(item);
+        if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Serverga saqlab bo'lmadi"));
         markEntrySynced(entry, item, json);
         state.entries[kind].push(entry);
         updateViewCount();
@@ -2470,7 +2565,7 @@
         return entry;
       } catch (e) {
         const detail = _idbLastError ? ` (${_idbLastError})` : "";
-        throw new Error((e && e.message ? e.message : "Serverga saqlab bo'lmadi") + `. Qurilmada vaqtincha saqlab bo'lmadi${detail}`);
+        throw new Error(formatApiError(e && e.message ? e.message : "Serverga saqlab bo'lmadi") + `. Qurilmada vaqtincha saqlab bo'lmadi${detail}`);
       }
     }
     state.entries[kind].push(entry);
@@ -2525,8 +2620,9 @@
         // 4xx (not 429) = permanent rejection → stop retrying, surface it.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
           await idbDelete(item.localId);
-          if (entry) { entry.pending = false; entry.error = json.detail || "xato"; }
-          showToast(json.detail || "Saqlashda xato", true);
+          const errDetail = formatApiError(json.detail, "Saqlashda xato");
+          if (entry) { entry.pending = false; entry.error = errDetail; }
+          showToast(errDetail, true);
           refreshViewer(item.kind);
         }
         return; // 5xx/429/other → keep pending for retry
@@ -2696,9 +2792,14 @@
           img.className = "outbox-thumb";
           img.loading = "lazy";
           try {
-            const u = URL.createObjectURL(b);
-            _diagBlobUrls.push(u);
-            img.src = u;
+            const raw = b instanceof Blob ? b : (b && b.blob instanceof Blob ? b.blob : null);
+            if (raw) {
+              const u = URL.createObjectURL(raw);
+              _diagBlobUrls.push(u);
+              img.src = u;
+            } else {
+              img.alt = "rasm";
+            }
           } catch (_) {
             img.alt = "rasm";
           }
@@ -2713,7 +2814,10 @@
 
       const meta = document.createElement("span");
       const ts = item.ts ? new Date(item.ts) : null;
-      const photoBytes = blobs.reduce((s, b) => s + (Number(b.size) || 0), 0);
+      const photoBytes = blobs.reduce((s, b) => {
+        const raw = b instanceof Blob ? b : (b && b.blob instanceof Blob ? b.blob : null);
+        return s + (raw ? raw.size : (Number(b && b.size) || 0));
+      }, 0);
       meta.textContent = [
         ts ? ts.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "vaqt yo'q",
         `${blobs.length} ta rasm`,
@@ -3685,7 +3789,7 @@
       fd.append("weight", String(weight));
       const res = await fetch(`/api/adjust/${editing.id}`, { method: "PUT", body: fd });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) throw new Error(json.detail || "Xatolik");
+      if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Xatolik"));
       state.inventory = json.balances || state.inventory;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
       Object.assign(editing, { from, to, weight });
@@ -3923,7 +4027,7 @@
     try {
       const res = await fetch(`/api/report/${editing.id}`, { method: "PUT", body: fd });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) throw new Error(json.detail || "Server xatosi");
+      if (!res.ok || !json.ok) throw new Error(formatApiError(json.detail, "Server xatosi"));
 
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
       Object.assign(editing, {
@@ -3978,7 +4082,7 @@
   // ---- Toast ----
   let toastTimer = null;
   function showToast(msg, isErr) {
-    els.toast.textContent = msg;
+    els.toast.textContent = formatApiError(msg, isErr ? "Xatolik" : "Muvaffaqiyatli");
     els.toast.className = "toast" + (isErr ? " toast--err" : "");
     els.toast.hidden = false;
     // restart entrance animation on rapid successive calls

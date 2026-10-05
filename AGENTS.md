@@ -205,6 +205,4 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Ergonomics: Minimum 48-52px touch targets, safe-area inset adaptation for notch/Dynamic Island and Android navigation bars, tactile `:active` spring feedback (`scale(0.97)`).
   - Hero Weight Inputs (`#weight`, `#adjWeight`, `#topWeight`): 28px bold tabular typography with embedded uppercase `kg` badge and quick-save action pill.
   - Fast Mode Indicator (`.fast-mode-banner`): Glowing Neon Volt banner indicating automatic camera re-opening after save, clickable to toggle state instantly.
-
-
-
+- iOS & Offline Photo Stability: Photos in IndexedDB outbox use safe Blob slices (`file.slice`) with explicit metadata to avoid WebKit `DataCloneError`; camera uses WebP -> JPEG fallback; online saves use optimistic direct upload; server 422 errors are sanitized via `formatApiError` and unified `RequestValidationError` handler so `[object Object]` never appears.

@@ -73,3 +73,31 @@ async def test_api_routes():
 
         finally:
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_validation_error_formatting():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        # Send invalid string for photos instead of file
+        data = {
+            "report_id": "9999",
+            "type": "akb",
+            "weight": "10.0",
+            "coefficient": "0",
+            "coefficient_mode": "none",
+            "photos": "[object Object]",
+        }
+        r = await client.post("/api/report", data=data, cookies=cookies, headers=headers)
+        assert r.status_code == 422
+        res = r.json()
+        assert res.get("ok") is False
+        assert isinstance(res.get("detail"), str)
+        assert "Rasm" in res["detail"] or "fayli" in res["detail"]

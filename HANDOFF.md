@@ -197,6 +197,21 @@ reys_hisoboti_v2/
   - **Server orqali proksi (standart holat)**: `R2_PUBLIC_DOMAIN` belgilanmaganda rasmlar `/api/entry/{id}/photo/{idx}` orqali server tomonidan uzatiladi. Bu holatda **CORS umuman shart emas**, R2 bucketni public qilish ham kerak emas.
   - **Direct Public CDN / Custom Domain qo'llanilganda**: Agar R2 ga ommaviy havola (masalan, `pub-xxx.r2.dev` yoki `cdn.xckep.uz`) ulanib `.env` ga berilsa, Mini App brauzerida rasm yuklanishi va canvas tahlilida bloklanmasligi uchun Cloudflare R2 bucket settingsda CORS policy (`GET`, `HEAD`, `*`) yoqilishi shart.
 
+### L. iOS (WebKit) va Oflayn Rejimda Rasmlar Barqarorligi (Oktyabr 2026)
+- **Xatoliklarni formatlash (`formatApiError`)**:
+  - FastAPI 422 xatolari va ichki xato massivlari inson tushunadigan o'zbekcha matnga aylantiriladi.
+  - Ekranda tushunarsiz `[object Object]` ko'rinishi butunlay bartaraf etildi.
+- **IndexedDB xavfsiz Blob saqlash**:
+  - iOS Safari (WebKit / Telegram in-app brauzeri) da `File` obyektlarini IndexedDB ga yozishda yuz beradigan `DataCloneError` muammosi bartaraf etildi: rasmlar sof `Blob` (`file.slice`) va `{ name, type, blob }` formatida xavfsiz saqlanadi.
+  - `uploadCreateRaw` da `b instanceof Blob` qat'iy tekshiriladi, bu serverga tasodifan `photos = "[object Object]"` matni ketishini 100% oldini oladi.
+- **iPhone Kamera WebP/JPEG Fallback**:
+  - `capturePhoto` da `canvas.toBlob("image/webp")` xotira yoki format cheklovi sababli `null` qaytarganda, avtomatik `image/jpeg` (0.92) ga o'tish zanjiri joriy etildi. Kamera hech qachon bo'sh rasm qoldirmaydi.
+- **Onlayn Tezkor Saqlash (Optimistic Dual Strategy)**:
+  - Qurilma onlayn bo'lganda, yozuv to'g'ridan-to'g'ri serverga yuklanadi (IndexedDB ga ortiqcha yozish/o'chirish tsikli aylanmaydi, tezlik 2x oshadi).
+  - Faqat tarmoq uzilsa yoki telefon oflayn bo'lsagina yozuv IndexedDB navbatiga qo'yiladi va aloqa tiklanganda fonda yuklanadi.
+- **Backend 422 Handler (`app/server.py`)**:
+  - `RequestValidationError` uchun maxsus handler qo'shilib, xom Pydantic JSON massivlari o'rniga doim standart `{"ok": false, "detail": "..."}` qaytariladi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

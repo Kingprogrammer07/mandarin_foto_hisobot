@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from webauthn import (
@@ -175,6 +176,8 @@ async def _read_photos(photos: list[UploadFile]) -> list[tuple[bytes, str]]:
     for f in photos:
         content = await _read_capped(f, MAX_TOTAL_BYTES - total)
         total += len(content)
+        if not content:
+            continue
         webp_bytes, mime = images.optimize_to_webp(content, quality=95)
         out.append((webp_bytes, mime))
     return out
@@ -977,6 +980,26 @@ async def api_activity(request: Request, report_id: int | None = None,
     identity = _auth_or_403(request, state_changing=False)
     rid = await _require_report(report_id)
     return {"activity": await db.get_activity(rid, actor=identity, limit=500, ts_from=start, ts_to=end)}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    first_msg = "Ma'lumotlar noto'g'ri"
+    if errors:
+        err = errors[0]
+        loc = " -> ".join(str(x) for x in err.get("loc", []))
+        msg = err.get("msg", "")
+        if "photos" in loc:
+            first_msg = "Rasm fayli yuklanmadi yoki formati noto'g'ri"
+        elif "weight" in loc:
+            first_msg = "Og'irlik noto'g'ri kiritildi"
+        elif "report_id" in loc:
+            first_msg = "Hisobot tanlanmagan"
+        elif msg:
+            first_msg = f"{msg} ({loc})" if loc else msg
+    log.warning("validation error on %s: %s", getattr(_, "url", ""), errors)
+    return JSONResponse(status_code=422, content={"ok": False, "detail": first_msg})
 
 
 @app.exception_handler(Exception)
