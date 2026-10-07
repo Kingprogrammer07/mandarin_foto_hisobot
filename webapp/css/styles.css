@@ -1715,6 +1715,61 @@ body.locked { overflow: hidden; }
   width: 17px;
   height: 17px;
 }
+.report-item__more {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill);
+  border: 1px solid transparent;
+  color: var(--hint);
+  cursor: pointer;
+  transition: transform var(--speed) var(--ease), background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+.report-item__more:active {
+  transform: scale(0.96);
+}
+.report-item__more .ic {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+.report-more-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 10px;
+}
+.report-more-btn {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 650;
+  background: var(--fill);
+  border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.report-more-btn:active {
+  transform: scale(0.98);
+}
+.report-more-btn .ic {
+  width: 20px;
+  height: 20px;
+  fill: var(--accent);
+  flex: none;
+}
 
 /* Tablet & Desktop Home Layout */
 @media (min-width: 640px) {

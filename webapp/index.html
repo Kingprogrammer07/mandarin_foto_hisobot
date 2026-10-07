@@ -705,6 +705,79 @@
     </div>
   </div>
 
+  <!-- Report More Actions Sheet (kebab menu) -->
+  <div class="sheet-backdrop" id="reportMoreBackdrop" hidden></div>
+  <div class="sheet sheet--report-more" id="reportMoreSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title" id="reportMoreTitle">Amallar</span>
+      <button type="button" class="sheet__close" id="reportMoreClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <div class="report-more-menu">
+        <button type="button" class="btn btn--ghost report-more-btn" id="reportMoreSpecialBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span>Maxsus reys qo'shish</span>
+        </button>
+        <button type="button" class="btn btn--ghost report-more-btn" id="reportMoreKgFixBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 3a9 9 0 0 0-9 9c0 3.6 2.1 6.7 5.2 8.1l1.3-2.3A6.5 6.5 0 0 1 5.5 12c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5c0 2.4-1.3 4.5-3.2 5.6l1.3 2.3c2.7-1.5 4.4-4.5 4.4-7.9a9 9 0 0 0-9-9Zm-1 5v5l4.2 2.5.8-1.3-3.5-2.1V8h-1.5Z"/></svg>
+          <span>Kg to'g'rilash</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Maxsus reys qo'shish sheet -->
+  <div class="sheet-backdrop" id="specialReysBackdrop" hidden></div>
+  <div class="sheet" id="specialReysSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title">Maxsus reys qo'shish</span>
+      <button type="button" class="sheet__close" id="specialReysClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <div class="filter-field">
+        <label for="specialReysNameInput" class="filter-field__label">Maxsus reys nomi:</label>
+        <input type="text" id="specialReysNameInput" class="input" placeholder="Masalan: Maxsus reys #1" maxlength="60" autocapitalize="sentences" autocomplete="off" />
+      </div>
+      <button type="button" class="btn btn--primary" id="specialReysSaveBtn">Qo'shish</button>
+      <p class="login__error" id="specialReysError" hidden></p>
+    </div>
+  </div>
+
+  <!-- Kg to'g'rilash sheet -->
+  <div class="sheet-backdrop" id="kgFixBackdrop" hidden></div>
+  <div class="sheet" id="kgFixSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title" id="kgFixTitle">Kg to'g'rilash</span>
+      <button type="button" class="sheet__close" id="kgFixClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <div class="filter-field">
+        <label for="kgFixTovarSelect" class="filter-field__label">Tovar turi:</label>
+        <select id="kgFixTovarSelect" class="input input--select"></select>
+      </div>
+      <div class="filter-field">
+        <label for="kgFixWeightInput" class="filter-field__label">Farq / Og'irlik (kg):</label>
+        <input type="text" id="kgFixWeightInput" class="input" placeholder="+6 yoki -3" inputmode="text" autocomplete="off" />
+        <span class="filter-field__hint">Ortiqcha bo'lsa musbat (+), kam bo'lsa manfiy (-) kg kiriting</span>
+      </div>
+      <div class="filter-field">
+        <label for="kgFixNoteInput" class="filter-field__label">Izoh (ixtiyoriy):</label>
+        <input type="text" id="kgFixNoteInput" class="input" placeholder="Masalan: hisobot bo'yicha farq" maxlength="100" autocomplete="off" />
+      </div>
+      <button type="button" class="btn btn--primary" id="kgFixSaveBtn">Saqlash</button>
+      <p class="login__error" id="kgFixError" hidden></p>
+    </div>
+  </div>
+
   <!-- Settings sheet -->
   <div class="sheet-backdrop" id="setBackdrop" hidden></div>
   <div class="sheet" id="setSheet" hidden role="dialog" aria-modal="true">
@@ -840,6 +913,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=tgchannel1"></script>
+  <script src="/js/app.js?v=kebab1"></script>
 </body>
 </html>

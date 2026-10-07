@@ -641,6 +641,40 @@ async def add_obshiy(report_id: int, actor: str, action: str, code: str,
         return {"entry_id": cur.lastrowid}
 
 
+async def fix_report_kg(report_id: int, actor: str, tovar_turi: str, weight_delta: float, note: str = "") -> dict:
+    """Manually adjust kg (+/-) for a product type in a report, recording actor in activity audit."""
+    if not math.isfinite(weight_delta) or weight_delta == 0:
+        raise ValueError("weight delta must be a non-zero finite number")
+    raw_type = str(tovar_turi or "").strip().lower()
+    if not raw_type:
+        raise ValueError("tovar_turi required")
+    now = int(time.time())
+    clean_note = (note or "").strip()
+
+    async with _db() as c:
+        async with c.execute("SELECT id FROM reports WHERE id = ? AND deleted_at IS NULL", (report_id,)) as cur:
+            if not await cur.fetchone():
+                raise ReportNotFound()
+
+        await c.execute(
+            """INSERT INTO inventory(report_id, tovar_turi, weight, updated_at)
+               VALUES(?, ?, ?, ?)
+               ON CONFLICT(report_id, tovar_turi)
+               DO UPDATE SET weight = weight + excluded.weight, updated_at = excluded.updated_at""",
+            (report_id, raw_type, weight_delta, now),
+        )
+
+        cur = await c.execute(
+            """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, from_type, to_type, weight, coefficient, net, photos)
+               VALUES(?, ?, ?, 'kg_fix', ?, ?, ?, ?, 0, ?, 0)""",
+            (report_id, now, actor, raw_type, clean_note, raw_type, weight_delta, weight_delta),
+        )
+        entry_id = cur.lastrowid
+        new_inv = await _inventory(c, report_id)
+
+    return {"entry_id": entry_id, "balances": new_inv}
+
+
 # --------------------------------------------------------------------------
 # Entry edit / delete (inventory compensated)
 # --------------------------------------------------------------------------
@@ -990,8 +1024,6 @@ def normalize_type_key(tovar_turi: str) -> str:
         return "oneway"
     if key == "uztez":
         return "uzt"
-    if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
-        return "xabib"
     return key
 
 

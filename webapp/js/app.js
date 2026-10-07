@@ -371,6 +371,27 @@
     filterDownloadBtn: $("#filterDownloadBtn"),
     filterSendBtn: $("#filterSendBtn"),
     filterExportError: $("#filterExportError"),
+    reportMoreBackdrop: $("#reportMoreBackdrop"),
+    reportMoreSheet: $("#reportMoreSheet"),
+    reportMoreTitle: $("#reportMoreTitle"),
+    reportMoreClose: $("#reportMoreClose"),
+    reportMoreSpecialBtn: $("#reportMoreSpecialBtn"),
+    reportMoreKgFixBtn: $("#reportMoreKgFixBtn"),
+    specialReysBackdrop: $("#specialReysBackdrop"),
+    specialReysSheet: $("#specialReysSheet"),
+    specialReysClose: $("#specialReysClose"),
+    specialReysNameInput: $("#specialReysNameInput"),
+    specialReysSaveBtn: $("#specialReysSaveBtn"),
+    specialReysError: $("#specialReysError"),
+    kgFixBackdrop: $("#kgFixBackdrop"),
+    kgFixSheet: $("#kgFixSheet"),
+    kgFixTitle: $("#kgFixTitle"),
+    kgFixClose: $("#kgFixClose"),
+    kgFixTovarSelect: $("#kgFixTovarSelect"),
+    kgFixWeightInput: $("#kgFixWeightInput"),
+    kgFixNoteInput: $("#kgFixNoteInput"),
+    kgFixSaveBtn: $("#kgFixSaveBtn"),
+    kgFixError: $("#kgFixError"),
     setBackdrop: $("#setBackdrop"),
     setSheet: $("#setSheet"),
     setClose: $("#setClose"),
@@ -499,7 +520,10 @@
       !els.topScreen.hidden || !els.entriesScreen.hidden || !els.activityScreen.hidden ||
       !els.camModal.hidden || !els.lightbox.hidden ||
       !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden || !els.entryActSheet.hidden ||
-      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden)
+      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) ||
+      (els.reportMoreSheet && !els.reportMoreSheet.hidden) ||
+      (els.specialReysSheet && !els.specialReysSheet.hidden) ||
+      (els.kgFixSheet && !els.kgFixSheet.hidden)
     );
   }
   function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
@@ -517,6 +541,9 @@
     if (!els.camModal.hidden) { closeCamera(); return; }
     if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
     if (!els.outboxSheet.hidden) { closeOutboxDiag(); return; }
+    if (els.specialReysSheet && !els.specialReysSheet.hidden) { closeSpecialReysSheet(); return; }
+    if (els.kgFixSheet && !els.kgFixSheet.hidden) { closeKgFixSheet(); return; }
+    if (els.reportMoreSheet && !els.reportMoreSheet.hidden) { closeReportMore(); return; }
     if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
     if (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) { closeReportsFilter(); return; }
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
@@ -1204,7 +1231,14 @@
     del.setAttribute("aria-label", "O'chirish");
     del.innerHTML = "<svg viewBox=\"0 0 24 24\" class=\"ic\"><path d=\"M9 3h6l1 2h4v2H4V5h4l1-2ZM6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z\"/></svg><span>O'chirish</span>";
     del.addEventListener("click", (e) => { e.stopPropagation(); deleteReport(rep); });
-    actions.append(edit, xls, del);
+    const more = document.createElement("button");
+    more.className = "report-item__more";
+    more.type = "button";
+    more.setAttribute("aria-label", "Boshqa amallar");
+    more.title = "Boshqa amallar";
+    more.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2Zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Z"/></svg>';
+    more.addEventListener("click", (e) => { e.stopPropagation(); openReportMore(rep); });
+    actions.append(edit, xls, more, del);
     main.append(actions);
     li.append(main);
     li.addEventListener("click", () => openReport(rep));
@@ -3179,6 +3213,218 @@
   }
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
 
+  let activeMoreReport = null;
+
+  function openReportMore(rep) {
+    if (!rep || !rep.id) return;
+    activeMoreReport = rep;
+    if (els.reportMoreTitle) els.reportMoreTitle.textContent = rep.name || "Amallar";
+    if (els.reportMoreBackdrop) els.reportMoreBackdrop.hidden = false;
+    if (els.reportMoreSheet) els.reportMoreSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+    haptic("light");
+  }
+
+  function closeReportMore() {
+    if (els.reportMoreSheet) els.reportMoreSheet.hidden = true;
+    if (els.reportMoreBackdrop) els.reportMoreBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  // --- Maxsus Reys ---
+  function openSpecialReysSheet() {
+    const rep = activeMoreReport;
+    closeReportMore();
+    if (!rep) return;
+    activeMoreReport = rep;
+    if (els.specialReysNameInput) {
+      els.specialReysNameInput.value = `${rep.name} - Maxsus`;
+      if (els.specialReysError) els.specialReysError.hidden = true;
+    }
+    if (els.specialReysBackdrop) els.specialReysBackdrop.hidden = false;
+    if (els.specialReysSheet) els.specialReysSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+    haptic("light");
+    setTimeout(() => {
+      if (els.specialReysNameInput) {
+        els.specialReysNameInput.focus();
+        els.specialReysNameInput.select();
+      }
+    }, 80);
+  }
+
+  function closeSpecialReysSheet() {
+    if (els.specialReysSheet) els.specialReysSheet.hidden = true;
+    if (els.specialReysBackdrop) els.specialReysBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  async function submitSpecialReys() {
+    if (!els.specialReysNameInput || !els.specialReysSaveBtn) return;
+    const name = (els.specialReysNameInput.value || "").trim();
+    if (!name) {
+      if (els.specialReysError) {
+        els.specialReysError.textContent = "Maxsus reys nomini kiriting";
+        els.specialReysError.hidden = false;
+      }
+      return;
+    }
+    els.specialReysSaveBtn.disabled = true;
+    const origHtml = els.specialReysSaveBtn.innerHTML;
+    els.specialReysSaveBtn.textContent = "Qo'shilmoqda…";
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ name, init_data: inTelegram ? tg.initData : "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatApiError(json.detail, "Reys yaratib bo'lmadi"));
+      }
+      showToast("Maxsus reys qo'shildi ✓");
+      haptic("select");
+      closeSpecialReysSheet();
+      await loadReports();
+    } catch (e) {
+      if (els.specialReysError) {
+        els.specialReysError.textContent = formatApiError(e.message, "Xatolik");
+        els.specialReysError.hidden = false;
+      }
+      showToast(e.message || "Xatolik", true);
+      haptic("rigid");
+    } finally {
+      els.specialReysSaveBtn.disabled = false;
+      els.specialReysSaveBtn.innerHTML = origHtml;
+    }
+  }
+
+  // --- Kg to'g'rilash ---
+  function openKgFixSheet() {
+    const rep = activeMoreReport;
+    closeReportMore();
+    if (!rep) return;
+    activeMoreReport = rep;
+    if (els.kgFixTitle) els.kgFixTitle.textContent = `${rep.name} · Kg to'g'rilash`;
+    if (els.kgFixTovarSelect) {
+      els.kgFixTovarSelect.innerHTML = "";
+      allTypes().forEach((t) => {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        els.kgFixTovarSelect.appendChild(opt);
+      });
+      if (allTypes().includes("akb")) els.kgFixTovarSelect.value = "akb";
+    }
+    if (els.kgFixWeightInput) els.kgFixWeightInput.value = "";
+    if (els.kgFixNoteInput) els.kgFixNoteInput.value = "";
+    if (els.kgFixError) els.kgFixError.hidden = true;
+    if (els.kgFixBackdrop) els.kgFixBackdrop.hidden = false;
+    if (els.kgFixSheet) els.kgFixSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+    haptic("light");
+    setTimeout(() => {
+      if (els.kgFixWeightInput) els.kgFixWeightInput.focus();
+    }, 80);
+  }
+
+  function closeKgFixSheet() {
+    if (els.kgFixSheet) els.kgFixSheet.hidden = true;
+    if (els.kgFixBackdrop) els.kgFixBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  async function submitKgFix() {
+    if (!activeMoreReport || !els.kgFixTovarSelect || !els.kgFixWeightInput || !els.kgFixSaveBtn) return;
+    const tovarTuri = (els.kgFixTovarSelect.value || "").trim().toLowerCase();
+    const rawWeight = (els.kgFixWeightInput.value || "").trim().replace(",", ".");
+    const note = (els.kgFixNoteInput ? els.kgFixNoteInput.value : "").trim();
+
+    if (!tovarTuri) {
+      if (els.kgFixError) {
+        els.kgFixError.textContent = "Tovar turini tanlang";
+        els.kgFixError.hidden = false;
+      }
+      return;
+    }
+
+    const weightVal = parseFloat(rawWeight.startsWith("+") ? rawWeight.slice(1).trim() : rawWeight);
+    if (!isFinite(weightVal) || weightVal === 0) {
+      if (els.kgFixError) {
+        els.kgFixError.textContent = "Og'irlikni to'g'ri kiriting (+6 yoki -3)";
+        els.kgFixError.hidden = false;
+      }
+      showToast("Og'irlikni kiriting (+6 yoki -3)", true);
+      haptic("rigid");
+      return;
+    }
+
+    els.kgFixSaveBtn.disabled = true;
+    const origHtml = els.kgFixSaveBtn.innerHTML;
+    els.kgFixSaveBtn.textContent = "Saqlanmoqda…";
+
+    try {
+      const res = await fetch(`/api/reports/${activeMoreReport.id}/adjust-kg`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          init_data: inTelegram ? tg.initData : "",
+          tovar_turi: tovarTuri,
+          weight: rawWeight,
+          note,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatApiError(json.detail, "Kg to'g'rilashda xatolik"));
+      }
+
+      showToast(`Kg to'g'rilandi (${weightVal > 0 ? "+" : ""}${weightVal} kg) ✓`);
+      haptic("select");
+      closeKgFixSheet();
+      await loadReports();
+    } catch (e) {
+      if (els.kgFixError) {
+        els.kgFixError.textContent = formatApiError(e.message, "Xatolik");
+        els.kgFixError.hidden = false;
+      }
+      showToast(e.message || "Xatolik", true);
+      haptic("rigid");
+    } finally {
+      els.kgFixSaveBtn.disabled = false;
+      els.kgFixSaveBtn.innerHTML = origHtml;
+    }
+  }
+
+  if (els.reportMoreClose) els.reportMoreClose.addEventListener("click", closeReportMore);
+  if (els.reportMoreBackdrop) els.reportMoreBackdrop.addEventListener("click", closeReportMore);
+  if (els.reportMoreSpecialBtn) els.reportMoreSpecialBtn.addEventListener("click", openSpecialReysSheet);
+  if (els.reportMoreKgFixBtn) els.reportMoreKgFixBtn.addEventListener("click", openKgFixSheet);
+
+  if (els.specialReysClose) els.specialReysClose.addEventListener("click", closeSpecialReysSheet);
+  if (els.specialReysBackdrop) els.specialReysBackdrop.addEventListener("click", closeSpecialReysSheet);
+  if (els.specialReysSaveBtn) els.specialReysSaveBtn.addEventListener("click", submitSpecialReys);
+  if (els.specialReysNameInput) {
+    els.specialReysNameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submitSpecialReys(); }
+    });
+  }
+
+  if (els.kgFixClose) els.kgFixClose.addEventListener("click", closeKgFixSheet);
+  if (els.kgFixBackdrop) els.kgFixBackdrop.addEventListener("click", closeKgFixSheet);
+  if (els.kgFixSaveBtn) els.kgFixSaveBtn.addEventListener("click", submitKgFix);
+  if (els.kgFixWeightInput) {
+    els.kgFixWeightInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submitKgFix(); }
+    });
+  }
+
   function escapeHtml(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -4234,6 +4480,7 @@
       const row = document.createElement("div");
       row.className = "act";
       const isReys = a.action === "reys";
+      const isKgFix = a.action === "kg_fix";
       const icon = document.createElement("div");
       icon.className = "act__icon " + (isReys ? "act__icon--reys" : "act__icon--adjust");
       icon.innerHTML = isReys ? ICON_REYS : ICON_ADJ;
@@ -4243,7 +4490,11 @@
       title.className = "act__title";
       const sub = document.createElement("div");
       sub.className = "act__sub";
-      if (isReys) {
+      if (isKgFix) {
+        const sign = (a.weight || 0) > 0 ? "+" : "";
+        title.textContent = `Kg to'g'rilash: ${a.tovar_turi} (${sign}${fmtKg(a.weight)})`;
+        sub.textContent = `${a.actor ? "Admin: " + a.actor : ""}${a.from_type ? " · " + a.from_type : ""}`;
+      } else if (isReys) {
         title.textContent = `Reys: ${a.tovar_turi} +${fmtKg(a.net)}`;
         const coefTxt = a.coefficient ? `, koef ${a.coefficient}` : "";
         sub.textContent = `og'irlik ${fmtKg(a.weight)}${coefTxt} · ${a.photos || 0} rasm`;

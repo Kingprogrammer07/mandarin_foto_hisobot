@@ -481,6 +481,44 @@ async def api_reports_zero_top_coefficients(request: Request, report_id: int):
     return {"ok": True, "changed": changed}
 
 
+@app.post("/api/reports/{report_id}/adjust-kg")
+async def api_adjust_kg(request: Request, report_id: int):
+    """Manually adjust (+/-) kg for a product type, recorded with actor in activity audit."""
+    if not _rate_ok(f"adjust_kg:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    rid = await _require_report(report_id)
+
+    tovar_turi = str(body.get("tovar_turi", "")).strip().lower()
+    if not tovar_turi:
+        raise HTTPException(status_code=400, detail="Tovar turi tanlanmagan")
+
+    raw_weight = str(body.get("weight", "")).strip().replace(",", ".")
+    if raw_weight.startswith("+"):
+        raw_weight = raw_weight[1:].strip()
+    try:
+        weight_delta = float(raw_weight)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Og'irlik noto'g'ri kiritildi")
+
+    if not math.isfinite(weight_delta) or weight_delta == 0:
+        raise HTTPException(status_code=400, detail="Og'irlik 0 dan farqli son bo'lishi kerak")
+
+    note = str(body.get("note", "")).strip()
+
+    try:
+        res = await db.fix_report_kg(rid, identity, tovar_turi, weight_delta, note)
+    except db.ReportNotFound:
+        raise HTTPException(status_code=404, detail="Hisobot topilmadi")
+
+    log.info("kg_fix by %s [r%s]: %s %+f kg note=%s", identity, rid, tovar_turi, weight_delta, note)
+    return JSONResponse({"ok": True, "entry_id": res["entry_id"], "balances": res["balances"]})
+
+
 @app.get("/api/types")
 async def api_types_list(request: Request):
     _auth_or_403(request, state_changing=False)

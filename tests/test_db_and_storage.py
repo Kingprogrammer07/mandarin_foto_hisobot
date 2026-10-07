@@ -115,3 +115,16 @@ async def test_report_rename_and_max_limit():
         await db.delete_report(rid1)
         await db.delete_report(rid2)
 
+
+def test_normalize_type_key_distinct():
+    # x637, x517, and xabib must be completely distinct types
+    assert db.normalize_type_key("x637") == "x637"
+    assert db.normalize_type_key("x517") == "x517"
+    assert db.normalize_type_key("xabib") == "xabib"
+    assert db.normalize_type_key("x637") != db.normalize_type_key("xabib")
+    assert db.normalize_type_key("x517") != db.normalize_type_key("xabib")
+    # check valid legacy aliases
+    assert db.normalize_type_key("one") == "oneway"
+    assert db.normalize_type_key("uztez") == "uzt"
+
+

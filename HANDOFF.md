@@ -282,6 +282,25 @@ reys_hisoboti_v2/
   - Tovar turi `top` tanlanganda og'irlik `inventory` dan emas (u yerda doim 0), balki Obshiy ves ichidagi "bizda qoladigan" sheetining yakuniy jami og'irligi (`bizda_total`) dan olinadi (`metrics["top"]`).
   - Telegramga yuborishda `tovar_turi == 'top'` bo'lganda `action in ('bizda', 'top')` bo'lgan barcha Obshiy ves yozuvlari avtomatik tanlanadi va fotosuratlari bilan kanalga yuboriladi.
 
+### Q. Tovar Turlarini To'g'ri Ajratish (x637 vs xabib) va Reys Kartasi 3-Talik Nuqta Menyusi (2026-10-07)
+- **Tovar Turlari Normalizatsiyasi (`normalize_type_key`) Tuzatildi**:
+  - Muammo: Avval `app/db.py` da `x` bilan boshlanib raqam kelgan barcha turlar (`x637`, `x517`) avtomatik ravishda `xabib` deb nomlanib ketgan. Natijada `x637` tovar turi filtrlanganda `xabib` yozuvlari ham aralashib ketgan.
+  - Yechim: Ushbu noto'g'ri shart olib tashlandi. Faqat haqiqiy sinonimlar (`one -> oneway`, `uztez -> uzt`) qoldirildi. Endi `x637`, `x517` va `xabib` to'liq mustaqil tovar turlari hisoblanadi.
+- **Reys Kartasida 3 Talik Nuqtacha Menyusi (Kebab menu ⋮)**:
+  - Bosh ekrandagi har bir reys kartasiga qulay 3-talik nuqtacha tugmasi (`.report-item__more`) qo'shildi.
+  - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
+    1. **"Maxsus reys qo'shish" (`#specialReysSheet`)**:
+       - Shunchaki maxsus reys nomini kiritish orqali bir zumda yangi reys yaratadi.
+    2. **"Kg to'g'rilash" (`#kgFixSheet`)**:
+       - Tanlangan reysdagi istalgan tovar turiga to'g'ridan-to'g'ri `+` yoki `-` kg (masalan `+6` yoki `-2.5`) qo'shish yoki ayirish imkonini beradi.
+       - Sababi/izoh kiritish maydoni (`note`).
+       - Baza darajasida (`db.fix_report_kg`): `inventory` jadvalidagi qoldiq hisob-kitob qilinadi, `activity` jadvaliga `action = 'kg_fix'`, `weight = delta`, `net = delta`, `actor = identity`, `note = note` ko'rinishida audit qaydi yoziladi.
+       - Foydalanuvchi kim qilganini aniq ko'rishi uchun: Faoliyat (Activity) tarixida `Kg to'g'rilash: {tovar} ({+6/-2.5} kg) | Admin: {actor} · {izoh}` ko'rinishida aniq audit ko'rsatiladi.
+- **Backend API**:
+  - `POST /api/reports/{report_id}/adjust-kg` (JSON: `{ tovar_turi, weight, note }`).
+- **Kesh yangilanishi**:
+  - `index.html` da CSS va JS fayllar versiyasi `?v=kebab1` ga yangilandi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

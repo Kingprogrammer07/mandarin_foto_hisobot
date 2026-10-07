@@ -381,3 +381,74 @@ async def test_cross_report_filtered_export():
             await client.delete(f"/api/reports/{rid2}", cookies=cookies, headers=headers)
 
 
+@pytest.mark.asyncio
+async def test_api_adjust_kg():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        rep = await client.post("/api/reports", json={"name": f"KgFix Test {int(time.time() * 1000)}"}, cookies=cookies, headers=headers)
+        assert rep.status_code == 200
+        rid = rep.json()["report"]["id"]
+
+        try:
+            # 1. Add +6 kg to akb
+            res1 = await client.post(
+                f"/api/reports/{rid}/adjust-kg",
+                json={"tovar_turi": "akb", "weight": "+6.0", "note": "hisobot bo'yicha farq"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert res1.status_code == 200
+            data1 = res1.json()
+            assert data1["ok"] is True
+            assert float(data1["balances"]["akb"]) == 6.0
+
+            # 2. Subtract -2.5 kg from akb
+            res2 = await client.post(
+                f"/api/reports/{rid}/adjust-kg",
+                json={"tovar_turi": "akb", "weight": "-2.5", "note": "kamaytirildi"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert res2.status_code == 200
+            data2 = res2.json()
+            assert float(data2["balances"]["akb"]) == 3.5
+
+            # 3. Verify activity record
+            act_res = await client.get(f"/api/activity?report_id={rid}&start=0&end=9999999999", cookies=cookies, headers=headers)
+            assert act_res.status_code == 200
+            acts = act_res.json()["activity"]
+            assert len(acts) == 2
+            assert acts[0]["action"] == "kg_fix"
+            assert acts[0]["tovar_turi"] == "akb"
+            assert acts[0]["actor"] in (username, f"pw:{username}")
+            assert acts[0]["weight"] == -2.5
+
+            # 4. Validation errors
+            bad1 = await client.post(
+                f"/api/reports/{rid}/adjust-kg",
+                json={"tovar_turi": "akb", "weight": "0"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad1.status_code == 400
+
+            bad2 = await client.post(
+                f"/api/reports/{rid}/adjust-kg",
+                json={"tovar_turi": "", "weight": "5"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad2.status_code == 400
+
+        finally:
+            await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
+
+
