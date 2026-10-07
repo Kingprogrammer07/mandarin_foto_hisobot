@@ -2,7 +2,7 @@ import io
 import time
 import httpx
 import pytest
-from app import config, passwords, security
+from app import config, db, passwords, security
 from app.server import app
 
 @pytest.mark.asyncio
@@ -356,6 +356,36 @@ async def test_cross_report_filtered_export():
                 reps_res = await client.get("/api/reports", cookies=cookies, headers=headers)
                 assert reps_res.status_code == 200
                 assert reps_res.json().get("last_filter_channel") == "-1001234567890"
+
+                # 3c. Verify Telegram isolation: x637 and xabib stay strictly separate
+                await db.add_reys(rid1, "admin", "x637", 50.0, 0, 50.0, 1)
+                await db.add_reys(rid1, "admin", "xabib", 20.0, 0, 20.0, 1)
+
+                x637_send = await client.post(
+                    "/api/send-filtered",
+                    json={
+                        "report_ids": [rid1],
+                        "tovar_turi": "x637",
+                        "channel_id": "-1001234567890",
+                    },
+                    cookies=cookies,
+                    headers=headers,
+                )
+                assert x637_send.status_code == 200
+                assert x637_send.json()["count"] == 1
+
+                xabib_send = await client.post(
+                    "/api/send-filtered",
+                    json={
+                        "report_ids": [rid1],
+                        "tovar_turi": "xabib",
+                        "channel_id": "-1001234567890",
+                    },
+                    cookies=cookies,
+                    headers=headers,
+                )
+                assert xabib_send.status_code == 200
+                assert xabib_send.json()["count"] == 1
             finally:
                 outbox.set_bot(orig_bot)
 

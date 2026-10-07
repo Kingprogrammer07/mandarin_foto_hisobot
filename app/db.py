@@ -1039,12 +1039,24 @@ def normalize_type_key(tovar_turi: str) -> str:
         return "oneway"
     if key == "uztez":
         return "uzt"
+    if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
+        return "xabib"
+    return key
+
+
+def normalize_telegram_type_key(tovar_turi: str) -> str:
+    """For Telegram forwarding ONLY: keep x-codes (x637, x517, x657, etc.) strictly separate from xabib."""
+    key = str(tovar_turi or "").strip().lower()
+    if key == "one":
+        return "oneway"
+    if key == "uztez":
+        return "uzt"
     return key
 
 
 async def get_report_type_photos(report_id: int, tovar_turi: str) -> list[tuple[bytes, str]]:
     """Return [(photo_bytes, mime), ...] for a given report and product type."""
-    target_key = normalize_type_key(tovar_turi)
+    target_key = normalize_telegram_type_key(tovar_turi)
     raw_key = str(tovar_turi or "").strip().lower()
     async with _db() as c:
         async with c.execute(
@@ -1066,7 +1078,7 @@ async def get_report_type_photos(report_id: int, tovar_turi: str) -> list[tuple[
         act_type = str(r["tovar_turi"] or "").strip().lower() if action == "reys" else str(r["to_type"] or "").strip().lower()
         if not act_type:
             continue
-        if act_type == raw_key or normalize_type_key(act_type) == target_key:
+        if act_type == raw_key or normalize_telegram_type_key(act_type) == target_key:
             matching_entry_ids.append(r["id"])
 
     photos: list[tuple[bytes, str]] = []
@@ -1081,7 +1093,7 @@ async def get_matching_type_entries(report_ids: list[int], tovar_turi: str) -> l
     if not report_ids:
         return []
     clean_ids = [int(rid) for rid in report_ids]
-    target_key = normalize_type_key(tovar_turi)
+    target_key = normalize_telegram_type_key(tovar_turi)
     raw_key = str(tovar_turi or "").strip().lower()
 
     placeholders = ",".join("?" for _ in clean_ids)
@@ -1111,7 +1123,7 @@ async def get_matching_type_entries(report_ids: list[int], tovar_turi: str) -> l
             act_type = str(r["tovar_turi"] or "").strip().lower()
         if not act_type:
             continue
-        if act_type == raw_key or normalize_type_key(act_type) == target_key:
+        if act_type == raw_key or normalize_telegram_type_key(act_type) == target_key:
             matched.append(dict(r))
     return matched
 

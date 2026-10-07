@@ -117,14 +117,21 @@ async def test_report_rename_and_max_limit():
 
 
 def test_normalize_type_key_distinct():
-    # x637, x517, and xabib must be completely distinct types
-    assert db.normalize_type_key("x637") == "x637"
-    assert db.normalize_type_key("x517") == "x517"
+    # In general (reports, Excel), x-codes are normalized to xabib as before
+    assert db.normalize_type_key("x637") == "xabib"
+    assert db.normalize_type_key("x517") == "xabib"
+    assert db.normalize_type_key("x657") == "xabib"
     assert db.normalize_type_key("xabib") == "xabib"
-    assert db.normalize_type_key("x637") != db.normalize_type_key("xabib")
-    assert db.normalize_type_key("x517") != db.normalize_type_key("xabib")
-    # check valid legacy aliases
     assert db.normalize_type_key("one") == "oneway"
     assert db.normalize_type_key("uztez") == "uzt"
+
+    # For Telegram sending ONLY, x-codes are strictly distinct and not conflated with xabib
+    assert db.normalize_telegram_type_key("x637") == "x637"
+    assert db.normalize_telegram_type_key("x517") == "x517"
+    assert db.normalize_telegram_type_key("x657") == "x657"
+    assert db.normalize_telegram_type_key("xabib") == "xabib"
+    assert db.normalize_telegram_type_key("x637") != db.normalize_telegram_type_key("xabib")
+    assert db.normalize_telegram_type_key("x517") != db.normalize_telegram_type_key("xabib")
+    assert db.normalize_telegram_type_key("x657") != db.normalize_telegram_type_key("xabib")
 
 

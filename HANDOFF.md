@@ -283,9 +283,9 @@ reys_hisoboti_v2/
   - Telegramga yuborishda `tovar_turi == 'top'` bo'lganda `action in ('bizda', 'top')` bo'lgan barcha Obshiy ves yozuvlari avtomatik tanlanadi va fotosuratlari bilan kanalga yuboriladi.
 
 ### Q. Tovar Turlarini To'g'ri Ajratish (x637 vs xabib) va Reys Kartasi 3-Talik Nuqta Menyusi (2026-10-07)
-- **Tovar Turlari Normalizatsiyasi (`normalize_type_key`) Tuzatildi**:
-  - Muammo: Avval `app/db.py` da `x` bilan boshlanib raqam kelgan barcha turlar (`x637`, `x517`) avtomatik ravishda `xabib` deb nomlanib ketgan. Natijada `x637` tovar turi filtrlanganda `xabib` yozuvlari ham aralashib ketgan.
-  - Yechim: Ushbu noto'g'ri shart olib tashlandi. Faqat haqiqiy sinonimlar (`one -> oneway`, `uztez -> uzt`) qoldirildi. Endi `x637`, `x517` va `xabib` to'liq mustaqil tovar turlari hisoblanadi.
+- **Tovar Turlari Normalizatsiyasi (`normalize_type_key` & `normalize_telegram_type_key`)**:
+  - Umumiy hisobotlar, inventar va Excel jadvallarida (`normalize_type_key`) `x637`, `x517`, `x657` kabi barcha `x`+raqamli turlar avvalgidek `xabib` hisobiga jamlanadi.
+  - **Faqat Telegramga yuborishda (`normalize_telegram_type_key`)**: Har bir `x`+raqamli tur (`x637`, `x517`, `x657`) `xabib` dan to'liq alohida mustaqil tur sifatida ajratiladi, natijada kanalga `x637` yuborilganda faqat `x637` yozuvlari va rasmlari yuboriladi, `xabib` qo'shilib ketmaydi.
 - **Reys Kartasida 3 Talik Nuqtacha Menyusi (Kebab menu ⋮)**:
   - Bosh ekrandagi har bir reys kartasiga qulay 3-talik nuqtacha tugmasi (`.report-item__more`) qo'shildi.
   - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
