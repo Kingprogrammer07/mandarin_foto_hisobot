@@ -291,7 +291,7 @@ reys_hisoboti_v2/
   - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
     1. **"Maxsus reys nomi (Card Badge & Umumiy hisobot Excel)" (`#specialReysSheet`, `POST /api/reports/{id}/special-name`)**:
        - Alohida yangi hisobot/karta ochmaydi. Tanlangan reysga maxsus nom biriktiradi (`special_name` ustuni).
-       - Shu reys kartasining ichida o'ziga xos yaltiroq Neon Volt belgisi (`.report-item__special-badge`) bo'lib ko'rinadi (masalan, `[⭐ Maxsus]`, `[⭐ VIP]`).
+       - Shu reys kartasining ichida o'ziga xos yuqori kontrastli, o'qish juda oson bo'lgan issiq oltin/amber rangli VIP belgi (`.report-item__special-badge`) bo'lib ko'rinadi (yorug' rejimda quyuq bronza matn `#78350f` va yumshoq fon `#fef3c7`, qorong'u rejimda yorqin oltin `#fde68a`).
        - Agar mavjud badge bo'lsa, uni tahrirlash yoki "Badgeni o'chirish" tugmasi orqali tozalash mumkin.
        - **Umumiy hisobot Excel (`build_umumiy_excel`)**: Shablonning `B2` katakchasidagi eski statik `M174` matni o'rniga dinamik ravishda shu reysning maxsus nomi (`special_name`) yoziladi.
     2. **"Kg to'g'rilash" (`#kgFixSheet`)**:
@@ -303,7 +303,7 @@ reys_hisoboti_v2/
   - `POST /api/reports/{report_id}/special-name` (JSON: `{ special_name }`).
   - `POST /api/reports/{report_id}/adjust-kg` (JSON: `{ tovar_turi, weight, note }`).
 - **Kesh yangilanishi**:
-  - `index.html` da JS fayllar versiyasi `?v=badge1` ga yangilandi.
+  - `index.html` da CSS va JS fayllar versiyasi `?v=badgecolor1` ga yangilandi.
 
 ---
 
