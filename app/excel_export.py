@@ -268,14 +268,8 @@ async def build_obshiy_excel(report_id: int) -> tuple[bytes, str]:
 
 
 def _summary_type_key(tovar_turi: str) -> str:
-    key = str(tovar_turi or "").strip().lower()
-    if key == "one":
-        return "oneway"
-    if key == "uztez":
-        return "uzt"
-    if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
-        return "xabib"
-    return key
+    return db.normalize_type_key(tovar_turi)
+
 
 
 async def _inventory_for_summary(report_id: int) -> dict[str, float]:
@@ -542,3 +536,312 @@ async def build_kargo_excel(report_id: int) -> tuple[bytes, str]:
     out = BytesIO()
     wb.save(out)
     return out.getvalue(), _safe_filename(report_name)
+
+
+def _safe_filtered_filename(tovar_turi: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (tovar_turi or "Tovar")).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return f"{cleaned.upper()} hisoboti.xlsx"
+
+
+async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]]:
+    """Compute base weight, distributed box weight, and total for each product type in report."""
+    obshiy_entries = {}
+    for action in OBSHIY_ACTION_ORDER:
+        obshiy_entries[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
+    topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
+    bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
+    chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
+    bizda_rows = _obshiy_rows(
+        bizda,
+        plus=topchiqgan,
+        minus=chiqgan,
+        order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
+    )
+
+    bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 4)
+    reys_entries = list(reversed(await db.list_entries(report_id, "reys", limit=2000)))
+    box_weight_total = _summary_box_weight(obshiy_entries, reys_entries)
+    inv = await _inventory_for_summary(report_id)
+    top_inventory = _num(inv.get("top", 0))
+    inv["top"] = 0.0
+
+    clean_total = round(bizda_total - top_inventory, 4)
+
+    # Standard types from umumiy hisobot template
+    template_labels = ["mandarin", "akb", "jet", "xabib", "navo", "izi", "jon", "oneway", "redwing", "triton", "uzt"]
+    all_labels = list(template_labels)
+    for t in inv:
+        if t and t not in all_labels and t not in {"karobka", "top", "uztez"}:
+            all_labels.append(t)
+
+    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt"}
+    non_distributed_labels = [
+        label for label in all_labels
+        if label not in distributed_labels and label not in {"karobka", "mandarin", "top"}
+    ]
+
+    non_distributed_sum = sum(_num(inv.get(l, 0)) for l in non_distributed_labels)
+    g3 = round(clean_total - non_distributed_sum - box_weight_total, 4)
+    h3 = (box_weight_total / g3) if g3 > 0 else 0.0
+
+    distributable_sum = sum(_num(inv.get(l, 0)) for l in distributed_labels)
+    mandarin_weight = round(g3 - distributable_sum, 4)
+    mandarin_box_weight = round(mandarin_weight * h3, 4)
+
+    metrics: dict[str, dict[str, float]] = {}
+    metrics["mandarin"] = {
+        "weight": mandarin_weight,
+        "box_weight": mandarin_box_weight,
+        "total": round(mandarin_weight + mandarin_box_weight, 4),
+    }
+
+    for label in distributed_labels:
+        w = _num(inv.get(label, 0))
+        bw = round(w * h3, 4)
+        metrics[label] = {
+            "weight": w,
+            "box_weight": bw,
+            "total": round(w + bw, 4),
+        }
+
+    for label in non_distributed_labels:
+        w = _num(inv.get(label, 0))
+        metrics[label] = {
+            "weight": w,
+            "box_weight": 0.0,
+            "total": w,
+        }
+
+    if "karobka" in inv or box_weight_total:
+        metrics["karobka"] = {
+            "weight": box_weight_total,
+            "box_weight": 0.0,
+            "total": box_weight_total,
+        }
+
+    return metrics
+
+
+async def build_filtered_cross_report_excel(
+    report_ids: list[int],
+    tovar_turi: str,
+    with_photos: bool = False,
+) -> tuple[bytes, str]:
+    """Build an Excel file comparing a single product type across multiple reports.
+    
+    Cols:
+      1: Reys nomi
+      2: Og'irligi (kg)
+      3: Karobka og'irligi (kg)
+      4: Jami (kg) [=B{r}+C{r}]
+      5+: Photos (if with_photos)
+      Bottom row: JAMI with live SUM formulas
+    """
+    import logging
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    log = logging.getLogger("reys.excel_export")
+    norm_tovar = db.normalize_type_key(tovar_turi)
+    raw_tovar = str(tovar_turi or "").strip().lower()
+
+    rows_data = []
+    image_buffers: list[BytesIO] = []
+
+    for rid in report_ids:
+        rname = await db.report_name(rid) or f"Reys #{rid}"
+        metrics = await calculate_report_metrics(rid)
+        
+        m = metrics.get(norm_tovar) or metrics.get(raw_tovar)
+        if not m:
+            inv = await db.get_inventory(rid)
+            w = _num(inv.get(raw_tovar, 0))
+            m = {"weight": w, "box_weight": 0.0, "total": w}
+
+        photos = []
+        if with_photos:
+            photos = await db.get_report_type_photos(rid, tovar_turi)
+        
+        rows_data.append({
+            "report_id": rid,
+            "name": rname,
+            "weight": m["weight"],
+            "box_weight": m["box_weight"],
+            "photos": photos,
+        })
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _safe_sheet_name(f"{tovar_turi.upper()} hisoboti")
+
+    thin_border_side = Side(style="thin", color="CBD5E1")
+    cell_border = Border(
+        left=thin_border_side,
+        right=thin_border_side,
+        top=thin_border_side,
+        bottom=thin_border_side,
+    )
+    header_fill = PatternFill("solid", fgColor="1E293B")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    headers = [
+        "Reys nomi",
+        "Og'irligi (kg)",
+        "Qo'shiladigan karobka (kg)",
+        "Jami (kg)",
+    ]
+
+    max_photos = max([len(r["photos"]) for r in rows_data] + [0]) if with_photos else 0
+    if with_photos and max_photos > 0:
+        for p_idx in range(1, max_photos + 1):
+            headers.append(f"{p_idx}-rasm")
+
+    ws.row_dimensions[1].height = 28
+    for col_idx, h_text in enumerate(headers, start=1):
+        c = ws.cell(1, col_idx)
+        c.value = h_text
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = cell_border
+
+    row_idx = 2
+    for r in rows_data:
+        c1 = ws.cell(row_idx, 1)
+        c1.value = r["name"]
+        c1.font = Font(name="Calibri", size=11, bold=True)
+        c1.alignment = Alignment(horizontal="left", vertical="center")
+        c1.border = cell_border
+
+        c2 = ws.cell(row_idx, 2)
+        c2.value = r["weight"]
+        c2.number_format = "0.00"
+        c2.font = Font(name="Calibri", size=11)
+        c2.alignment = Alignment(horizontal="right", vertical="center")
+        c2.border = cell_border
+
+        c3 = ws.cell(row_idx, 3)
+        c3.value = r["box_weight"]
+        c3.number_format = "0.00"
+        c3.font = Font(name="Calibri", size=11)
+        c3.alignment = Alignment(horizontal="right", vertical="center")
+        c3.border = cell_border
+
+        c4 = ws.cell(row_idx, 4)
+        c4.value = f"=B{row_idx}+C{row_idx}"
+        c4.number_format = "0.00"
+        c4.font = Font(name="Calibri", size=11, bold=True)
+        c4.alignment = Alignment(horizontal="right", vertical="center")
+        c4.border = cell_border
+
+        if with_photos and r["photos"]:
+            from PIL import Image
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+
+            ws.row_dimensions[row_idx].height = 80
+            for p_idx, (p_bytes, _) in enumerate(r["photos"]):
+                col_num = 5 + p_idx
+                cell_p = ws.cell(row_idx, col_num)
+                cell_p.border = cell_border
+                cell_p.alignment = Alignment(horizontal="center", vertical="center")
+                try:
+                    im = Image.open(BytesIO(p_bytes))
+                    im = im.convert("RGB")
+                    im.thumbnail((110, 110), Image.Resampling.LANCZOS)
+                    thumb_buf = BytesIO()
+                    im.save(thumb_buf, format="JPEG", quality=85)
+                    thumb_buf.seek(0)
+                    image_buffers.append(thumb_buf)
+                    xl_img = OpenpyxlImage(thumb_buf)
+                    xl_img.width, xl_img.height = im.size
+                    col_letter = get_column_letter(col_num)
+                    ws.add_image(xl_img, f"{col_letter}{row_idx}")
+                except Exception as exc:
+                    log.warning("failed to embed photo in row %d col %d: %s", row_idx, col_num, exc)
+            for p_rem in range(len(r["photos"]), max_photos):
+                ws.cell(row_idx, 5 + p_rem).border = cell_border
+        else:
+            ws.row_dimensions[row_idx].height = 24
+            if with_photos and max_photos > 0:
+                for p_rem in range(max_photos):
+                    ws.cell(row_idx, 5 + p_rem).border = cell_border
+
+        row_idx += 1
+
+    tot_row = row_idx
+    last_data_row = tot_row - 1
+    ws.row_dimensions[tot_row].height = 28
+    tot_fill = PatternFill("solid", fgColor="F1F5F9")
+    tot_font = Font(name="Calibri", size=11, bold=True, color="0F172A")
+    tot_border = Border(
+        left=thin_border_side,
+        right=thin_border_side,
+        top=thin_border_side,
+        bottom=Side(style="double", color="0F172A"),
+    )
+
+    t1 = ws.cell(tot_row, 1)
+    t1.value = "JAMI"
+    t1.fill = tot_fill
+    t1.font = tot_font
+    t1.alignment = Alignment(horizontal="center", vertical="center")
+    t1.border = tot_border
+
+    if last_data_row >= 2:
+        t2 = ws.cell(tot_row, 2)
+        t2.value = f"=SUM(B2:B{last_data_row})"
+        t2.number_format = "0.00"
+        t2.fill = tot_fill
+        t2.font = tot_font
+        t2.alignment = Alignment(horizontal="right", vertical="center")
+        t2.border = tot_border
+
+        t3 = ws.cell(tot_row, 3)
+        t3.value = f"=SUM(C2:C{last_data_row})"
+        t3.number_format = "0.00"
+        t3.fill = tot_fill
+        t3.font = tot_font
+        t3.alignment = Alignment(horizontal="right", vertical="center")
+        t3.border = tot_border
+
+        t4 = ws.cell(tot_row, 4)
+        t4.value = f"=SUM(D2:D{last_data_row})"
+        t4.number_format = "0.00"
+        t4.fill = tot_fill
+        t4.font = tot_font
+        t4.alignment = Alignment(horizontal="right", vertical="center")
+        t4.border = tot_border
+    else:
+        for c_idx in (2, 3, 4):
+            c = ws.cell(tot_row, c_idx)
+            c.value = 0.0
+            c.number_format = "0.00"
+            c.fill = tot_fill
+            c.font = tot_font
+            c.border = tot_border
+
+    if with_photos and max_photos > 0:
+        for p_rem in range(max_photos):
+            c = ws.cell(tot_row, 5 + p_rem)
+            c.fill = tot_fill
+            c.border = tot_border
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 16
+    ws.column_dimensions["C"].width = 26
+    ws.column_dimensions["D"].width = 18
+    if with_photos and max_photos > 0:
+        for p_idx in range(max_photos):
+            ws.column_dimensions[get_column_letter(5 + p_idx)].width = 18
+
+    ws.sheet_view.showGridLines = True
+    wb.calculation.calcMode = "auto"
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue(), _safe_filtered_filename(tovar_turi)
+

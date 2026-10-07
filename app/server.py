@@ -936,6 +936,103 @@ async def api_export_summary(request: Request, report_id: int | None = None):
     )
 
 
+@app.post("/api/export/filtered")
+async def api_export_filtered_post(request: Request):
+    if not _rate_ok(f"export:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    _auth_or_403(request, str(body.get("init_data", "")), state_changing=False)
+
+    report_ids = body.get("report_ids")
+    if not isinstance(report_ids, list) or not report_ids:
+        raise HTTPException(status_code=400, detail="Kamida bitta reys tanlanishi kerak")
+    try:
+        clean_report_ids = [int(rid) for rid in report_ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Reys ID noto'g'ri")
+
+    tovar_turi = str(body.get("tovar_turi", "")).strip()
+    if not tovar_turi:
+        raise HTTPException(status_code=400, detail="Tovar turi tanlanmagan")
+
+    with_photos = bool(body.get("with_photos", False))
+
+    try:
+        content, filename = await excel_export.build_filtered_cross_report_excel(
+            clean_report_ids, tovar_turi, with_photos=with_photos
+        )
+    except ModuleNotFoundError as exc:
+        log.exception("filtered excel export dependency missing")
+        raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("filtered excel export failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
+
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@app.get("/api/export/filtered")
+async def api_export_filtered_get(
+    request: Request,
+    report_ids: str = "",
+    tovar_turi: str = "",
+    with_photos: bool = False,
+):
+    if not _rate_ok(f"export:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    _auth_or_403(request, state_changing=False)
+
+    if not report_ids:
+        raise HTTPException(status_code=400, detail="Kamida bitta reys tanlanishi kerak")
+    try:
+        clean_report_ids = [int(x.strip()) for x in report_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Reys ID noto'g'ri")
+
+    if not clean_report_ids:
+        raise HTTPException(status_code=400, detail="Kamida bitta reys tanlanishi kerak")
+
+    clean_tovar = str(tovar_turi or "").strip()
+    if not clean_tovar:
+        raise HTTPException(status_code=400, detail="Tovar turi tanlanmagan")
+
+    try:
+        content, filename = await excel_export.build_filtered_cross_report_excel(
+            clean_report_ids, clean_tovar, with_photos=with_photos
+        )
+    except ModuleNotFoundError as exc:
+        log.exception("filtered excel export dependency missing")
+        raise HTTPException(status_code=500, detail=f"excel kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("filtered excel export failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"excel yaratishda xato: {exc}")
+
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @app.post("/api/send-bulk")
 async def api_send_bulk(request: Request):
     if not _rate_ok(f"send:{_client_ip(request)}", limit=20, window=60):

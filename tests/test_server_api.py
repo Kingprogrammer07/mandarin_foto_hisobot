@@ -150,3 +150,135 @@ async def test_api_report_rename():
             await client.delete(f"/api/reports/{rid1}", cookies=cookies, headers=headers)
             await client.delete(f"/api/reports/{rid2}", cookies=cookies, headers=headers)
 
+
+@pytest.mark.asyncio
+async def test_cross_report_filtered_export():
+    import openpyxl
+    from PIL import Image
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        ts = int(time.time() * 1000)
+        r1 = await client.post("/api/reports", json={"name": f"FilterRep1 {ts}"}, cookies=cookies, headers=headers)
+        assert r1.status_code == 200
+        rid1 = r1.json()["report"]["id"]
+
+        r2 = await client.post("/api/reports", json={"name": f"FilterRep2 {ts}"}, cookies=cookies, headers=headers)
+        assert r2.status_code == 200
+        rid2 = r2.json()["report"]["id"]
+
+        try:
+            # Create a valid JPEG
+            img = Image.new("RGB", (100, 100), color="red")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG")
+            jpeg_bytes = buf.getvalue()
+
+            # Submit reys in rep1
+            files1 = [("photos", ("photo1.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            data1 = {
+                "report_id": str(rid1),
+                "type": "akb",
+                "weight": "120.0",
+                "coefficient": "0",
+                "coefficient_mode": "none",
+                "box_weight": "0",
+            }
+            res_entry1 = await client.post("/api/report", data=data1, files=files1, cookies=cookies, headers=headers)
+            assert res_entry1.status_code == 200
+
+            # Submit reys in rep2
+            files2 = [("photos", ("photo2.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            data2 = {
+                "report_id": str(rid2),
+                "type": "akb",
+                "weight": "80.0",
+                "coefficient": "0",
+                "coefficient_mode": "none",
+                "box_weight": "0",
+            }
+            res_entry2 = await client.post("/api/report", data=data2, files=files2, cookies=cookies, headers=headers)
+            assert res_entry2.status_code == 200
+
+            # 1. POST /api/export/filtered with photos
+            post_res = await client.post(
+                "/api/export/filtered",
+                json={
+                    "report_ids": [rid1, rid2],
+                    "tovar_turi": "akb",
+                    "with_photos": True,
+                },
+                cookies=cookies,
+                headers=headers,
+            )
+            assert post_res.status_code == 200
+            assert "spreadsheetml" in post_res.headers.get("content-type", "")
+            assert "AKB" in post_res.headers.get("content-disposition", "")
+            assert len(post_res.content) > 0
+
+            # Verify with openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(post_res.content))
+            ws = wb.active
+            assert ws.title.lower() == "akb hisoboti"
+            assert ws.cell(1, 1).value == "Reys nomi"
+            assert ws.cell(1, 2).value == "Og'irligi (kg)"
+            assert ws.cell(1, 3).value == "Qo'shiladigan karobka (kg)"
+            assert ws.cell(1, 4).value == "Jami (kg)"
+            assert ws.cell(1, 5).value == "1-rasm"
+
+            assert ws.cell(2, 1).value == f"FilterRep1 {ts}"
+            assert float(ws.cell(2, 2).value) == 120.0
+            assert ws.cell(2, 4).value == "=B2+C2"
+
+            assert ws.cell(3, 1).value == f"FilterRep2 {ts}"
+            assert float(ws.cell(3, 2).value) == 80.0
+            assert ws.cell(3, 4).value == "=B3+C3"
+
+            # Check JAMI row
+            assert ws.cell(4, 1).value == "JAMI"
+            assert ws.cell(4, 2).value == "=SUM(B2:B3)"
+            assert ws.cell(4, 4).value == "=SUM(D2:D3)"
+
+            # Check image attached
+            assert len(ws._images) >= 1
+
+            # 2. GET /api/export/filtered without photos
+            get_res = await client.get(
+                f"/api/export/filtered?report_ids={rid1},{rid2}&tovar_turi=akb&with_photos=0",
+                cookies=cookies,
+                headers=headers,
+            )
+            assert get_res.status_code == 200
+            wb_no_photo = openpyxl.load_workbook(io.BytesIO(get_res.content))
+            ws_no_photo = wb_no_photo.active
+            assert len(ws_no_photo._images) == 0
+
+            # 3. Validation errors
+            bad_res1 = await client.post(
+                "/api/export/filtered",
+                json={"report_ids": [], "tovar_turi": "akb"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad_res1.status_code == 400
+
+            bad_res2 = await client.post(
+                "/api/export/filtered",
+                json={"report_ids": [rid1], "tovar_turi": ""},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad_res2.status_code == 400
+
+        finally:
+            await client.delete(f"/api/reports/{rid1}", cookies=cookies, headers=headers)
+            await client.delete(f"/api/reports/{rid2}", cookies=cookies, headers=headers)
+
+

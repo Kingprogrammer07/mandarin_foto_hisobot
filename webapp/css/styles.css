@@ -829,6 +829,134 @@ body.work-open #panel-lost .transfer-arrow {
 .sheet__del:active { background: var(--fill); }
 .sheet__del .ic { width: 17px; height: 17px; }
 
+/* ---------- Cross-report Filter Sheet ---------- */
+.sheet--filter {
+  touch-action: pan-y;
+  max-height: 85vh;
+}
+.sheet--filter .sheet__pad {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 2px calc(18px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.filter-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.filter-field__label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.filter-field__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.filter-field__actions .sep {
+  color: var(--hint);
+  opacity: 0.6;
+}
+.btn-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.btn-link:active {
+  opacity: 0.65;
+}
+.filter-reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid color-mix(in srgb, var(--separator) 70%, transparent);
+  border-radius: 14px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--section-bg) 60%, transparent);
+}
+.filter-reports-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--hint);
+  font-size: 14px;
+}
+.filter-report-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.14s ease;
+}
+.filter-report-checkbox:active {
+  background: color-mix(in srgb, var(--fill) 80%, transparent);
+}
+.filter-report-checkbox input[type="checkbox"] {
+  width: 19px;
+  height: 19px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+.filter-report-checkbox__name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-report-checkbox__badge {
+  font-size: 12px;
+  color: var(--hint);
+  background: color-mix(in srgb, var(--fill) 80%, transparent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.filter-photos-toggle {
+  margin: 2px 0 0;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--section-bg) 60%, transparent);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--separator) 50%, transparent);
+}
+.filter-download-btn {
+  min-height: 52px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 750;
+  gap: 8px;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(36, 87, 255, 0.32);
+}
+.filter-download-btn .ic {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed;
@@ -1317,6 +1445,42 @@ body.locked { overflow: hidden; }
   -webkit-backdrop-filter: saturate(1.65) blur(22px);
 }
 .home .screen__body { padding-top: 16px; }
+.home-top-actions {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.home-top-actions #newReportBtn {
+  flex: 1;
+}
+.home-filter-btn {
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--separator) 80%, transparent);
+  background: color-mix(in srgb, var(--section-bg) 85%, transparent);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+  backdrop-filter: saturate(1.4) blur(14px);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.home-filter-btn:active {
+  transform: scale(0.96);
+  background: var(--fill);
+}
+.home-filter-btn .ic {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
 .home #newReportBtn {
   min-height: 52px;
   border-radius: 16px;

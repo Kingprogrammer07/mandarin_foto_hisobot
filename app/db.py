@@ -962,6 +962,48 @@ async def photo_blobs(entry_id: int) -> list[tuple[bytes, str]]:
     return out
 
 
+def normalize_type_key(tovar_turi: str) -> str:
+    key = str(tovar_turi or "").strip().lower()
+    if key == "one":
+        return "oneway"
+    if key == "uztez":
+        return "uzt"
+    if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
+        return "xabib"
+    return key
+
+
+async def get_report_type_photos(report_id: int, tovar_turi: str) -> list[tuple[bytes, str]]:
+    """Return [(photo_bytes, mime), ...] for a given report and product type."""
+    target_key = normalize_type_key(tovar_turi)
+    raw_key = str(tovar_turi or "").strip().lower()
+    async with _db() as c:
+        async with c.execute(
+            """SELECT id, action, tovar_turi, to_type, photos
+               FROM activity
+               WHERE report_id = ? AND deleted_at IS NULL AND photos > 0
+               ORDER BY id ASC""",
+            (report_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    matching_entry_ids = []
+    for r in rows:
+        action = r["action"]
+        act_type = str(r["tovar_turi"] or "").strip().lower() if action == "reys" else str(r["to_type"] or "").strip().lower()
+        if not act_type:
+            continue
+        if act_type == raw_key or normalize_type_key(act_type) == target_key:
+            matching_entry_ids.append(r["id"])
+
+    photos: list[tuple[bytes, str]] = []
+    for entry_id in matching_entry_ids:
+        blobs = await photo_blobs(entry_id)
+        photos.extend(blobs)
+    return photos
+
+
+
 async def mark_photo_telegram(entry_id: int, idx: int, file_id: str | None,
                               unique_id: str | None, message_id: int | None) -> None:
     now = int(time.time())

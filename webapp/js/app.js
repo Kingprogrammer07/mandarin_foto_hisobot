@@ -271,6 +271,7 @@
     homeScreen: $("#homeScreen"),
     homeThemeBtn: $("#homeThemeBtn"),
     newReportBtn: $("#newReportBtn"),
+    homeFilterBtn: $("#homeFilterBtn"),
     homeSearchWrap: $("#homeSearchWrap"),
     homeSearchInput: $("#homeSearchInput"),
     homeSearchClear: $("#homeSearchClear"),
@@ -358,6 +359,16 @@
     nameInput: $("#nameInput"),
     nameSave: $("#nameSave"),
     nameError: $("#nameError"),
+    reportsFilterBackdrop: $("#reportsFilterBackdrop"),
+    reportsFilterSheet: $("#reportsFilterSheet"),
+    reportsFilterClose: $("#reportsFilterClose"),
+    filterTovarSelect: $("#filterTovarSelect"),
+    filterReportsList: $("#filterReportsList"),
+    filterSelectAllReports: $("#filterSelectAllReports"),
+    filterClearReports: $("#filterClearReports"),
+    filterWithPhotosToggle: $("#filterWithPhotosToggle"),
+    filterDownloadBtn: $("#filterDownloadBtn"),
+    filterExportError: $("#filterExportError"),
     setBackdrop: $("#setBackdrop"),
     setSheet: $("#setSheet"),
     setClose: $("#setClose"),
@@ -469,7 +480,8 @@
       sheetOpen ||
       !els.camModal.hidden || !els.lightbox.hidden || !els.activityScreen.hidden ||
       !els.entriesScreen.hidden || !els.entryActSheet.hidden ||
-      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden;
+      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden ||
+      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden);
     if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
     else tg.BackButton.hide();
   }
@@ -484,7 +496,8 @@
       !els.homeScreen.hidden || !els.menuScreen.hidden || !els.obshiyScreen.hidden ||
       !els.topScreen.hidden || !els.entriesScreen.hidden || !els.activityScreen.hidden ||
       !els.camModal.hidden || !els.lightbox.hidden ||
-      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden || !els.entryActSheet.hidden
+      !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden || !els.entryActSheet.hidden ||
+      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden)
     );
   }
   function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
@@ -503,6 +516,7 @@
     if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
     if (!els.outboxSheet.hidden) { closeOutboxDiag(); return; }
     if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
+    if (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) { closeReportsFilter(); return; }
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
     if (sheetOpen) { closeSheet(); return; }
     if (!els.activityScreen.hidden) { closeActivity(); return; }
@@ -3160,6 +3174,167 @@
   }
   els.backHomeBtn.addEventListener("click", showMenu); // work area → section menu
 
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function openReportsFilter() {
+    if (!els.reportsFilterSheet) return;
+    if (els.filterExportError) els.filterExportError.hidden = true;
+
+    // 1. Populate product types
+    const types = allTypes();
+    if (els.filterTovarSelect) {
+      els.filterTovarSelect.innerHTML = "";
+      types.forEach((t) => {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        els.filterTovarSelect.appendChild(opt);
+      });
+      if (types.includes("akb")) els.filterTovarSelect.value = "akb";
+    }
+
+    // 2. Populate reports checkbox list
+    if (els.filterReportsList) {
+      els.filterReportsList.innerHTML = "";
+      if (!homeReports.length) {
+        els.filterReportsList.innerHTML = '<div class="filter-reports-empty">Hisobotlar mavjud emas</div>';
+      } else {
+        homeReports.forEach((rep) => {
+          const label = document.createElement("label");
+          label.className = "filter-report-checkbox";
+          label.innerHTML = `
+            <input type="checkbox" value="${rep.id}" checked />
+            <span class="filter-report-checkbox__name">${escapeHtml(rep.name || "Reys")}</span>
+            <span class="filter-report-checkbox__badge">${rep.entries || 0} ta</span>
+          `;
+          els.filterReportsList.appendChild(label);
+        });
+      }
+    }
+
+    // 3. Reset toggle
+    if (els.filterWithPhotosToggle) els.filterWithPhotosToggle.checked = false;
+
+    // 4. Open sheet
+    if (els.reportsFilterBackdrop) els.reportsFilterBackdrop.hidden = false;
+    els.reportsFilterSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+    haptic("light");
+  }
+
+  function closeReportsFilter() {
+    if (!els.reportsFilterSheet || els.reportsFilterSheet.hidden) return;
+    els.reportsFilterSheet.hidden = true;
+    if (els.reportsFilterBackdrop) els.reportsFilterBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  async function downloadFilteredExcel() {
+    if (!els.filterReportsList || !els.filterTovarSelect) return;
+    const checkedInputs = els.filterReportsList.querySelectorAll("input[type='checkbox']:checked");
+    const reportIds = Array.from(checkedInputs).map((inp) => Number(inp.value)).filter(Boolean);
+    if (!reportIds.length) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = "Kamida bitta reys tanlanishi kerak";
+        els.filterExportError.hidden = false;
+      }
+      showToast("Kamida bitta reys tanlang", true);
+      haptic("rigid");
+      return;
+    }
+
+    const tovarTuri = (els.filterTovarSelect.value || "").trim();
+    if (!tovarTuri) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = "Tovar turi tanlanmagan";
+        els.filterExportError.hidden = false;
+      }
+      showToast("Tovar turini tanlang", true);
+      haptic("rigid");
+      return;
+    }
+
+    const withPhotos = els.filterWithPhotosToggle ? els.filterWithPhotosToggle.checked : false;
+
+    if (els.filterExportError) els.filterExportError.hidden = true;
+    els.filterDownloadBtn.disabled = true;
+    const origBtnHtml = els.filterDownloadBtn.innerHTML;
+    els.filterDownloadBtn.textContent = "Yuklanmoqda…";
+
+    try {
+      const res = await fetch("/api/export/filtered", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({
+          init_data: inTelegram ? tg.initData : "",
+          report_ids: reportIds,
+          tovar_turi: tovarTuri,
+          with_photos: withPhotos,
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(formatApiError(json.detail, "Excel yuklab olishda xatolik"));
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const cd = res.headers.get("content-disposition");
+      const fallbackName = `${tovarTuri.toUpperCase()} hisoboti.xlsx`;
+      const downloadName = filenameFromDisposition(cd, fallbackName);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      showToast("Excel yuklab olindi ✓");
+      haptic("select");
+      closeReportsFilter();
+    } catch (e) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = formatApiError(e.message, "Xatolik");
+        els.filterExportError.hidden = false;
+      }
+      showToast(e.message || "Excel yuklab bo'lmadi", true);
+      haptic("rigid");
+    } finally {
+      els.filterDownloadBtn.disabled = false;
+      els.filterDownloadBtn.innerHTML = origBtnHtml;
+    }
+  }
+
+  if (els.homeFilterBtn) els.homeFilterBtn.addEventListener("click", openReportsFilter);
+  if (els.reportsFilterClose) els.reportsFilterClose.addEventListener("click", closeReportsFilter);
+  if (els.reportsFilterBackdrop) els.reportsFilterBackdrop.addEventListener("click", closeReportsFilter);
+  if (els.filterSelectAllReports) {
+    els.filterSelectAllReports.addEventListener("click", () => {
+      els.filterReportsList.querySelectorAll("input[type='checkbox']").forEach((cb) => { cb.checked = true; });
+    });
+  }
+  if (els.filterClearReports) {
+    els.filterClearReports.addEventListener("click", () => {
+      els.filterReportsList.querySelectorAll("input[type='checkbox']").forEach((cb) => { cb.checked = false; });
+    });
+  }
+  if (els.filterDownloadBtn) els.filterDownloadBtn.addEventListener("click", downloadFilteredExcel);
+
   function filenameFromDisposition(header, fallback) {
     const m = /filename\*=UTF-8''([^;]+)/i.exec(header || "");
     if (m) {
@@ -3690,6 +3865,7 @@
     else if (!els.camModal.hidden) closeCamera();
     else if (!els.entryActSheet.hidden) closeEntryActions();
     else if (!els.nameSheet.hidden) closeNameSheet();
+    else if (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) closeReportsFilter();
     else if (!els.setSheet.hidden) closeSettings();
     else if (sheetOpen) closeSheet();
     else if (!els.activityScreen.hidden) closeActivity();

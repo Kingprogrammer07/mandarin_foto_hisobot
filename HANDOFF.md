@@ -225,6 +225,28 @@ reys_hisoboti_v2/
   - Bosh ekranda `#homeSearchInput` qidiruv paneli joylashtirildi.
   - Foydalanuvchi nom yozishi bilan reyslar ro'yxati jonli ravishda filtrlanadi va topilganlar soni (`N ta hisobot topildi`) ko'rsatiladi. Tozalash tugmasi (`&times;`) mavjud.
 
+### N. Hisobotlar Oynasida Ko'p Reysli Filtr va Excel Eksport (Oktyabr 2026)
+- **Bosh ekrandagi Filtr interfeysi (`#/reports`)**:
+  - `#homeScreen` da "Yangi hisobot qo'shish" yonida zamonaviy `#homeFilterBtn` filtr tugmasi joylashtirildi.
+  - Bosilganda qulay pastki panel (`#reportsFilterSheet`) ochiladi:
+    1. **Tovar turi tanlash** (`<select id="filterTovarSelect">`): Standart va maxsus qo'shilgan barcha tovar turlari ro'yxati.
+    2. **Reyslar ro'yxati (Multi-select checkbox list)**: Mavjud hisobotlar ro'yxati, har bir reys nomi va undagi yozuvlar soni ko'rsatiladi. Barcha reyslarni bir bosishda belgilash ("Barchasi") yoki tozalash ("Tozalash") havolalari mavjud.
+    3. **"Rasmlarni ham tortish" toggle**: Yoqilganda tanlangan reyslardagi ushbu tovar turiga tegishli rasmlar avtomatik yuklanadi.
+    4. **"Excel yuklab olish" tugmasi**: Jarayon davomida yuklanish holatini ko'rsatadi va tayyor faylni yuklab beradi.
+- **Excel Hisobot Tuzilishi (`app/excel_export.py`)**:
+  - **1-ustun (Col A)**: Reys nomi (`FilterRep1`, `Reys 10` va h.k.).
+  - **2-ustun (Col B)**: Og'irligi (Umumiy hisobot formulasidagi ushbu tovar turining baza og'irligi).
+  - **3-ustun (Col C)**: Qo'shiladigan karobka og'irligi (Umumiy hisobot formulasidagi taqsimlangan karobka og'irligi).
+  - **4-ustun (Col D)**: Jami og'irlik (Jonli Excel formulasi: `=B{row}+C{row}`).
+  - **5-ustun va keyingilar (Col E+)**: Agar rasmlar tanlansa, har bir reysdagi o'sha tovar turiga yuklangan fotosuratlar 110x110 px o'lchamdagi miniatyura (thumbnail) sifatida katakchalarga (`1-rasm`, `2-rasm`...) chiroyli joylashtiriladi.
+  - **Pastki qatordagi JAMI**: Yakuniy umumiy yig'indi satri jonli Excel formulalari (`=SUM(B2:B{N})`, `=SUM(C2:C{N})`, `=SUM(D2:D{N})`) bilan hisoblanadi.
+- **Backend API & Baza (`app/server.py`, `app/db.py`)**:
+  - `POST /api/export/filtered` (JSON body) va `GET /api/export/filtered` endpointlari.
+  - `db.get_report_type_photos(report_id, tovar_turi)`: Ushbu hisobot va tovar turiga tegishli barcha rasmlarni tartib bilan olib beradi.
+  - `excel_export.calculate_report_metrics(report_id)`: Umumiy hisobotdagi mandarin, taqsimlanuvchi va taqsimlanmaydigan tovar turlari bo'yicha og'irlik va karobka og'irliklarini hisoblab beruvchi yagona mantiqiy markaz.
+- **Avtomatlashtirilgan Testlar**:
+  - `tests/test_server_api.py` da `test_cross_report_filtered_export` testi qo'shildi (openpyxl orqali formulalar, qatorlar, JAMI va rasmlar to'liq tekshirildi). Barcha 15 ta test muvaffaqiyatli o'tadi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
@@ -233,3 +255,4 @@ reys_hisoboti_v2/
 2. Har bir o'zgarishdan so'ng `python -m pytest` orqali barcha testlar muvaffaqiyatli o'tishi tekshiriladi.
 3. Hech qachon foydalanuvchi ma'lumotlari yoki eski migratsiyalar o'chirilmasligi lozim (har doim additiv o'zgarishlar).
 4. Yangi parametrlar kiritilganda `.env.example` da namunasi ko'rsatilishi va lokal fallback ta'minlanishi shart.
+
