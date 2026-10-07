@@ -620,6 +620,18 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
             "total": box_weight_total,
         }
 
+    # "top" product type takes weight from "bizda qoladigan" in Obshiy ves
+    metrics["top"] = {
+        "weight": bizda_total,
+        "box_weight": 0.0,
+        "total": bizda_total,
+    }
+    metrics["bizda"] = {
+        "weight": bizda_total,
+        "box_weight": 0.0,
+        "total": bizda_total,
+    }
+
     return metrics
 
 

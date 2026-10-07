@@ -259,6 +259,58 @@ async def test_cross_report_filtered_export():
             ws_no_photo = wb_no_photo.active
             assert len(getattr(ws_no_photo, "_images", [])) == 0
 
+            # 2b. Add Obshiy "bizda" (Bizda qoladigan) entries and verify tovar_turi == "top" takes bizda weight!
+            obshiy_files1 = [("photos", ("obshiy1.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            obshiy_res1 = await client.post(
+                "/api/obshiy",
+                data={
+                    "report_id": str(rid1),
+                    "section": "bizda",
+                    "code": "B1",
+                    "weight": "55.0",
+                    "coefficient": "0",
+                    "box_weight": "0",
+                },
+                files=obshiy_files1,
+                cookies=cookies,
+                headers=headers,
+            )
+            assert obshiy_res1.status_code == 200
+
+            obshiy_files2 = [("photos", ("obshiy2.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            obshiy_res2 = await client.post(
+                "/api/obshiy",
+                data={
+                    "report_id": str(rid2),
+                    "section": "bizda",
+                    "code": "B2",
+                    "weight": "45.0",
+                    "coefficient": "0",
+                    "box_weight": "0",
+                },
+                files=obshiy_files2,
+                cookies=cookies,
+                headers=headers,
+            )
+            assert obshiy_res2.status_code == 200
+
+            top_export_res = await client.post(
+                "/api/export/filtered",
+                json={
+                    "report_ids": [rid1, rid2],
+                    "tovar_turi": "top",
+                },
+                cookies=cookies,
+                headers=headers,
+            )
+            assert top_export_res.status_code == 200
+            top_wb = openpyxl.load_workbook(io.BytesIO(top_export_res.content))
+            top_ws = top_wb.active
+            assert float(top_ws.cell(2, 2).value) == 55.0
+            assert float(top_ws.cell(3, 2).value) == 45.0
+            assert top_ws.cell(4, 2).value == "=SUM(B2:B3)"
+            assert top_ws.cell(4, 4).value == "=SUM(D2:D3)"
+
             # 3. Test POST /api/send-filtered
             # 3a. Validation error: missing channel
             bad_send = await client.post(

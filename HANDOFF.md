@@ -278,6 +278,9 @@ reys_hisoboti_v2/
   - `#reportsFilterSheet` da eski rasmlar checkboxi o'rniga `#filterChannelInput` kiritish maydoni.
   - Pastda ikkita alohida boshqaruv tugmasi: `#filterDownloadBtn` ("Excel yuklab olish") va `#filterSendBtn` (Telegram ko'k rangida "Telegramga yuborish").
   - Kesh yangilanishi: `?v=tgchannel1`.
+- **Top Tovar Turi Maxsus Mantiqi ("Bizda qoladigan"dan olish)**:
+  - Tovar turi `top` tanlanganda og'irlik `inventory` dan emas (u yerda doim 0), balki Obshiy ves ichidagi "bizda qoladigan" sheetining yakuniy jami og'irligi (`bizda_total`) dan olinadi (`metrics["top"]`).
+  - Telegramga yuborishda `tovar_turi == 'top'` bo'lganda `action in ('bizda', 'top')` bo'lgan barcha Obshiy ves yozuvlari avtomatik tanlanadi va fotosuratlari bilan kanalga yuboriladi.
 
 ---
 

@@ -1012,6 +1012,10 @@ async def get_report_type_photos(report_id: int, tovar_turi: str) -> list[tuple[
     matching_entry_ids = []
     for r in rows:
         action = r["action"]
+        if target_key in ("top", "bizda") or raw_key in ("top", "bizda"):
+            if action in ("bizda", "top"):
+                matching_entry_ids.append(r["id"])
+                continue
         act_type = str(r["tovar_turi"] or "").strip().lower() if action == "reys" else str(r["to_type"] or "").strip().lower()
         if not act_type:
             continue
@@ -1050,6 +1054,10 @@ async def get_matching_type_entries(report_ids: list[int], tovar_turi: str) -> l
     matched = []
     for r in rows:
         action = r["action"]
+        if target_key in ("top", "bizda") or raw_key in ("top", "bizda"):
+            if action in ("bizda", "top"):
+                matched.append(dict(r))
+                continue
         if action == "adjust":
             act_type = str(r["to_type"] or "").strip().lower()
         else:
