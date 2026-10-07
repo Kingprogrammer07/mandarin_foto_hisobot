@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#ffffff" id="themeColor" />
   <title>Reys hisoboti</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/css/styles.css?v=outboxdiag1" />
+  <link rel="stylesheet" href="/css/styles.css?v=desktopux2" />
 </head>
 <body>
   <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
@@ -304,27 +304,33 @@
   <!-- Home: reports list -->
   <div class="screen home" id="homeScreen" hidden>
     <header class="screen__top">
-      <span class="screen__title">Hisobotlar</span>
-      <button type="button" class="theme-btn js-theme" id="homeThemeBtn" aria-label="Mavzu"></button>
+      <div class="screen__top-inner">
+        <span class="screen__title">Hisobotlar</span>
+        <button type="button" class="theme-btn js-theme" id="homeThemeBtn" aria-label="Mavzu"></button>
+      </div>
     </header>
     <div class="screen__body">
-      <div class="home-top-actions">
-        <button type="button" class="btn btn--primary" id="newReportBtn">
-          <svg viewBox="0 0 24 24" class="ic"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
-          Yangi hisobot qo'shish
-        </button>
-        <button type="button" class="btn btn--ghost home-filter-btn" id="homeFilterBtn" aria-label="Filtr va yuklab olish">
-          <svg viewBox="0 0 24 24" class="ic"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
-          Filtr
-        </button>
+      <div class="home-container">
+        <div class="home-toolbar">
+          <div class="home-search" id="homeSearchWrap">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M10 18a8 8 0 1 1 5.3-2l5.4 5.3-1.4 1.4-5.3-5.4A8 8 0 0 1 10 18Zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
+            <input type="text" id="homeSearchInput" class="home-search__input" placeholder="Reys nomini qidirish…" autocomplete="off" />
+            <button type="button" class="home-search__clear" id="homeSearchClear" hidden aria-label="Tozalash">&times;</button>
+          </div>
+          <div class="home-top-actions">
+            <button type="button" class="btn btn--ghost home-filter-btn" id="homeFilterBtn" aria-label="Filtr va yuklab olish">
+              <svg viewBox="0 0 24 24" class="ic"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+              <span>Filtr</span>
+            </button>
+            <button type="button" class="btn btn--primary" id="newReportBtn">
+              <svg viewBox="0 0 24 24" class="ic"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+              <span>Yangi hisobot qo'shish</span>
+            </button>
+          </div>
+        </div>
+        <p class="home__hint" id="homeHint"></p>
+        <ul class="report-list" id="reportList"></ul>
       </div>
-      <div class="home-search" id="homeSearchWrap">
-        <svg viewBox="0 0 24 24" class="ic"><path d="M10 18a8 8 0 1 1 5.3-2l5.4 5.3-1.4 1.4-5.3-5.4A8 8 0 0 1 10 18Zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
-        <input type="text" id="homeSearchInput" class="home-search__input" placeholder="Reys nomini qidirish…" autocomplete="off" />
-        <button type="button" class="home-search__clear" id="homeSearchClear" hidden aria-label="Tozalash">&times;</button>
-      </div>
-      <p class="home__hint" id="homeHint"></p>
-      <ul class="report-list" id="reportList"></ul>
     </div>
   </div>
 
@@ -833,6 +839,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=reportsfilter1"></script>
+  <script src="/js/app.js?v=desktopux2"></script>
 </body>
 </html>

@@ -247,6 +247,20 @@ reys_hisoboti_v2/
 - **Avtomatlashtirilgan Testlar**:
   - `tests/test_server_api.py` da `test_cross_report_filtered_export` testi qo'shildi (openpyxl orqali formulalar, qatorlar, JAMI va rasmlar to'liq tekshirildi). Barcha 15 ta test muvaffaqiyatli o'tadi.
 
+### O. Desktop & Tablet UI/UX Moslashuvi va Sheet Z-Index / Kesh Tuzatishlari (2026-10-07)
+- **Sheet Z-Index & Ko'rinish Tuzatishi**:
+  - `.screen` qatlami `z-index: 90` ga ega bo'lganligi sababli, ilgari `.sheet` (`z-index: 50`) va `.sheet-backdrop` (`z-index: 40`) bosh ekranning orqasida qolib ketgan edi.
+  - Barcha `.sheet` va modal elementlar (`#reportsFilterSheet`, `#nameSheet`, `#setSheet`, `#entryActSheet`, `#outboxSheet`) qat'iy `z-index: 100 !important`, ularning fonlari esa `z-index: 99 !important` ga ko'tarildi.
+  - Brauzer keshini yangilash uchun `index.html` da CSS va JS versiyalari `?v=desktopux2` ga oshirildi.
+- **Desktop & Tablet Responsiv Dizayn**:
+  - `.home-container` va `.screen__top-inner` uchun `max-width: 1000px; margin: 0 auto;` o'rnatildi, bu keng monitorlarda (1920px+) elementlarning xunuk cho'zilib ketishining oldini oladi.
+  - Bosh ekran boshqaruv paneli (`.home-toolbar`):
+    - Mobilda: yuqorida `Filtr` (ixcham) + `Yangi hisobot qo'shish` (asosiy) yonma-yon, pastda to'liq kenglikdagi qidiruv satri.
+    - Planshet va kompyuterda (`min-width: 640px`): bir chiziqli zamonaviy panel — chapda moslashuvchan qidiruv satri, o'rtada `Filtr` tugmasi, o'ngda `Yangi hisobot qo'shish` tugmasi.
+  - Reyslar ro'yxati: Planshet va kompyuterda 2 ustunli chiroyli grid (`grid-template-columns: repeat(2, minmax(0, 1fr))`), hover effektlari, interaktiv soyalar va harakatlar.
+  - Modallar: Keng ekranlarda pastki tortma (drawer) o'rniga markazlashtirilgan macOS/iPadOS modal dialogi (`width: min(540px, 92vw)`, markazda suzuvchi, 24px yumaloqlangan burchaklar, nozik hoshiya va chuqur soya).
+  - Tovar tanlash `<select id="filterTovarSelect">`: `.input--select` maxsus o'ng tomondagi ko'rsatkich burchak (chevron arrow) belgisi bilan to'liq stilizatsiya qilindi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
