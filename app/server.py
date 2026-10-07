@@ -405,7 +405,8 @@ def _entry_action(kind: str) -> str:
 @app.get("/api/reports")
 async def api_reports_list(request: Request):
     _auth_or_403(request, state_changing=False)
-    return {"reports": await db.list_reports(), "max": db.MAX_REPORTS}
+    last_channel = await db.get_setting("last_filter_channel", "")
+    return {"reports": await db.list_reports(), "max": db.MAX_REPORTS, "last_filter_channel": last_channel}
 
 
 @app.post("/api/reports")
@@ -1031,6 +1032,70 @@ async def api_export_filtered_get(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers,
     )
+
+
+@app.post("/api/send-filtered")
+async def api_send_filtered(request: Request):
+    """Send matching entries (photos + captions) to a user-specified Telegram channel."""
+    if not _rate_ok(f"send_filtered:{_client_ip(request)}", limit=10, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+
+    report_ids = body.get("report_ids")
+    if not isinstance(report_ids, list) or not report_ids:
+        raise HTTPException(status_code=400, detail="Kamida bitta reys tanlanishi kerak")
+    try:
+        clean_ids = [int(rid) for rid in report_ids]
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Reys ID noto'g'ri")
+
+    tovar_turi = str(body.get("tovar_turi", "")).strip()
+    if not tovar_turi:
+        raise HTTPException(status_code=400, detail="Tovar turi tanlanmagan")
+
+    channel_id = str(body.get("channel_id", "")).strip()
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="Telegram kanal ID si kiritilmagan")
+
+    # Parse and validate channel
+    chat = config._parse_chat_id(channel_id)
+    if chat is None:
+        raise HTTPException(status_code=400, detail="Kanal ID noto'g'ri formatda")
+
+    # Verify bot has access to the channel
+    import asyncio as _asyncio
+    try:
+        _bot = outbox._bot
+        if _bot is None:
+            raise HTTPException(status_code=503, detail="Bot hali ishga tushmagan, biroz kutib qayta urinib ko'ring")
+        await _bot.get_chat(chat)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.warning("send-filtered: bot cannot access channel %s: %s", chat, exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Bot ushbu kanalga ulanmagan yoki admin huquqi yo'q. Kanal ID/username sini tekshiring.",
+        )
+
+    # Save channel for memory
+    await db.set_setting("last_filter_channel", channel_id)
+
+    # Get matching entries
+    entries = await db.get_matching_type_entries(clean_ids, tovar_turi)
+    if not entries:
+        raise HTTPException(status_code=404, detail="Ushbu tovar turi bo'yicha yozuvlar topilmadi")
+
+    log.info("send-filtered by %s: %d entries of '%s' to channel %s", identity, len(entries), tovar_turi, chat)
+
+    # Fire-and-forget background task
+    _asyncio.create_task(outbox.send_filtered_to_channel(chat, entries))
+
+    return JSONResponse({"ok": True, "count": len(entries), "channel": str(chat)})
 
 
 @app.post("/api/send-bulk")

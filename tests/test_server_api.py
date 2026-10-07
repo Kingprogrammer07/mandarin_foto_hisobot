@@ -207,13 +207,12 @@ async def test_cross_report_filtered_export():
             res_entry2 = await client.post("/api/report", data=data2, files=files2, cookies=cookies, headers=headers)
             assert res_entry2.status_code == 200
 
-            # 1. POST /api/export/filtered with photos
+            # 1. POST /api/export/filtered (clean 4 columns without photos)
             post_res = await client.post(
                 "/api/export/filtered",
                 json={
                     "report_ids": [rid1, rid2],
                     "tovar_turi": "akb",
-                    "with_photos": True,
                 },
                 cookies=cookies,
                 headers=headers,
@@ -231,7 +230,7 @@ async def test_cross_report_filtered_export():
             assert ws.cell(1, 2).value == "Og'irligi (kg)"
             assert ws.cell(1, 3).value == "Qo'shiladigan karobka (kg)"
             assert ws.cell(1, 4).value == "Jami (kg)"
-            assert ws.cell(1, 5).value == "1-rasm"
+            assert ws.cell(1, 5).value is None
 
             assert ws.cell(2, 1).value == f"FilterRep1 {ts}"
             assert float(ws.cell(2, 2).value) == 120.0
@@ -246,21 +245,69 @@ async def test_cross_report_filtered_export():
             assert ws.cell(4, 2).value == "=SUM(B2:B3)"
             assert ws.cell(4, 4).value == "=SUM(D2:D3)"
 
-            # Check image attached
-            assert len(ws._images) >= 1
+            # Ensure photos are NOT embedded in Excel (sent to Telegram instead)
+            assert len(getattr(ws, "_images", [])) == 0
 
-            # 2. GET /api/export/filtered without photos
+            # 2. GET /api/export/filtered
             get_res = await client.get(
-                f"/api/export/filtered?report_ids={rid1},{rid2}&tovar_turi=akb&with_photos=0",
+                f"/api/export/filtered?report_ids={rid1},{rid2}&tovar_turi=akb",
                 cookies=cookies,
                 headers=headers,
             )
             assert get_res.status_code == 200
             wb_no_photo = openpyxl.load_workbook(io.BytesIO(get_res.content))
             ws_no_photo = wb_no_photo.active
-            assert len(ws_no_photo._images) == 0
+            assert len(getattr(ws_no_photo, "_images", [])) == 0
 
-            # 3. Validation errors
+            # 3. Test POST /api/send-filtered
+            # 3a. Validation error: missing channel
+            bad_send = await client.post(
+                "/api/send-filtered",
+                json={"report_ids": [rid1], "tovar_turi": "akb", "channel_id": ""},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad_send.status_code == 400
+
+            # 3b. Successful send with mock bot
+            class MockBot:
+                async def get_chat(self, chat_id):
+                    return True
+                async def send_photo(self, *args, **kwargs):
+                    pass
+                async def send_media_group(self, *args, **kwargs):
+                    return []
+                async def send_message(self, *args, **kwargs):
+                    pass
+
+            from app import outbox
+            orig_bot = outbox._bot
+            try:
+                outbox.set_bot(MockBot())
+                send_res = await client.post(
+                    "/api/send-filtered",
+                    json={
+                        "report_ids": [rid1, rid2],
+                        "tovar_turi": "akb",
+                        "channel_id": "-1001234567890",
+                    },
+                    cookies=cookies,
+                    headers=headers,
+                )
+                assert send_res.status_code == 200
+                send_data = send_res.json()
+                assert send_data["ok"] is True
+                assert send_data["count"] == 2
+                assert send_data["channel"] == "-1001234567890"
+
+                # Verify channel was saved in app_settings & returned in /api/reports
+                reps_res = await client.get("/api/reports", cookies=cookies, headers=headers)
+                assert reps_res.status_code == 200
+                assert reps_res.json().get("last_filter_channel") == "-1001234567890"
+            finally:
+                outbox.set_bot(orig_bot)
+
+            # 4. Validation errors for export
             bad_res1 = await client.post(
                 "/api/export/filtered",
                 json={"report_ids": [], "tovar_turi": "akb"},

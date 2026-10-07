@@ -77,6 +77,7 @@
     adjFrom: "",
     adjTo: "",
     adjWeightRaw: "",
+    lastFilterChannel: "",
   };
 
   let remember = false;
@@ -366,8 +367,9 @@
     filterReportsList: $("#filterReportsList"),
     filterSelectAllReports: $("#filterSelectAllReports"),
     filterClearReports: $("#filterClearReports"),
-    filterWithPhotosToggle: $("#filterWithPhotosToggle"),
+    filterChannelInput: $("#filterChannelInput"),
     filterDownloadBtn: $("#filterDownloadBtn"),
+    filterSendBtn: $("#filterSendBtn"),
     filterExportError: $("#filterExportError"),
     setBackdrop: $("#setBackdrop"),
     setSheet: $("#setSheet"),
@@ -1288,6 +1290,9 @@
       const reports = (res.ok && json.reports) || [];
       homeReports = reports;
       homeReportsMax = json.max || 200;
+      if (json.last_filter_channel) {
+        state.lastFilterChannel = json.last_filter_channel;
+      }
       updateHomeHint();
       renderReports(reports, homeReportsMax);
       reportsLoaded = true;
@@ -3219,8 +3224,14 @@
       }
     }
 
-    // 3. Reset toggle
-    if (els.filterWithPhotosToggle) els.filterWithPhotosToggle.checked = false;
+    // 3. Populate channel input from memory
+    if (els.filterChannelInput) {
+      let savedChannel = "";
+      try {
+        savedChannel = localStorage.getItem("last_filter_channel") || "";
+      } catch (_) {}
+      els.filterChannelInput.value = savedChannel || state.lastFilterChannel || "";
+    }
 
     // 4. Open sheet
     if (els.reportsFilterBackdrop) els.reportsFilterBackdrop.hidden = false;
@@ -3239,7 +3250,7 @@
   }
 
   async function downloadFilteredExcel() {
-    if (!els.filterReportsList || !els.filterTovarSelect) return;
+    if (!els.filterReportsList || !els.filterTovarSelect || !els.filterDownloadBtn) return;
     const checkedInputs = els.filterReportsList.querySelectorAll("input[type='checkbox']:checked");
     const reportIds = Array.from(checkedInputs).map((inp) => Number(inp.value)).filter(Boolean);
     if (!reportIds.length) {
@@ -3263,8 +3274,6 @@
       return;
     }
 
-    const withPhotos = els.filterWithPhotosToggle ? els.filterWithPhotosToggle.checked : false;
-
     if (els.filterExportError) els.filterExportError.hidden = true;
     els.filterDownloadBtn.disabled = true;
     const origBtnHtml = els.filterDownloadBtn.innerHTML;
@@ -3281,7 +3290,6 @@
           init_data: inTelegram ? tg.initData : "",
           report_ids: reportIds,
           tovar_turi: tovarTuri,
-          with_photos: withPhotos,
         }),
       });
 
@@ -3320,6 +3328,90 @@
     }
   }
 
+  async function sendFilteredTelegram() {
+    if (!els.filterReportsList || !els.filterTovarSelect || !els.filterChannelInput || !els.filterSendBtn) return;
+    const checkedInputs = els.filterReportsList.querySelectorAll("input[type='checkbox']:checked");
+    const reportIds = Array.from(checkedInputs).map((inp) => Number(inp.value)).filter(Boolean);
+    if (!reportIds.length) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = "Kamida bitta reys tanlanishi kerak";
+        els.filterExportError.hidden = false;
+      }
+      showToast("Kamida bitta reys tanlang", true);
+      haptic("rigid");
+      return;
+    }
+
+    const tovarTuri = (els.filterTovarSelect.value || "").trim();
+    if (!tovarTuri) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = "Tovar turi tanlanmagan";
+        els.filterExportError.hidden = false;
+      }
+      showToast("Tovar turini tanlang", true);
+      haptic("rigid");
+      return;
+    }
+
+    const channel = (els.filterChannelInput.value || "").trim();
+    if (!channel) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = "Telegram kanal ID yoki @username kiriting";
+        els.filterExportError.hidden = false;
+      }
+      showToast("Kanalni kiriting", true);
+      els.filterChannelInput.focus();
+      haptic("rigid");
+      return;
+    }
+
+    // Save channel in localStorage & state immediately
+    try {
+      localStorage.setItem("last_filter_channel", channel);
+    } catch (_) {}
+    state.lastFilterChannel = channel;
+
+    if (els.filterExportError) els.filterExportError.hidden = true;
+    els.filterSendBtn.disabled = true;
+    const origBtnHtml = els.filterSendBtn.innerHTML;
+    els.filterSendBtn.textContent = "Yuborilmoqda…";
+
+    try {
+      const res = await fetch("/api/send-filtered", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({
+          init_data: inTelegram ? tg.initData : "",
+          report_ids: reportIds,
+          tovar_turi: tovarTuri,
+          channel_id: channel,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatApiError(json.detail, "Telegramga yuborishda xatolik"));
+      }
+
+      showToast(`Telegramga ${json.count || 0} ta yozuv yuborilmoqda ✓`);
+      haptic("select");
+      closeReportsFilter();
+    } catch (e) {
+      if (els.filterExportError) {
+        els.filterExportError.textContent = formatApiError(e.message, "Xatolik");
+        els.filterExportError.hidden = false;
+      }
+      showToast(e.message || "Telegramga yuborib bo'lmadi", true);
+      haptic("rigid");
+    } finally {
+      els.filterSendBtn.disabled = false;
+      els.filterSendBtn.innerHTML = origBtnHtml;
+    }
+  }
+
   if (els.homeFilterBtn) els.homeFilterBtn.addEventListener("click", openReportsFilter);
   if (els.reportsFilterClose) els.reportsFilterClose.addEventListener("click", closeReportsFilter);
   if (els.reportsFilterBackdrop) els.reportsFilterBackdrop.addEventListener("click", closeReportsFilter);
@@ -3334,6 +3426,7 @@
     });
   }
   if (els.filterDownloadBtn) els.filterDownloadBtn.addEventListener("click", downloadFilteredExcel);
+  if (els.filterSendBtn) els.filterSendBtn.addEventListener("click", sendFilteredTelegram);
 
   function filenameFromDisposition(header, fallback) {
     const m = /filename\*=UTF-8''([^;]+)/i.exec(header || "");

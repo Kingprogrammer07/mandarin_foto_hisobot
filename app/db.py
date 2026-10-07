@@ -244,6 +244,11 @@ async def init() -> None:
         await _add_column(c, "send_queue", "last_attempt_at", "INTEGER")
         await _add_column(c, "send_queue", "last_error_at", "INTEGER")
         await c.execute("CREATE INDEX IF NOT EXISTS idx_queue_pending ON send_queue(status, next_at)")
+        await c.execute(
+            """CREATE TABLE IF NOT EXISTS app_settings(
+                 key   TEXT PRIMARY KEY,
+                 value TEXT NOT NULL)"""
+        )
 
         fin = "({c} IS NOT NULL AND {c} > -1e308 AND {c} < 1e308)"
         await c.execute(f"UPDATE inventory SET weight = 0 WHERE NOT {fin.format(c='weight')}")
@@ -343,6 +348,23 @@ async def init() -> None:
                     "INSERT OR IGNORE INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, 0, ?)",
                     (report["id"], tovar_turi, now),
                 )
+
+
+async def get_setting(key: str, default: str = "") -> str:
+    async with _db() as c:
+        async with c.execute("SELECT value FROM app_settings WHERE key = ?", (key,)) as cur:
+            row = await cur.fetchone()
+            return str(row["value"]) if row else default
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with _db() as c:
+        await c.execute(
+            """INSERT INTO app_settings(key, value)
+               VALUES(?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+            (key, str(value)),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -1002,6 +1024,41 @@ async def get_report_type_photos(report_id: int, tovar_turi: str) -> list[tuple[
         photos.extend(blobs)
     return photos
 
+
+async def get_matching_type_entries(report_ids: list[int], tovar_turi: str) -> list[dict]:
+    """Retrieve all activity entries matching tovar_turi across the specified reports."""
+    if not report_ids:
+        return []
+    clean_ids = [int(rid) for rid in report_ids]
+    target_key = normalize_type_key(tovar_turi)
+    raw_key = str(tovar_turi or "").strip().lower()
+
+    placeholders = ",".join("?" for _ in clean_ids)
+    async with _db() as c:
+        async with c.execute(
+            f"""SELECT a.*, r.name AS report_name
+                FROM activity a
+                JOIN reports r ON r.id = a.report_id
+                WHERE a.report_id IN ({placeholders})
+                  AND a.deleted_at IS NULL
+                  AND r.deleted_at IS NULL
+                ORDER BY a.report_id ASC, a.id ASC""",
+            clean_ids,
+        ) as cur:
+            rows = await cur.fetchall()
+
+    matched = []
+    for r in rows:
+        action = r["action"]
+        if action == "adjust":
+            act_type = str(r["to_type"] or "").strip().lower()
+        else:
+            act_type = str(r["tovar_turi"] or "").strip().lower()
+        if not act_type:
+            continue
+        if act_type == raw_key or normalize_type_key(act_type) == target_key:
+            matched.append(dict(r))
+    return matched
 
 
 async def mark_photo_telegram(entry_id: int, idx: int, file_id: str | None,

@@ -160,3 +160,69 @@ def ensure_started() -> None:
         return
     _started = True
     asyncio.create_task(worker())
+
+
+async def send_filtered_to_channel(channel_id: str | int, entries: list[dict]) -> dict:
+    """Forward a list of matching entries (photos + caption) to a specified Telegram channel."""
+    global _bot
+    if _bot is None:
+        log.error("send_filtered_to_channel: bot is not initialized")
+        return {"ok": False, "sent": 0, "errors": len(entries), "total": len(entries)}
+
+    chat = config._parse_chat_id(str(channel_id))
+    if chat is None:
+        log.error("send_filtered_to_channel: invalid channel id %s", channel_id)
+        return {"ok": False, "sent": 0, "errors": len(entries), "total": len(entries)}
+
+    sent_count = 0
+    errors = 0
+
+    log.info("Starting filtered send to channel %s for %d entries", chat, len(entries))
+    for entry in entries:
+        report_name = entry.get("report_name") or await db.report_name(entry.get("report_id", 0)) or ""
+        caption = _caption(entry, report_name)
+        blobs = await db.photo_blobs(entry["id"])
+
+        success = False
+        for attempt in range(3):
+            try:
+                if not blobs:
+                    await _bot.send_message(chat, caption)
+                elif len(blobs) == 1:
+                    data, _mime = blobs[0]
+                    await _bot.send_photo(
+                        chat,
+                        BufferedInputFile(data, filename="photo.jpg"),
+                        caption=caption,
+                    )
+                else:
+                    media = [
+                        InputMediaPhoto(
+                            media=BufferedInputFile(data, filename=f"photo_{i}.jpg"),
+                            caption=caption if i == 0 else None,
+                        )
+                        for i, (data, _mime) in enumerate(blobs)
+                    ]
+                    await _bot.send_media_group(chat, media)
+                success = True
+                sent_count += 1
+                await asyncio.sleep(0.4)
+                break
+            except Exception as exc:  # noqa: BLE001
+                retry_after = getattr(exc, "retry_after", None)
+                if retry_after:
+                    delay = float(retry_after) + 0.5
+                    log.warning("Telegram flood limit hit on channel %s, waiting %s seconds", chat, delay)
+                    await asyncio.sleep(delay)
+                elif attempt < 2:
+                    await asyncio.sleep(1.0)
+                else:
+                    log.error("Failed to send entry %s to channel %s: %s", entry.get("id"), chat, exc)
+
+        if not success:
+            errors += 1
+
+    log.info("Filtered send finished to channel %s: %d sent, %d errors out of %d",
+             chat, sent_count, errors, len(entries))
+    return {"ok": True, "sent": sent_count, "errors": errors, "total": len(entries)}
+

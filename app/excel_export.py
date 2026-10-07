@@ -629,47 +629,38 @@ async def build_filtered_cross_report_excel(
     with_photos: bool = False,
 ) -> tuple[bytes, str]:
     """Build an Excel file comparing a single product type across multiple reports.
-    
+
     Cols:
-      1: Reys nomi
-      2: Og'irligi (kg)
-      3: Karobka og'irligi (kg)
-      4: Jami (kg) [=B{r}+C{r}]
-      5+: Photos (if with_photos)
+      A: Reys nomi
+      B: Og'irligi (kg)
+      C: Karobka og'irligi (kg)
+      D: Jami (kg) [=B{r}+C{r}]
       Bottom row: JAMI with live SUM formulas
+
+    Note: with_photos is accepted but ignored — photos are sent to Telegram instead.
     """
-    import logging
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
 
-    log = logging.getLogger("reys.excel_export")
     norm_tovar = db.normalize_type_key(tovar_turi)
     raw_tovar = str(tovar_turi or "").strip().lower()
 
     rows_data = []
-    image_buffers: list[BytesIO] = []
 
     for rid in report_ids:
         rname = await db.report_name(rid) or f"Reys #{rid}"
         metrics = await calculate_report_metrics(rid)
-        
+
         m = metrics.get(norm_tovar) or metrics.get(raw_tovar)
         if not m:
             inv = await db.get_inventory(rid)
             w = _num(inv.get(raw_tovar, 0))
             m = {"weight": w, "box_weight": 0.0, "total": w}
 
-        photos = []
-        if with_photos:
-            photos = await db.get_report_type_photos(rid, tovar_turi)
-        
         rows_data.append({
-            "report_id": rid,
             "name": rname,
             "weight": m["weight"],
             "box_weight": m["box_weight"],
-            "photos": photos,
         })
 
     wb = Workbook()
@@ -692,11 +683,6 @@ async def build_filtered_cross_report_excel(
         "Qo'shiladigan karobka (kg)",
         "Jami (kg)",
     ]
-
-    max_photos = max([len(r["photos"]) for r in rows_data] + [0]) if with_photos else 0
-    if with_photos and max_photos > 0:
-        for p_idx in range(1, max_photos + 1):
-            headers.append(f"{p_idx}-rasm")
 
     ws.row_dimensions[1].height = 28
     for col_idx, h_text in enumerate(headers, start=1):
@@ -736,38 +722,7 @@ async def build_filtered_cross_report_excel(
         c4.alignment = Alignment(horizontal="right", vertical="center")
         c4.border = cell_border
 
-        if with_photos and r["photos"]:
-            from PIL import Image
-            from openpyxl.drawing.image import Image as OpenpyxlImage
-
-            ws.row_dimensions[row_idx].height = 80
-            for p_idx, (p_bytes, _) in enumerate(r["photos"]):
-                col_num = 5 + p_idx
-                cell_p = ws.cell(row_idx, col_num)
-                cell_p.border = cell_border
-                cell_p.alignment = Alignment(horizontal="center", vertical="center")
-                try:
-                    im = Image.open(BytesIO(p_bytes))
-                    im = im.convert("RGB")
-                    im.thumbnail((110, 110), Image.Resampling.LANCZOS)
-                    thumb_buf = BytesIO()
-                    im.save(thumb_buf, format="JPEG", quality=85)
-                    thumb_buf.seek(0)
-                    image_buffers.append(thumb_buf)
-                    xl_img = OpenpyxlImage(thumb_buf)
-                    xl_img.width, xl_img.height = im.size
-                    col_letter = get_column_letter(col_num)
-                    ws.add_image(xl_img, f"{col_letter}{row_idx}")
-                except Exception as exc:
-                    log.warning("failed to embed photo in row %d col %d: %s", row_idx, col_num, exc)
-            for p_rem in range(len(r["photos"]), max_photos):
-                ws.cell(row_idx, 5 + p_rem).border = cell_border
-        else:
-            ws.row_dimensions[row_idx].height = 24
-            if with_photos and max_photos > 0:
-                for p_rem in range(max_photos):
-                    ws.cell(row_idx, 5 + p_rem).border = cell_border
-
+        ws.row_dimensions[row_idx].height = 24
         row_idx += 1
 
     tot_row = row_idx
@@ -822,19 +777,10 @@ async def build_filtered_cross_report_excel(
             c.font = tot_font
             c.border = tot_border
 
-    if with_photos and max_photos > 0:
-        for p_rem in range(max_photos):
-            c = ws.cell(tot_row, 5 + p_rem)
-            c.fill = tot_fill
-            c.border = tot_border
-
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 16
     ws.column_dimensions["C"].width = 26
     ws.column_dimensions["D"].width = 18
-    if with_photos and max_photos > 0:
-        for p_idx in range(max_photos):
-            ws.column_dimensions[get_column_letter(5 + p_idx)].width = 18
 
     ws.sheet_view.showGridLines = True
     wb.calculation.calcMode = "auto"

@@ -683,23 +683,24 @@
         <div class="filter-reports-list" id="filterReportsList" role="group" aria-label="Reyslar ro'yxati"></div>
       </div>
 
-      <!-- 3. Rasmlarni ham tortish checkbox -->
-      <label class="toggle-row filter-photos-toggle">
-        <span>
-          <span class="toggle-row__title">Rasmlarni ham tortish</span>
-          <span class="toggle-row__sub">Katakchalar ichiga rasmlar joylashtiriladi</span>
-        </span>
-        <span class="switch">
-          <input type="checkbox" id="filterWithPhotosToggle" />
-          <span class="switch__track"></span>
-        </span>
-      </label>
+      <!-- 3. Telegram kanalga yuborish -->
+      <div class="filter-field">
+        <label for="filterChannelInput" class="filter-field__label">Telegram kanal (ixtiyoriy):</label>
+        <input type="text" id="filterChannelInput" class="input" placeholder="-100... yoki @kanal_nomi" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <span class="filter-field__hint">Rasmlarni shu kanalga yuborish uchun</span>
+      </div>
 
-      <!-- 4. Excel yuklab olish button -->
-      <button type="button" class="btn btn--primary filter-download-btn" id="filterDownloadBtn">
-        <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>
-        <span>Excel yuklab olish</span>
-      </button>
+      <!-- 4. Action buttons -->
+      <div class="filter-actions-row">
+        <button type="button" class="btn btn--primary filter-download-btn" id="filterDownloadBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 3 7 8h3v6h4V8h3l-5-5ZM5 18h14v2H5z"/></svg>
+          <span>Excel yuklab olish</span>
+        </button>
+        <button type="button" class="btn filter-send-btn" id="filterSendBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          <span>Telegramga yuborish</span>
+        </button>
+      </div>
       <p class="login__error" id="filterExportError" hidden></p>
     </div>
   </div>
@@ -839,6 +840,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=desktopux2"></script>
+  <script src="/js/app.js?v=tgchannel1"></script>
 </body>
 </html>

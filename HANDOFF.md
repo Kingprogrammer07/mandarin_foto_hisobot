@@ -261,6 +261,24 @@ reys_hisoboti_v2/
   - Modallar: Keng ekranlarda pastki tortma (drawer) o'rniga markazlashtirilgan macOS/iPadOS modal dialogi (`width: min(540px, 92vw)`, markazda suzuvchi, 24px yumaloqlangan burchaklar, nozik hoshiya va chuqur soya).
   - Tovar tanlash `<select id="filterTovarSelect">`: `.input--select` maxsus o'ng tomondagi ko'rsatkich burchak (chevron arrow) belgisi bilan to'liq stilizatsiya qilindi.
 
+### P. Filtrlangan Rasmlarni Telegram Kanalga Yuborish va Kanalni Eslab Qolish (2026-10-07)
+- **Talab & Konseptual O'zgarish**:
+  - Foydalanuvchi talabi bilan Excel fayl ichiga og'ir rasmlarni yuklash to'xtatildi ("rasmlar exelda kerak emas"). Buning o'rniga Excel toza va yengil 4 ta ustun (Reys nomi, Og'irligi, Qo'shiladigan karobka, Jami) va pastki `JAMI` yig'indi formulasi bilan lahzada shakllanadi.
+  - Tanlangan reyslardagi belgilangan tovar turiga tegishli fotosuratlar va yozuvlar "Kargolarga tarqatish" xabarlari formatida (`{report_name} - {tovar_turi}\n\n{weight} - {coef} = {net} kg`) foydalanuvchi kiritgan Telegram kanalga yuboriladi.
+- **Kanalni Eslab Qolish (Memory across devices & sessions)**:
+  - Baza: `app/db.py` da `app_settings` jadvali (`key TEXT PRIMARY KEY, value TEXT NOT NULL`) va `get_setting` / `set_setting` yordamchilari joriy qilindi.
+  - API: `GET /api/reports` endopointi `last_filter_channel` parametrini ham qaytaradi.
+  - Frontend: `#filterChannelInput` maydoni avval `localStorage.getItem("last_filter_channel")`, agar u bo'sh bo'lsa serverdan kelgan `state.lastFilterChannel` bilan avtomatik to'ldiriladi. Har safar yuborilganda kiritilgan kanal `localStorage` da yangilanadi.
+- **Kanalga Yuborish API & Xavfsizlik (`app/server.py`, `app/outbox.py`)**:
+  - `POST /api/send-filtered`:
+    - Parametrlar: `{ init_data, report_ids, tovar_turi, channel_id }`.
+    - Erta tekshiruv: `_bot.get_chat(chat)` orqali bot ushbu kanalga a'zoligi va ruxsati bor-yo'qligi darhol tekshiriladi. Agar bot kanalda admin bo'lmasa, tushunarli o'zbekcha xatolik beriladi (`"Bot ushbu kanalga ulanmagan yoki admin huquqi yo'q..."`).
+    - Fon jarayoni: `outbox.send_filtered_to_channel(chat, entries)` orqali har bir yozuv 1 ta rasm bo'lsa `send_photo`, ko'p rasm bo'lsa `send_media_group`, rasm bo'lmasa `send_message` orqali yuboriladi. Telegram flood control (`retry_after`) va xabarlar orasida 0.4s pauza bilan himoyalangan.
+- **Interfeys**:
+  - `#reportsFilterSheet` da eski rasmlar checkboxi o'rniga `#filterChannelInput` kiritish maydoni.
+  - Pastda ikkita alohida boshqaruv tugmasi: `#filterDownloadBtn` ("Excel yuklab olish") va `#filterSendBtn` (Telegram ko'k rangida "Telegramga yuborish").
+  - Kesh yangilanishi: `?v=tgchannel1`.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

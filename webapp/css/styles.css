@@ -947,26 +947,58 @@ body.work-open #panel-lost .transfer-arrow {
   border-radius: 10px;
   font-weight: 600;
 }
-.filter-photos-toggle {
-  margin: 2px 0 0;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--section-bg) 60%, transparent);
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--separator) 50%, transparent);
+.filter-field__hint {
+  font-size: 12px;
+  color: var(--hint);
+  margin-top: -2px;
 }
-.filter-download-btn {
-  min-height: 52px;
-  border-radius: 16px;
-  font-size: 16px;
+.filter-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+@media (max-width: 440px) {
+  .filter-actions-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+.filter-download-btn,
+.filter-send-btn {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 14.5px;
   font-weight: 750;
   gap: 8px;
-  margin-top: 4px;
-  box-shadow: 0 8px 24px rgba(36, 87, 255, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0 14px;
 }
-.filter-download-btn .ic {
-  width: 20px;
-  height: 20px;
+.filter-download-btn .ic,
+.filter-send-btn .ic {
+  width: 18px;
+  height: 18px;
   fill: currentColor;
+  flex: none;
+}
+.filter-download-btn {
+  box-shadow: 0 6px 20px rgba(36, 87, 255, 0.28);
+}
+.filter-send-btn {
+  background: #229ED9;
+  color: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 6px 20px rgba(34, 158, 217, 0.32);
+}
+.filter-send-btn:hover {
+  background: #1e8ec3;
+  box-shadow: 0 8px 24px rgba(34, 158, 217, 0.42);
+}
+.filter-send-btn:active {
+  transform: scale(0.97);
 }
 
 /* ---------- Toast ---------- */
