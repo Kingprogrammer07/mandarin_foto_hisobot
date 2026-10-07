@@ -305,6 +305,31 @@ reys_hisoboti_v2/
 - **Kesh yangilanishi**:
   - `index.html` da CSS va JS fayllar versiyasi `?v=badgecolor1` ga yangilandi.
 
+### R. Word DOCX Hisoboti va Maxsus Reys Filtr Tizimi (2026-10-07)
+- **Talab & Maqsad**:
+  - Maxsus reysi (`special_name`) mavjud bo'lgan reyslarda Umumiy hisobot Excel yuklab olinganda unga qo'shimcha ravishda avtomatik ravishda Word (`.docx`) hisobot hujjati ham birga yuklab beriladi.
+  - Qidiruv va ko'p reysli filtrda maxsus reys nomi bo'yicha ham tezkor qidirish va saralash imkoniyati yaratildi.
+- **DOCX Hujjat Strukturasi & Hisob-kitob Qoidalari (`app/excel_export.py:build_special_docx`)**:
+  - **Sana**: Reys bo'yicha birinchi yozuv kiritilgan vaqt (`db.get_report_start_ts` -> `SELECT MIN(ts) FROM activity WHERE report_id = ? AND deleted_at IS NULL`, `DD.MM.YYYY` formatida).
+  - **1-qator**: `AVIA {special_name} ({report_name}) UCHUN OPSHI VES: {total_ves:.2f} KG. {date}` (`total_ves` = Obshiy ves `top` worksheet D ustun jami + `bizda qoladigan` worksheet D ustun jami).
+  - **2-qator**: `TOP CARGO {special_name} ({report_name}) - {top_total:.2f} KG. {date}` (Obshiy ves `top` worksheet D ustun jami).
+  - **3-qator**: `Avia {special_name} ({report_name})  - {bizda_total:.2f} KG. {date}` (Obshiy ves `bizda qoladigan` worksheet D ustun jami).
+  - **4-qator**: `(O'zimizga qolgan.)`.
+  - **5-qator va keyingilari**: Umumiy hisobot C ustunidagi og'irliklar: `{CARGO_NOMI} ({special_name}) - {weight:.2f} KG` (`mandarin` formuladagi og'irlik, `akb`, `jet`, `xabib`, va h.k. > 0 bo'lgan barcha kargolar).
+  - Toza va ixcham Calibri 11.5pt shrifti, qalin sarlavhalar va 1.15 qatorlar oralig'i bilan `python-docx` orqali hosil qilinadi.
+- **Backend API & Bog'liqliklar**:
+  - `requirements.txt`: `python-docx>=1.1.0`.
+  - `GET /api/export/docx?report_id=`: DOCX faylini `application/vnd.openxmlformats-officedocument.wordprocessingml.document` ko'rinishida yuklab beradi.
+- **Frontend Imkoniyatlari (`webapp/js/app.js`, `webapp/index.html`, `webapp/css/styles.css`)**:
+  - **Avtomatik yuklash**: Reys kartasidagi `Excel` tugmasi bosilganda (`downloadSummaryExcel`), agar reysda `special_name` mavjud bo'lsa, 350ms kechikish bilan `downloadDocx(rep)` ham avtomatik ishga tushib, foydalanuvchiga Word hujjatini yuklab beradi.
+  - **Kebab menyuda alohida tugma**: `#reportMoreSheet` da reysda maxsus nom bo'lsa `#reportMoreDocxBtn` ("Word (DOCX) yuklab olish") tugmasi ko'rinadi va faqat DOCX faylni alohida yuklash imkonini beradi.
+  - **Asosiy qidiruv (`#homeSearchInput`)**: Reys nomi bilan bir qatorda maxsus reys nomi bo'yicha ham real vaqtda filtrlaydi.
+  - **Ko'p reysli filtr oynasida (`#reportsFilterSheet`)**:
+    - Har bir reys checkbox satrida maxsus reys nomi oltin rangli VIP badge bilan ko'rsatiladi.
+    - `#filterReportsSearch` orqali ro'yxatni nom yoki maxsus reys bo'yicha lahzada qidirish.
+    - `#filterSpecialOnlyReports` ("Maxsus reyslar") tugmasi orqali birgina bosishda faqat maxsus reyslarni belgilash.
+  - Kesh yangilanishi: `?v=specialdocx1`.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

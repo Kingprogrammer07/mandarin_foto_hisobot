@@ -1157,6 +1157,22 @@ async def get_report(report_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_report_start_ts(report_id: int) -> int | None:
+    async with _db() as c:
+        async with c.execute(
+            "SELECT MIN(ts) FROM activity WHERE report_id = ? AND deleted_at IS NULL",
+            (report_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            if row and row[0]:
+                return int(row[0])
+        async with c.execute("SELECT created_at FROM reports WHERE id = ?", (report_id,)) as cur:
+            rrow = await cur.fetchone()
+            if rrow and rrow[0]:
+                return int(rrow[0])
+    return None
+
+
 async def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
     limit = max(1, min(int(limit), 2000))
     async with _db() as c:

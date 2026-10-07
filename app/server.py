@@ -995,6 +995,31 @@ async def api_export_summary(request: Request, report_id: int | None = None):
     )
 
 
+@app.get("/api/export/docx")
+async def api_export_docx(request: Request, report_id: int | None = None):
+    _auth_or_403(request, state_changing=False)
+    rid = await _require_report(report_id)
+    try:
+        content, filename = await excel_export.build_special_docx(rid)
+    except ModuleNotFoundError as exc:
+        log.exception("docx export dependency missing")
+        raise HTTPException(status_code=500, detail=f"docx kutubxonasi topilmadi: {exc.name}")
+    except Exception as exc:
+        log.exception("docx export failed: report_id=%s", rid)
+        raise HTTPException(status_code=500, detail=f"docx yaratishda xato: {exc}")
+    headers = {
+        "Content-Disposition": (
+            "attachment; "
+            f"filename*=UTF-8''{quote(filename)}"
+        )
+    }
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
+    )
+
+
 @app.post("/api/export/filtered")
 async def api_export_filtered_post(request: Request):
     if not _rate_ok(f"export:{_client_ip(request)}", limit=30, window=60):

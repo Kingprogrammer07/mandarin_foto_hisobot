@@ -214,5 +214,14 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Each report card on `#/reports` features a 3-dots kebab menu (`.report-item__more` -> `#reportMoreSheet`).
   - **Maxsus reys nomi (Card Badge & Umumiy hisobot Excel)** (`#specialReysSheet`, `POST /api/reports/{id}/special-name`): Does not create an independent report card; attaches `special_name` to the selected report and displays it as a high-contrast warm amber/gold VIP badge (`.report-item__special-badge`) with dark bronze text in light mode and radiant gold in dark mode directly inside that card. Supports editing, comma-separated tags, and clearing the badge. In Umumiy hisobot Excel (`build_umumiy_excel`), cell `B2` (previously static template text `M174`) is dynamically populated with this `special_name`.
   - **Kg to'g'rilash** (`#kgFixSheet`, `POST /api/reports/{id}/adjust-kg`): Manually add or subtract weight (`+` / `-` kg, e.g. `+6` or `-2.5`) to any product type on the report. Updates `inventory` balance atomically and logs an audit record in `activity` (`action = 'kg_fix'`, `actor = identity`, `net = weight_delta`, `note`).
-  - Audit Trail: In Activity logs, `kg_fix` events explicitly show the admin identity who performed the change (`Admin: {actor}`), the delta (`+` / `-`), and the reason note. Assets cache-busted with `?v=badgecolor1`.
+  - Audit Trail: In Activity logs, `kg_fix` events explicitly show the admin identity who performed the change (`Admin: {actor}`), the delta (`+` / `-`), and the reason note.
+- **Word DOCX hisoboti va Maxsus reys filtri** (`#reportsFilterSheet`, `GET /api/export/docx`, `app/excel_export.py:build_special_docx`):
+  - **Avtomatik DOCX yuklash**: Maxsus reys nomi (`special_name`) biriktirilgan reyslarda Umumiy hisobot Excel yuklab olinganda (`downloadSummaryExcel`) avtomatik ravishda Word (`.docx`) hujjati ham birga yuklab beriladi. Shuningdek 3 nuqta (kebab) menyusida `#reportMoreDocxBtn` orqali faqat DOCX ni ham yuklab olish mumkin.
+  - **Hujjat strukturasi**:
+    - 1-qator: `AVIA {special_name} ({report_name}) UCHUN OPSHI VES: {total_ves:.2f} KG. {date}` (`date` - birinchi yozuv boshlangan vaqt `MIN(ts)`, `total_ves` = Obshiy ves `top` worksheet D ustun jami + `bizda qoladigan` worksheet D ustun jami).
+    - 2-qator: `TOP CARGO {special_name} ({report_name}) - {top_total:.2f} KG. {date}` (`top` worksheet jami).
+    - 3-qator: `Avia {special_name} ({report_name})  - {bizda_total:.2f} KG. {date}` (`bizda qoladigan` worksheet jami).
+    - 4-qator: `(O'zimizga qolgan.)`.
+    - 5-qator+: Umumiy hisobot C ustunidagi og'irliklar: `{CARGO_NOMI} ({special_name}) - {weight:.2f} KG` (`mandarin` formuladagi og'irlik, `akb`, `jet`, `xabib`, va h.k. > 0 bo'lgan barcha kargolar).
+  - **Filtr va Qidiruv**: Asosiy qidiruv maydoni (`#homeSearchInput`) reys nomi hamda maxsus reys nomi bo'yicha qidiradi. Ko'p reysli filtr oynasida (`#reportsFilterSheet`) har bir reys yonida maxsus reys badge ko'rsatiladi, `#filterReportsSearch` orqali real vaqtda qidirish va `#filterSpecialOnlyReports` tugmasi bilan faqat maxsus reyslarni bir zumda belgilash imkoniyati qo'shilgan. Assets cache-busted with `?v=specialdocx1`.
 

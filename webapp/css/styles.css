@@ -963,6 +963,48 @@ body.work-open #panel-lost .transfer-arrow {
   border-radius: 10px;
   font-weight: 600;
 }
+.filter-reports-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.filter-reports-search-wrap .ic {
+  position: absolute;
+  left: 12px;
+  width: 18px;
+  height: 18px;
+  fill: var(--hint);
+  pointer-events: none;
+}
+.filter-reports-search {
+  width: 100%;
+  padding-left: 38px !important;
+  height: 38px !important;
+  font-size: 14px !important;
+  border-radius: 10px !important;
+}
+.filter-report-checkbox__special {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fef3c7;
+  color: #78350f;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+@media (prefers-color-scheme: dark) {
+  .filter-report-checkbox__special {
+    background: rgba(254, 243, 199, 0.16);
+    color: #fde68a;
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+}
 .filter-field__hint {
   font-size: 12px;
   color: var(--hint);

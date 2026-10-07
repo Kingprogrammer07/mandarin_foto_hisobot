@@ -366,7 +366,9 @@
     filterTovarSelect: $("#filterTovarSelect"),
     filterReportsList: $("#filterReportsList"),
     filterSelectAllReports: $("#filterSelectAllReports"),
+    filterSpecialOnlyReports: $("#filterSpecialOnlyReports"),
     filterClearReports: $("#filterClearReports"),
+    filterReportsSearch: $("#filterReportsSearch"),
     filterChannelInput: $("#filterChannelInput"),
     filterDownloadBtn: $("#filterDownloadBtn"),
     filterSendBtn: $("#filterSendBtn"),
@@ -375,6 +377,7 @@
     reportMoreSheet: $("#reportMoreSheet"),
     reportMoreTitle: $("#reportMoreTitle"),
     reportMoreClose: $("#reportMoreClose"),
+    reportMoreDocxBtn: $("#reportMoreDocxBtn"),
     reportMoreSpecialBtn: $("#reportMoreSpecialBtn"),
     reportMoreSpecialLabel: $("#reportMoreSpecialLabel"),
     reportMoreKgFixBtn: $("#reportMoreKgFixBtn"),
@@ -1165,6 +1168,35 @@
     });
   }
 
+  async function downloadDocx(rep, btn) {
+    if (!rep || !rep.id) return;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`/api/export/docx?report_id=${rep.id}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || "Word (DOCX) yuklab bo'lmadi");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filenameFromDisposition(
+        res.headers.get("content-disposition"),
+        `${rep.name || "Hisobot"} ${rep.special_name || ""}.docx`
+      );
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Word hujjati tayyor");
+    } catch (e) {
+      showToast(e.message || "Word (DOCX) yuklab bo'lmadi", true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function downloadSummaryExcel(rep, btn) {
     if (!rep || !rep.id) return;
     if (btn) btn.disabled = true;
@@ -1187,6 +1219,11 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       showToast("Excel tayyor");
+
+      // Agar reysda maxsus nom mavjud bo'lsa, Word (.docx) hisoboti ham avtomatik yuklanadi
+      if (rep.special_name) {
+        setTimeout(() => downloadDocx(rep), 350);
+      }
     } catch (e) {
       showToast(e.message || "Excel yuklab bo'lmadi", true);
     } finally {
@@ -1291,7 +1328,7 @@
   function renderReports(reports, max, force) {
     const q = (homeSearchQuery || "").trim().toLowerCase();
     const key = JSON.stringify({
-      ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at]),
+      ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at, r.special_name]),
       max,
       open: homeArchiveOpen,
       q,
@@ -1302,7 +1339,10 @@
     const frag = document.createDocumentFragment();
 
     if (q) {
-      const filtered = reports.filter((r) => (r.name || "").toLowerCase().includes(q));
+      const filtered = reports.filter((r) =>
+        (r.name || "").toLowerCase().includes(q) ||
+        (r.special_name || "").toLowerCase().includes(q)
+      );
       if (!filtered.length) {
         const empty = document.createElement("li");
         empty.className = "report-empty";
@@ -3238,6 +3278,9 @@
     if (els.reportMoreSpecialLabel) {
       els.reportMoreSpecialLabel.textContent = rep.special_name ? "Maxsus reys nomi (tahrirlash)" : "Maxsus reys qo'shish";
     }
+    if (els.reportMoreDocxBtn) {
+      els.reportMoreDocxBtn.hidden = !rep.special_name;
+    }
     if (els.reportMoreBackdrop) els.reportMoreBackdrop.hidden = false;
     if (els.reportMoreSheet) els.reportMoreSheet.hidden = false;
     syncLock();
@@ -3431,6 +3474,15 @@
 
   if (els.reportMoreClose) els.reportMoreClose.addEventListener("click", closeReportMore);
   if (els.reportMoreBackdrop) els.reportMoreBackdrop.addEventListener("click", closeReportMore);
+  if (els.reportMoreDocxBtn) {
+    els.reportMoreDocxBtn.addEventListener("click", () => {
+      if (activeMoreReport) {
+        const rep = activeMoreReport;
+        closeReportMore();
+        downloadDocx(rep);
+      }
+    });
+  }
   if (els.reportMoreSpecialBtn) els.reportMoreSpecialBtn.addEventListener("click", openSpecialReysSheet);
   if (els.reportMoreKgFixBtn) els.reportMoreKgFixBtn.addEventListener("click", openKgFixSheet);
 
@@ -3480,6 +3532,9 @@
     }
 
     // 2. Populate reports checkbox list
+    if (els.filterReportsSearch) {
+      els.filterReportsSearch.value = "";
+    }
     if (els.filterReportsList) {
       els.filterReportsList.innerHTML = "";
       if (!homeReports.length) {
@@ -3488,9 +3543,14 @@
         homeReports.forEach((rep) => {
           const label = document.createElement("label");
           label.className = "filter-report-checkbox";
+          label.dataset.name = (rep.name || "").toLowerCase();
+          label.dataset.special = (rep.special_name || "").toLowerCase();
+          const specialBadge = rep.special_name
+            ? `<span class="filter-report-checkbox__special">${escapeHtml(rep.special_name)}</span>`
+            : "";
           label.innerHTML = `
             <input type="checkbox" value="${rep.id}" checked />
-            <span class="filter-report-checkbox__name">${escapeHtml(rep.name || "Reys")}</span>
+            <span class="filter-report-checkbox__name">${escapeHtml(rep.name || "Reys")}${specialBadge}</span>
             <span class="filter-report-checkbox__badge">${rep.entries || 0} ta</span>
           `;
           els.filterReportsList.appendChild(label);
@@ -3694,9 +3754,31 @@
       els.filterReportsList.querySelectorAll("input[type='checkbox']").forEach((cb) => { cb.checked = true; });
     });
   }
+  if (els.filterSpecialOnlyReports) {
+    els.filterSpecialOnlyReports.addEventListener("click", () => {
+      if (!els.filterReportsList) return;
+      els.filterReportsList.querySelectorAll(".filter-report-checkbox").forEach((item) => {
+        const hasSpec = !!(item.dataset.special || "").trim();
+        const cb = item.querySelector("input[type='checkbox']");
+        if (cb) cb.checked = hasSpec;
+      });
+    });
+  }
   if (els.filterClearReports) {
     els.filterClearReports.addEventListener("click", () => {
       els.filterReportsList.querySelectorAll("input[type='checkbox']").forEach((cb) => { cb.checked = false; });
+    });
+  }
+  if (els.filterReportsSearch) {
+    els.filterReportsSearch.addEventListener("input", (e) => {
+      if (!els.filterReportsList) return;
+      const q = (e.target.value || "").trim().toLowerCase();
+      els.filterReportsList.querySelectorAll(".filter-report-checkbox").forEach((item) => {
+        const name = item.dataset.name || "";
+        const spec = item.dataset.special || "";
+        const match = !q || name.includes(q) || spec.includes(q);
+        item.style.display = match ? "" : "none";
+      });
     });
   }
   if (els.filterDownloadBtn) els.filterDownloadBtn.addEventListener("click", downloadFilteredExcel);

@@ -806,3 +806,106 @@ async def build_filtered_cross_report_excel(
     wb.save(out)
     return out.getvalue(), _safe_filtered_filename(tovar_turi)
 
+
+def _safe_docx_filename(report_name: str, special_name: str = "") -> str:
+    combined = f"{report_name} {special_name}".strip()
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", (combined or "Hisobot")).strip()
+    name = re.sub(r"\s+", " ", name)
+    return f"{name}.docx"
+
+
+async def build_special_docx(report_id: int) -> tuple[bytes, str]:
+    import docx
+    from docx.shared import Inches, Pt
+    from datetime import datetime
+
+    report = await db.get_report(report_id) or {}
+    report_name = report.get("name") or await db.report_name(report_id) or f"Reys #{report_id}"
+    special_name = (report.get("special_name") or "").strip()
+
+    # 1. Earliest activity timestamp for date
+    min_ts = await db.get_report_start_ts(report_id)
+    if not min_ts:
+        import time
+        min_ts = int(time.time())
+
+    date_str = datetime.fromtimestamp(min_ts).strftime("%d.%m.%Y")
+
+    # 2. Obshiy ves totals: top and bizda
+    obshiy_entries = {}
+    for action in OBSHIY_ACTION_ORDER:
+        obshiy_entries[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
+    top, top_order = _sum_obshiy_values_by_code(obshiy_entries["top"])
+    topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
+    bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
+    chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
+
+    top_rows = _obshiy_rows(
+        top,
+        plus=chiqgan,
+        minus=topchiqgan,
+        order=_ordered_codes(top_order, chiqgan_order, topchiqgan_order),
+    )
+    bizda_rows = _obshiy_rows(
+        bizda,
+        plus=topchiqgan,
+        minus=chiqgan,
+        order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
+    )
+
+    top_total = round(sum(round(base + transfer, 4) for _, base, transfer in top_rows), 2)
+    bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 2)
+    total_ves = round(top_total + bizda_total, 2)
+
+    # 3. Cargo items from Umumiy hisobot Column C
+    metrics = await calculate_report_metrics(report_id)
+    inv = await _inventory_for_summary(report_id)
+
+    template_labels = ["mandarin", "akb", "jet", "xabib", "navo", "izi", "jon", "oneway", "redwing", "triton", "uzt"]
+    all_labels = list(template_labels)
+    for t in inv:
+        if t and t not in all_labels and t not in {"karobka", "top", "uztez"}:
+            all_labels.append(t)
+
+    cargo_lines: list[str] = []
+    for label in all_labels:
+        m = metrics.get(label)
+        w = round(m["weight"], 2) if m else 0.0
+        if w > 0:
+            cargo_name = label.upper()
+            special_label = f" ({special_name})" if special_name else ""
+            cargo_lines.append(f"{cargo_name}{special_label} - {w:.2f} KG")
+
+    # 4. Construct lines matching user specification
+    spec_paren = f"{special_name} ({report_name})" if special_name else report_name
+    lines = [
+        f"AVIA {spec_paren} UCHUN OPSHI VES: {total_ves:.2f} KG. {date_str}",
+        f"TOP CARGO {spec_paren} - {top_total:.2f} KG. {date_str}",
+        f"Avia {spec_paren}  - {bizda_total:.2f} KG. {date_str}",
+        "(O'zimizga qolgan.)",
+    ]
+    lines.extend(cargo_lines)
+
+    # 5. Create Word document
+    doc = docx.Document()
+    for s in doc.sections:
+        s.top_margin = Inches(0.8)
+        s.bottom_margin = Inches(0.8)
+        s.left_margin = Inches(1.0)
+        s.right_margin = Inches(1.0)
+
+    for idx, line in enumerate(lines):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(3)
+        p.paragraph_format.line_spacing = 1.15
+        run = p.add_run(line)
+        run.font.name = "Calibri"
+        run.font.size = Pt(11.5)
+        if idx < 4:
+            run.bold = True
+
+    bio = BytesIO()
+    doc.save(bio)
+    return bio.getvalue(), _safe_docx_filename(report_name, special_name)
+

@@ -523,5 +523,49 @@ async def test_api_report_special_name():
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
 
 
+@pytest.mark.asyncio
+async def test_api_export_docx():
+    import docx
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        rep_name = f"Docx Test {int(time.time() * 1000)}"
+        r = await client.post("/api/reports", json={"name": rep_name}, cookies=cookies, headers=headers)
+        assert r.status_code == 200
+        rid = r.json()["report"]["id"]
+
+        try:
+            # Set special name
+            await client.post(
+                f"/api/reports/{rid}/special-name",
+                json={"special_name": "M184"},
+                cookies=cookies,
+                headers=headers,
+            )
+
+            # Export docx
+            res = await client.get(f"/api/export/docx?report_id={rid}", cookies=cookies)
+            assert res.status_code == 200
+            assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in res.headers.get("content-type", "")
+            assert "attachment;" in res.headers.get("content-disposition", "")
+            assert ".docx" in res.headers.get("content-disposition", "")
+
+            # Verify document can be parsed
+            doc = docx.Document(io.BytesIO(res.content))
+            assert len(doc.paragraphs) >= 4
+            assert "AVIA M184" in doc.paragraphs[0].text
+            assert "TOP CARGO M184" in doc.paragraphs[1].text
+            assert "Avia M184" in doc.paragraphs[2].text
+            assert "(O'zimizga qolgan.)" in doc.paragraphs[3].text
+        finally:
+            await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
+
 
 
