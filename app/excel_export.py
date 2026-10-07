@@ -308,7 +308,9 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     from datetime import date
     from openpyxl import Workbook, load_workbook
 
-    report_name = await db.report_name(report_id) or "Hisobot"
+    report = await db.get_report(report_id) or {}
+    report_name = report.get("name") or await db.report_name(report_id) or "Hisobot"
+    special_name = report.get("special_name") or ""
     obshiy_entries = {}
     for action in OBSHIY_ACTION_ORDER:
         obshiy_entries[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
@@ -349,6 +351,7 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     ws["E2"] = "To'lashi kerak bo'lgan summa:"
     ws["F2"] = date.today().strftime("%d.%m.%Y")
     ws["F3"] = report_name
+    ws["B2"] = special_name
     ws["C2"] = "=SUM(A:A)"
     ws["C3"] = box_weight_total
     ws["C3"].number_format = "0.00"

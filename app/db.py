@@ -1150,6 +1150,13 @@ async def report_name(report_id: int) -> str | None:
     return row["name"] if row else None
 
 
+async def get_report(report_id: int) -> dict | None:
+    async with _db() as c:
+        async with c.execute("SELECT * FROM reports WHERE id = ?", (report_id,)) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 async def list_entries(report_id: int, action: str, limit: int = 1000) -> list[dict]:
     limit = max(1, min(int(limit), 2000))
     async with _db() as c:

@@ -289,10 +289,11 @@ reys_hisoboti_v2/
 - **Reys Kartasida 3 Talik Nuqtacha Menyusi (Kebab menu ⋮)**:
   - Bosh ekrandagi har bir reys kartasiga qulay 3-talik nuqtacha tugmasi (`.report-item__more`) qo'shildi.
   - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
-    1. **"Maxsus reys nomi (Card Badge)" (`#specialReysSheet`, `POST /api/reports/{id}/special-name`)**:
+    1. **"Maxsus reys nomi (Card Badge & Umumiy hisobot Excel)" (`#specialReysSheet`, `POST /api/reports/{id}/special-name`)**:
        - Alohida yangi hisobot/karta ochmaydi. Tanlangan reysga maxsus nom biriktiradi (`special_name` ustuni).
        - Shu reys kartasining ichida o'ziga xos yaltiroq Neon Volt belgisi (`.report-item__special-badge`) bo'lib ko'rinadi (masalan, `[⭐ Maxsus]`, `[⭐ VIP]`).
        - Agar mavjud badge bo'lsa, uni tahrirlash yoki "Badgeni o'chirish" tugmasi orqali tozalash mumkin.
+       - **Umumiy hisobot Excel (`build_umumiy_excel`)**: Shablonning `B2` katakchasidagi eski statik `M174` matni o'rniga dinamik ravishda shu reysning maxsus nomi (`special_name`) yoziladi.
     2. **"Kg to'g'rilash" (`#kgFixSheet`)**:
        - Tanlangan reysdagi istalgan tovar turiga to'g'ridan-to'g'ri `+` yoki `-` kg (masalan `+6` yoki `-2.5`) qo'shish yoki ayirish imkonini beradi.
        - Sababi/izoh kiritish maydoni (`note`).

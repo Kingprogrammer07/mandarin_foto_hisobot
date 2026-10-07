@@ -484,6 +484,14 @@ async def test_api_report_special_name():
             assert target is not None
             assert target["special_name"] == "Maxsus #1"
 
+            # 2b. Verify cell B2 in umumiy hisobot Excel export
+            import openpyxl
+            summary_res = await client.get(f"/api/export/summary?report_id={rid}", cookies=cookies)
+            assert summary_res.status_code == 200
+            wb = openpyxl.load_workbook(io.BytesIO(summary_res.content))
+            ws = wb.active
+            assert ws["B2"].value == "Maxsus #1"
+
             # 3. Clear special name
             res2 = await client.post(
                 f"/api/reports/{rid}/special-name",
