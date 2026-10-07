@@ -1651,18 +1651,52 @@ body.locked { overflow: hidden; }
 .report-item__head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .report-item__name {
-  flex: 1;
   font-size: 18px;
   font-weight: 750;
+}
+.report-item__special-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.3px;
+  background: color-mix(in srgb, var(--brand-neon) 18%, transparent);
+  color: var(--brand-neon);
+  border: 1px solid color-mix(in srgb, var(--brand-neon) 42%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-neon) 15%, transparent);
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.report-item__special-badge .ic {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+  flex: none;
+}
+@media (prefers-color-scheme: light) {
+  .report-item__special-badge {
+    background: #eef8d3;
+    color: #405800;
+    border-color: #b8d948;
+    box-shadow: 0 1px 4px rgba(64, 88, 0, 0.08);
+  }
 }
 .report-item__sub {
   margin-top: 3px;
   font-size: 13px;
 }
 .report-item__go {
+  margin-left: auto;
   display: grid;
   place-items: center;
   color: var(--hint);
@@ -1769,6 +1803,12 @@ body.locked { overflow: hidden; }
   height: 20px;
   fill: var(--accent);
   flex: none;
+}
+.special-reys-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 /* Tablet & Desktop Home Layout */

@@ -466,6 +466,26 @@ async def api_reports_rename(request: Request, report_id: int):
     return JSONResponse({"ok": True, "report": updated})
 
 
+@app.post("/api/reports/{report_id}/special-name")
+async def api_reports_set_special_name(request: Request, report_id: int):
+    if not _rate_ok(f"report_special:{_client_ip(request)}", limit=30, window=60):
+        raise HTTPException(status_code=429, detail="too many requests")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
+    special_name = body.get("special_name", "")
+    try:
+        res = await db.set_report_special_name(report_id, special_name)
+    except db.ReportNotFound:
+        raise HTTPException(status_code=404, detail="hisobot topilmadi")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    log.info("report %s special_name set to %r by %s", report_id, res.get("special_name"), identity)
+    return JSONResponse({"ok": True, "report_id": report_id, "special_name": res["special_name"]})
+
+
 @app.post("/api/reports/{report_id}/zero-top-coefficients")
 async def api_reports_zero_top_coefficients(request: Request, report_id: int):
     if not _rate_ok(f"zero-coef:{_client_ip(request)}", limit=10, window=60):

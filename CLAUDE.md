@@ -212,7 +212,7 @@ Saving is a `FormData` POST carrying `tg.initData`.
 - Product Type Normalization (`normalize_type_key`): Strictly separates `x`-prefixed codes (`x637`, `x517`) from `xabib` (previously any `x` + digit was conflated to `xabib`). Only valid aliases are `one -> oneway` and `uztez -> uzt`.
 - Report Card 3-Dots Menu & Kg Adjustment:
   - Each report card on `#/reports` features a 3-dots kebab menu (`.report-item__more` -> `#reportMoreSheet`).
-  - **Maxsus reys qo'shish** (`#specialReysSheet`): Instantly creates a special trip/report with custom name.
+  - **Maxsus reys nomi (Card Badge)** (`#specialReysSheet`, `POST /api/reports/{id}/special-name`): Does not create an independent report card; attaches `special_name` to the selected report and displays it as a glowing/accent badge (`.report-item__special-badge`) directly inside that card. Supports editing, comma-separated tags, and clearing the badge.
   - **Kg to'g'rilash** (`#kgFixSheet`, `POST /api/reports/{id}/adjust-kg`): Manually add or subtract weight (`+` / `-` kg, e.g. `+6` or `-2.5`) to any product type on the report. Updates `inventory` balance atomically and logs an audit record in `activity` (`action = 'kg_fix'`, `actor = identity`, `net = weight_delta`, `note`).
-  - Audit Trail: In Activity logs, `kg_fix` events explicitly show the admin identity who performed the change (`Admin: {actor}`), the delta (`+` / `-`), and the reason note. Assets cache-busted with `?v=kebab1`.
+  - Audit Trail: In Activity logs, `kg_fix` events explicitly show the admin identity who performed the change (`Admin: {actor}`), the delta (`+` / `-`), and the reason note. Assets cache-busted with `?v=badge1`.
 

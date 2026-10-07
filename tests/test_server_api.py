@@ -451,4 +451,69 @@ async def test_api_adjust_kg():
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
 
 
+@pytest.mark.asyncio
+async def test_api_report_special_name():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        rep = await client.post("/api/reports", json={"name": f"SpecialName Test {int(time.time() * 1000)}"}, cookies=cookies, headers=headers)
+        assert rep.status_code == 200
+        rid = rep.json()["report"]["id"]
+
+        try:
+            # 1. Set special name
+            res1 = await client.post(
+                f"/api/reports/{rid}/special-name",
+                json={"special_name": "Maxsus #1"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert res1.status_code == 200
+            assert res1.json()["special_name"] == "Maxsus #1"
+
+            # 2. Verify in list_reports
+            list_res = await client.get("/api/reports", cookies=cookies)
+            assert list_res.status_code == 200
+            target = next((r for r in list_res.json()["reports"] if r["id"] == rid), None)
+            assert target is not None
+            assert target["special_name"] == "Maxsus #1"
+
+            # 3. Clear special name
+            res2 = await client.post(
+                f"/api/reports/{rid}/special-name",
+                json={"special_name": ""},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert res2.status_code == 200
+            assert res2.json()["special_name"] is None
+
+            # 4. Validation: too long
+            bad = await client.post(
+                f"/api/reports/{rid}/special-name",
+                json={"special_name": "x" * 65},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bad.status_code == 400
+
+            # 5. Validation: 404 for nonexistent report
+            nf = await client.post(
+                "/api/reports/9999999/special-name",
+                json={"special_name": "Test"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert nf.status_code == 404
+        finally:
+            await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
+
+
 

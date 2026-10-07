@@ -376,12 +376,15 @@
     reportMoreTitle: $("#reportMoreTitle"),
     reportMoreClose: $("#reportMoreClose"),
     reportMoreSpecialBtn: $("#reportMoreSpecialBtn"),
+    reportMoreSpecialLabel: $("#reportMoreSpecialLabel"),
     reportMoreKgFixBtn: $("#reportMoreKgFixBtn"),
     specialReysBackdrop: $("#specialReysBackdrop"),
     specialReysSheet: $("#specialReysSheet"),
+    specialReysTitle: $("#specialReysTitle"),
     specialReysClose: $("#specialReysClose"),
     specialReysNameInput: $("#specialReysNameInput"),
     specialReysSaveBtn: $("#specialReysSaveBtn"),
+    specialReysClearBtn: $("#specialReysClearBtn"),
     specialReysError: $("#specialReysError"),
     kgFixBackdrop: $("#kgFixBackdrop"),
     kgFixSheet: $("#kgFixSheet"),
@@ -1201,10 +1204,23 @@
     const name = document.createElement("div");
     name.className = "report-item__name";
     name.textContent = rep.name;
+    head.append(name);
+    if (rep.special_name) {
+      const parts = String(rep.special_name).split(",").map((s) => s.trim()).filter(Boolean);
+      parts.forEach((p) => {
+        const badge = document.createElement("span");
+        badge.className = "report-item__special-badge";
+        badge.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+        const txt = document.createElement("span");
+        txt.textContent = p;
+        badge.append(txt);
+        head.append(badge);
+      });
+    }
     const go = document.createElement("span");
     go.className = "report-item__go";
     go.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6-1.4-1.4L12.2 12 7.6 7.4z"/></svg>';
-    head.append(name, go);
+    head.append(go);
     const sub = document.createElement("div");
     sub.className = "report-item__sub";
     sub.textContent = `${fmtTs(rep.created_at)} · ${rep.entries || 0} yozuv`;
@@ -3219,6 +3235,9 @@
     if (!rep || !rep.id) return;
     activeMoreReport = rep;
     if (els.reportMoreTitle) els.reportMoreTitle.textContent = rep.name || "Amallar";
+    if (els.reportMoreSpecialLabel) {
+      els.reportMoreSpecialLabel.textContent = rep.special_name ? "Maxsus reys nomi (tahrirlash)" : "Maxsus reys qo'shish";
+    }
     if (els.reportMoreBackdrop) els.reportMoreBackdrop.hidden = false;
     if (els.reportMoreSheet) els.reportMoreSheet.hidden = false;
     syncLock();
@@ -3233,15 +3252,19 @@
     syncBackButton();
   }
 
-  // --- Maxsus Reys ---
+  // --- Maxsus Reys (Badge) ---
   function openSpecialReysSheet() {
     const rep = activeMoreReport;
     closeReportMore();
     if (!rep) return;
     activeMoreReport = rep;
+    if (els.specialReysTitle) els.specialReysTitle.textContent = `${rep.name} · Maxsus reys`;
     if (els.specialReysNameInput) {
-      els.specialReysNameInput.value = `${rep.name} - Maxsus`;
+      els.specialReysNameInput.value = rep.special_name || "";
       if (els.specialReysError) els.specialReysError.hidden = true;
+    }
+    if (els.specialReysClearBtn) {
+      els.specialReysClearBtn.hidden = !rep.special_name;
     }
     if (els.specialReysBackdrop) els.specialReysBackdrop.hidden = false;
     if (els.specialReysSheet) els.specialReysSheet.hidden = false;
@@ -3263,30 +3286,31 @@
     syncBackButton();
   }
 
-  async function submitSpecialReys() {
-    if (!els.specialReysNameInput || !els.specialReysSaveBtn) return;
-    const name = (els.specialReysNameInput.value || "").trim();
-    if (!name) {
+  async function submitSpecialReys(clear = false) {
+    if (!activeMoreReport) return;
+    const name = clear ? "" : (els.specialReysNameInput ? els.specialReysNameInput.value : "").trim();
+    if (!clear && !name) {
       if (els.specialReysError) {
         els.specialReysError.textContent = "Maxsus reys nomini kiriting";
         els.specialReysError.hidden = false;
       }
       return;
     }
-    els.specialReysSaveBtn.disabled = true;
-    const origHtml = els.specialReysSaveBtn.innerHTML;
-    els.specialReysSaveBtn.textContent = "Qo'shilmoqda…";
+    if (els.specialReysSaveBtn) els.specialReysSaveBtn.disabled = true;
+    if (els.specialReysClearBtn) els.specialReysClearBtn.disabled = true;
+    const origHtml = els.specialReysSaveBtn ? els.specialReysSaveBtn.innerHTML : "Saqlash";
+    if (els.specialReysSaveBtn) els.specialReysSaveBtn.textContent = "Saqlanmoqda…";
     try {
-      const res = await fetch("/api/reports", {
+      const res = await fetch(`/api/reports/${activeMoreReport.id}/special-name`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ name, init_data: inTelegram ? tg.initData : "" }),
+        body: JSON.stringify({ special_name: name, init_data: inTelegram ? tg.initData : "" }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(formatApiError(json.detail, "Reys yaratib bo'lmadi"));
+        throw new Error(formatApiError(json.detail, "Maxsus reys nomini saqlab bo'lmadi"));
       }
-      showToast("Maxsus reys qo'shildi ✓");
+      showToast(clear ? "Maxsus reys badgesi olib tashlandi" : "Maxsus reys nomi saqlandi ✓");
       haptic("select");
       closeSpecialReysSheet();
       await loadReports();
@@ -3298,8 +3322,11 @@
       showToast(e.message || "Xatolik", true);
       haptic("rigid");
     } finally {
-      els.specialReysSaveBtn.disabled = false;
-      els.specialReysSaveBtn.innerHTML = origHtml;
+      if (els.specialReysSaveBtn) {
+        els.specialReysSaveBtn.disabled = false;
+        els.specialReysSaveBtn.innerHTML = origHtml;
+      }
+      if (els.specialReysClearBtn) els.specialReysClearBtn.disabled = false;
     }
   }
 
@@ -3409,10 +3436,11 @@
 
   if (els.specialReysClose) els.specialReysClose.addEventListener("click", closeSpecialReysSheet);
   if (els.specialReysBackdrop) els.specialReysBackdrop.addEventListener("click", closeSpecialReysSheet);
-  if (els.specialReysSaveBtn) els.specialReysSaveBtn.addEventListener("click", submitSpecialReys);
+  if (els.specialReysSaveBtn) els.specialReysSaveBtn.addEventListener("click", () => submitSpecialReys(false));
+  if (els.specialReysClearBtn) els.specialReysClearBtn.addEventListener("click", () => submitSpecialReys(true));
   if (els.specialReysNameInput) {
     els.specialReysNameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); submitSpecialReys(); }
+      if (e.key === "Enter") { e.preventDefault(); submitSpecialReys(false); }
     });
   }
 

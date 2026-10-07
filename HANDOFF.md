@@ -289,17 +289,20 @@ reys_hisoboti_v2/
 - **Reys Kartasida 3 Talik Nuqtacha Menyusi (Kebab menu ⋮)**:
   - Bosh ekrandagi har bir reys kartasiga qulay 3-talik nuqtacha tugmasi (`.report-item__more`) qo'shildi.
   - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
-    1. **"Maxsus reys qo'shish" (`#specialReysSheet`)**:
-       - Shunchaki maxsus reys nomini kiritish orqali bir zumda yangi reys yaratadi.
+    1. **"Maxsus reys nomi (Card Badge)" (`#specialReysSheet`, `POST /api/reports/{id}/special-name`)**:
+       - Alohida yangi hisobot/karta ochmaydi. Tanlangan reysga maxsus nom biriktiradi (`special_name` ustuni).
+       - Shu reys kartasining ichida o'ziga xos yaltiroq Neon Volt belgisi (`.report-item__special-badge`) bo'lib ko'rinadi (masalan, `[⭐ Maxsus]`, `[⭐ VIP]`).
+       - Agar mavjud badge bo'lsa, uni tahrirlash yoki "Badgeni o'chirish" tugmasi orqali tozalash mumkin.
     2. **"Kg to'g'rilash" (`#kgFixSheet`)**:
        - Tanlangan reysdagi istalgan tovar turiga to'g'ridan-to'g'ri `+` yoki `-` kg (masalan `+6` yoki `-2.5`) qo'shish yoki ayirish imkonini beradi.
        - Sababi/izoh kiritish maydoni (`note`).
        - Baza darajasida (`db.fix_report_kg`): `inventory` jadvalidagi qoldiq hisob-kitob qilinadi, `activity` jadvaliga `action = 'kg_fix'`, `weight = delta`, `net = delta`, `actor = identity`, `note = note` ko'rinishida audit qaydi yoziladi.
        - Foydalanuvchi kim qilganini aniq ko'rishi uchun: Faoliyat (Activity) tarixida `Kg to'g'rilash: {tovar} ({+6/-2.5} kg) | Admin: {actor} · {izoh}` ko'rinishida aniq audit ko'rsatiladi.
 - **Backend API**:
+  - `POST /api/reports/{report_id}/special-name` (JSON: `{ special_name }`).
   - `POST /api/reports/{report_id}/adjust-kg` (JSON: `{ tovar_turi, weight, note }`).
 - **Kesh yangilanishi**:
-  - `index.html` da CSS va JS fayllar versiyasi `?v=kebab1` ga yangilandi.
+  - `index.html` da JS fayllar versiyasi `?v=badge1` ga yangilandi.
 
 ---
 

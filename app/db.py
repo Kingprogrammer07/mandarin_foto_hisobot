@@ -197,6 +197,7 @@ async def init() -> None:
                  deleted_at INTEGER)"""
         )
         await _add_column(c, "reports", "deleted_at", "INTEGER")
+        await _add_column(c, "reports", "special_name", "TEXT")
         await _add_column(c, "activity", "edited_at", "INTEGER")
         await _add_column(c, "activity", "deleted_at", "INTEGER")
         await _add_column(c, "activity", "box_weight", "REAL")
@@ -435,7 +436,7 @@ async def create_report(name: str) -> dict:
 async def list_reports() -> list[dict]:
     async with _db() as c:
         async with c.execute(
-            """SELECT r.id, r.name, r.created_at,
+            """SELECT r.id, r.name, r.created_at, r.special_name,
                       (SELECT COUNT(*) FROM activity a
                        WHERE a.report_id = r.id AND a.deleted_at IS NULL) AS entries
                FROM reports r WHERE r.deleted_at IS NULL ORDER BY r.id DESC"""
@@ -490,6 +491,20 @@ async def rename_report(report_id: int, new_name: str) -> dict:
             raise DuplicateName(new_name)
         await c.execute("UPDATE reports SET name = ? WHERE id = ?", (new_name, report_id))
         return {"id": report_id, "name": new_name}
+
+
+async def set_report_special_name(report_id: int, special_name: str | None) -> dict:
+    clean = (special_name or "").strip()
+    if len(clean) > 60:
+        raise ValueError("maxsus reys nomi 60 ta belgidan oshmasligi kerak")
+    val = clean if clean else None
+    async with _db() as c:
+        async with c.execute("SELECT id, name FROM reports WHERE id = ? AND deleted_at IS NULL", (report_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise ReportNotFound(f"report {report_id} not found")
+        await c.execute("UPDATE reports SET special_name = ? WHERE id = ?", (val, report_id))
+        return {"id": report_id, "special_name": val}
 
 
 async def list_types() -> dict:
