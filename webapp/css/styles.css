@@ -394,6 +394,105 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 }
 .custom-coef { margin-top: 12px; animation: panelIn 0.18s var(--ease); }
 
+/* ---------- Chip Add Button ---------- */
+.chip--add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--fill));
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.chip--add .ic {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+.chip--add:active {
+  transform: scale(0.94);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* ---------- Coef Box Menu Add Button ---------- */
+.coef-menu__add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-weight: 700;
+  border-top: 1px dashed var(--separator);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.coef-menu__add .ic {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* ---------- Preset Sheet Tags ---------- */
+.preset-manage {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--separator);
+}
+.preset-manage__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.preset-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--fill);
+  border: 1px solid var(--separator);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.preset-tag--custom {
+  background: color-mix(in srgb, var(--accent) 10%, var(--fill));
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+.preset-tag__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 0;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s var(--ease);
+}
+.preset-tag__del:active {
+  transform: scale(0.85);
+}
+.preset-tag__del .ic {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
 /* ---------- Inputs ---------- */
 .input {
   width: 100%;

@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#ffffff" id="themeColor" />
   <title>Reys hisoboti</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/css/styles.css?v=specialdocx1" />
+  <link rel="stylesheet" href="/css/styles.css?v=presets1" />
 </head>
 <body>
   <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
@@ -106,6 +106,7 @@
           <button type="button" class="chip" data-mode="fixed" data-value="1.22">1.22</button>
           <button type="button" class="chip" data-mode="fixed" data-value="1.4">1.4</button>
           <button type="button" class="chip" data-mode="fixed" data-value="1.05">1.05</button>
+          <button type="button" class="chip chip--add" id="coefAddBtn" aria-label="Koeffitsient qo'shish"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
           <button type="button" class="chip" data-mode="custom">O'zim kiritaman</button>
         </div>
         <div class="coef-menu" id="coefBoxMenu" hidden>
@@ -114,6 +115,7 @@
           <button type="button" class="coef-menu__item" data-box-value="1.22">Ayirilmasin (1.22)</button>
           <button type="button" class="coef-menu__item" data-box-value="1.4">Ayirilmasin (1.4)</button>
           <button type="button" class="coef-menu__item" data-box-value="1.05">Ayirilmasin (1.05)</button>
+          <button type="button" class="coef-menu__item coef-menu__add" id="coefBoxAddBtn"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Yangi karobka og'irligi</button>
         </div>
         <div class="custom-coef" id="coefCustomWrap" hidden>
           <input
@@ -478,6 +480,7 @@
           <button type="button" class="chip" data-mode="fixed" data-value="1.22">1.22</button>
           <button type="button" class="chip" data-mode="fixed" data-value="1.4">1.4</button>
           <button type="button" class="chip" data-mode="fixed" data-value="1.05">1.05</button>
+          <button type="button" class="chip chip--add" id="topCoefAddBtn" aria-label="Karobka og'irligi qo'shish"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
           <button type="button" class="chip" data-mode="custom">O'zim kiritaman</button>
         </div>
         <div class="custom-coef" id="topCoefCustomWrap" hidden>
@@ -792,6 +795,34 @@
     </div>
   </div>
 
+  <!-- Preset qo'shish va boshqarish sheet (Koeffitsient & Karobka og'irligi) -->
+  <div class="sheet-backdrop" id="presetBackdrop" hidden></div>
+  <div class="sheet" id="presetSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title" id="presetSheetTitle">Yangi qiymat qo'shish</span>
+      <button type="button" class="sheet__close" id="presetSheetClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12l-6.3-6.3-1.4 1.4L10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <div class="filter-field">
+        <label for="presetValueInput" class="filter-field__label" id="presetInputLabel">Qiymatni kiriting:</label>
+        <div class="input-suffix">
+          <input type="text" id="presetValueInput" class="input" placeholder="Masalan: 1.15" inputmode="decimal" autocomplete="off" />
+          <span class="suffix" id="presetSuffix">kg</span>
+        </div>
+        <span class="filter-field__hint" id="presetHint">Ushbu qiymat saqlanadi va tanlash uchun doimiy chiqadi</span>
+      </div>
+      <button type="button" class="btn btn--primary" id="presetSaveBtn">Saqlash va tanlash</button>
+      <div class="preset-manage" id="presetManageWrap">
+        <span class="preset-manage__title">Mavjud qiymatlar:</span>
+        <div class="preset-tags" id="presetTagsList"></div>
+      </div>
+      <p class="login__error" id="presetError" hidden></p>
+    </div>
+  </div>
+
   <!-- Settings sheet -->
   <div class="sheet-backdrop" id="setBackdrop" hidden></div>
   <div class="sheet" id="setSheet" hidden role="dialog" aria-modal="true">
@@ -927,6 +958,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=specialdocx1"></script>
+  <script src="/js/app.js?v=presets1"></script>
 </body>
 </html>

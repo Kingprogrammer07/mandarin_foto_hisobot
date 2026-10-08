@@ -398,6 +398,21 @@
     kgFixNoteInput: $("#kgFixNoteInput"),
     kgFixSaveBtn: $("#kgFixSaveBtn"),
     kgFixError: $("#kgFixError"),
+    presetBackdrop: $("#presetBackdrop"),
+    presetSheet: $("#presetSheet"),
+    presetSheetTitle: $("#presetSheetTitle"),
+    presetSheetClose: $("#presetSheetClose"),
+    presetInputLabel: $("#presetInputLabel"),
+    presetValueInput: $("#presetValueInput"),
+    presetSuffix: $("#presetSuffix"),
+    presetHint: $("#presetHint"),
+    presetSaveBtn: $("#presetSaveBtn"),
+    presetManageWrap: $("#presetManageWrap"),
+    presetTagsList: $("#presetTagsList"),
+    presetError: $("#presetError"),
+    coefAddBtn: $("#coefAddBtn"),
+    coefBoxAddBtn: $("#coefBoxAddBtn"),
+    topCoefAddBtn: $("#topCoefAddBtn"),
     setBackdrop: $("#setBackdrop"),
     setSheet: $("#setSheet"),
     setClose: $("#setClose"),
@@ -529,7 +544,8 @@
       (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) ||
       (els.reportMoreSheet && !els.reportMoreSheet.hidden) ||
       (els.specialReysSheet && !els.specialReysSheet.hidden) ||
-      (els.kgFixSheet && !els.kgFixSheet.hidden)
+      (els.kgFixSheet && !els.kgFixSheet.hidden) ||
+      (els.presetSheet && !els.presetSheet.hidden)
     );
   }
   function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
@@ -547,6 +563,7 @@
     if (!els.camModal.hidden) { closeCamera(); return; }
     if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
     if (!els.outboxSheet.hidden) { closeOutboxDiag(); return; }
+    if (els.presetSheet && !els.presetSheet.hidden) { closePresetSheet(); return; }
     if (els.specialReysSheet && !els.specialReysSheet.hidden) { closeSpecialReysSheet(); return; }
     if (els.kgFixSheet && !els.kgFixSheet.hidden) { closeKgFixSheet(); return; }
     if (els.reportMoreSheet && !els.reportMoreSheet.hidden) { closeReportMore(); return; }
@@ -1579,7 +1596,7 @@
   }
 
   function setTopCoefUI(mode, value) {
-    const chips = [...els.topCoefChips.querySelectorAll(".chip")];
+    const chips = [...els.topCoefChips.querySelectorAll(".chip[data-mode]")];
     chips.forEach((c) => c.classList.remove("is-active"));
     let chip = null;
     if (mode === "none") chip = chips.find((c) => c.dataset.mode === "none");
@@ -2355,6 +2372,249 @@
     closeEntries(); // reveal the form (still under the entries screen)
   }
 
+  // ---- Presets for Coefficients and Box Weights ----
+  const DEFAULT_COEF_PRESETS = [0.94, 1.22, 1.4, 1.05];
+  const DEFAULT_BOX_PRESETS = [1, 1.22, 1.4, 1.05];
+  const PRESET_KEY_COEF = "reys_coef_presets";
+  const PRESET_KEY_BOX = "reys_box_presets";
+
+  function getPresets(type) {
+    const isBox = type === "box";
+    const defaults = isBox ? DEFAULT_BOX_PRESETS : DEFAULT_COEF_PRESETS;
+    const key = isBox ? PRESET_KEY_BOX : PRESET_KEY_COEF;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          const valid = arr.map((x) => Number(x)).filter((x) => isFinite(x) && x > 0);
+          const result = [...defaults];
+          valid.forEach((v) => {
+            if (!result.some((d) => sameNum(d, v))) result.push(v);
+          });
+          return result;
+        }
+      }
+    } catch (_) {}
+    return [...defaults];
+  }
+
+  function saveCustomPresets(type, list) {
+    const isBox = type === "box";
+    const key = isBox ? PRESET_KEY_BOX : PRESET_KEY_COEF;
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (_) {}
+  }
+
+  function addPreset(type, num) {
+    const list = getPresets(type);
+    if (!list.some((x) => sameNum(x, num))) {
+      list.push(num);
+      saveCustomPresets(type, list);
+    }
+    return list;
+  }
+
+  function deletePreset(type, num) {
+    const defaults = type === "box" ? DEFAULT_BOX_PRESETS : DEFAULT_COEF_PRESETS;
+    if (defaults.some((d) => sameNum(d, num))) return false;
+    let list = getPresets(type);
+    list = list.filter((x) => !sameNum(x, num));
+    saveCustomPresets(type, list);
+    return true;
+  }
+
+  function renderCoefChips() {
+    if (!els.coefChips) return;
+    const presets = getPresets("coef");
+    const activeMode = state.coef.mode || "none";
+    const activeVal = Number(state.coef.value) || 0;
+    const isBox = activeMode === "box" && Number(state.coef.boxWeight) > 0;
+    const noneLabel = isBox ? `Ayirilmasin (${Number(state.coef.boxWeight)})` : "Ayirilmasin";
+    const isNoneActive = activeMode === "none" || activeMode === "box";
+
+    let html = `<button type="button" class="chip ${isNoneActive ? "is-active" : ""}" data-mode="none" data-value="0">${noneLabel}</button>`;
+
+    presets.forEach((val) => {
+      const active = activeMode === "fixed" && sameNum(activeVal, val);
+      html += `<button type="button" class="chip ${active ? "is-active" : ""}" data-mode="fixed" data-value="${val}">${val}</button>`;
+    });
+
+    html += `<button type="button" class="chip chip--add" id="coefAddBtn" aria-label="Koeffitsient qo'shish"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>`;
+
+    const isCustomActive = activeMode === "custom";
+    html += `<button type="button" class="chip ${isCustomActive ? "is-active" : ""}" data-mode="custom">O'zim kiritaman</button>`;
+
+    els.coefChips.innerHTML = html;
+  }
+
+  function renderCoefBoxMenu() {
+    const menu = ensureCoefBoxMenu();
+    if (!menu) return;
+    const presets = getPresets("box");
+    const activeBox = state.coef.mode === "box" ? Number(state.coef.boxWeight) || 0 : 0;
+    const isNone = state.coef.mode === "none";
+
+    let html = `<button type="button" class="coef-menu__item ${isNone ? "is-active" : ""}" data-box-value="0">Ayirilmasin</button>`;
+    presets.forEach((val) => {
+      const active = state.coef.mode === "box" && sameNum(activeBox, val);
+      html += `<button type="button" class="coef-menu__item ${active ? "is-active" : ""}" data-box-value="${val}">Ayirilmasin (${val})</button>`;
+    });
+    html += `<button type="button" class="coef-menu__item coef-menu__add" id="coefBoxAddBtn"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Yangi karobka og'irligi</button>`;
+
+    menu.innerHTML = html;
+  }
+
+  function renderTopCoefChips() {
+    if (!els.topCoefChips) return;
+    const presets = getPresets("box");
+    const activeMode = state.topCoef.mode || "none";
+    const activeVal = Number(state.topCoef.value) || 0;
+
+    let html = `<button type="button" class="chip ${activeMode === "none" ? "is-active" : ""}" data-mode="none" data-value="0">Ayirilmasin</button>`;
+
+    presets.forEach((val) => {
+      const active = activeMode === "fixed" && sameNum(activeVal, val);
+      html += `<button type="button" class="chip ${active ? "is-active" : ""}" data-mode="fixed" data-value="${val}">${val}</button>`;
+    });
+
+    html += `<button type="button" class="chip chip--add" id="topCoefAddBtn" aria-label="Karobka og'irligi qo'shish"><svg viewBox="0 0 24 24" class="ic"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>`;
+
+    html += `<button type="button" class="chip ${activeMode === "custom" ? "is-active" : ""}" data-mode="custom">O'zim kiritaman</button>`;
+
+    els.topCoefChips.innerHTML = html;
+  }
+
+  let activePresetType = "coef"; // "coef" or "box"
+  let activePresetContext = "";  // "coef", "box_menu", "top"
+
+  function openPresetSheet(type, context) {
+    activePresetType = type || "coef";
+    activePresetContext = context || (type === "coef" ? "coef" : "top");
+    const isBox = activePresetType === "box";
+
+    if (els.presetSheetTitle) {
+      els.presetSheetTitle.textContent = isBox ? "Karobka og'irligi qo'shish" : "Koeffitsient qo'shish";
+    }
+    if (els.presetInputLabel) {
+      els.presetInputLabel.textContent = isBox ? "Karobka og'irligi (kg):" : "Koeffitsient qiymati:";
+    }
+    if (els.presetValueInput) {
+      els.presetValueInput.value = "";
+      els.presetValueInput.placeholder = isBox ? "Masalan: 1.15" : "Masalan: 1.05";
+    }
+    if (els.presetSuffix) {
+      els.presetSuffix.textContent = isBox ? "kg" : "";
+      els.presetSuffix.hidden = !isBox;
+    }
+    if (els.presetHint) {
+      els.presetHint.textContent = isBox
+        ? "Ushbu og'irlik saqlanadi va 'Obshiy ves' hamda 'Ayirilmasin' ro'yxatida chiqadi"
+        : "Ushbu koeffitsient saqlanadi va 'Kargolarga tarqatish' ro'yxatida chiqadi";
+    }
+    if (els.presetError) els.presetError.hidden = true;
+
+    renderPresetTags();
+
+    if (els.presetBackdrop) els.presetBackdrop.hidden = false;
+    if (els.presetSheet) els.presetSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+
+    setTimeout(() => {
+      if (els.presetValueInput) els.presetValueInput.focus();
+    }, 120);
+  }
+
+  function closePresetSheet() {
+    if (els.presetSheet) els.presetSheet.hidden = true;
+    if (els.presetBackdrop) els.presetBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  function renderPresetTags() {
+    if (!els.presetTagsList) return;
+    const presets = getPresets(activePresetType);
+    const defaults = activePresetType === "box" ? DEFAULT_BOX_PRESETS : DEFAULT_COEF_PRESETS;
+
+    let html = "";
+    presets.forEach((val) => {
+      const isDefault = defaults.some((d) => sameNum(d, val));
+      if (isDefault) {
+        html += `<span class="preset-tag preset-tag--default"><span>${val}</span></span>`;
+      } else {
+        html += `<span class="preset-tag preset-tag--custom"><span>${val}</span><button type="button" class="preset-tag__del" data-del-val="${val}" aria-label="O'chirish"><svg viewBox="0 0 24 24" class="ic"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></span>`;
+      }
+    });
+    els.presetTagsList.innerHTML = html;
+  }
+
+  function submitPreset() {
+    if (!els.presetValueInput) return;
+    const raw = els.presetValueInput.value.trim().replace(",", ".");
+    const val = parseFloat(raw);
+    if (!isFinite(val) || val <= 0) {
+      if (els.presetError) {
+        els.presetError.textContent = "Iltimos, noldan katta to'g'ri raqam kiriting (masalan: 1.15)";
+        els.presetError.hidden = false;
+      }
+      haptic("rigid");
+      return;
+    }
+
+    addPreset(activePresetType, val);
+    showToast(`${val} saqlandi va tanlandi ✅`);
+    haptic("select");
+
+    // Re-render and select
+    if (activePresetType === "box") {
+      renderTopCoefChips();
+      renderCoefBoxMenu();
+      if (activePresetContext === "box_menu") {
+        selectCoefBoxValue(val);
+      } else {
+        setTopCoefUI("fixed", val);
+      }
+    } else {
+      renderCoefChips();
+      setCoefUI("fixed", val);
+    }
+
+    closePresetSheet();
+  }
+
+  function handlePresetTagClick(ev) {
+    const delBtn = closestNode(ev.target, ".preset-tag__del");
+    if (!delBtn || !els.presetTagsList.contains(delBtn)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const val = parseFloat(delBtn.dataset.delVal);
+    if (!isFinite(val)) return;
+
+    if (deletePreset(activePresetType, val)) {
+      showToast(`${val} o'chirildi`);
+      haptic("select");
+      renderPresetTags();
+      if (activePresetType === "box") {
+        renderTopCoefChips();
+        renderCoefBoxMenu();
+        if (state.topCoef.mode === "fixed" && sameNum(state.topCoef.value, val)) {
+          setTopCoefUI("none", 0);
+        }
+        if (state.coef.mode === "box" && sameNum(state.coef.boxWeight, val)) {
+          selectCoefBoxValue(0);
+        }
+      } else {
+        renderCoefChips();
+        if (state.coef.mode === "fixed" && sameNum(state.coef.value, val)) {
+          setCoefUI("none", 0);
+        }
+      }
+    }
+  }
+
   // Restore a coefficient into the chips row. A fixed value with no matching
   // chip falls back to custom.
   function ensureCoefBoxMenu() {
@@ -2363,15 +2623,9 @@
     menu.className = "coef-menu";
     menu.id = "coefBoxMenu";
     menu.hidden = true;
-    menu.innerHTML = [
-      '<button type="button" class="coef-menu__item" data-box-value="0">Ayirilmasin</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1">Ayirilmasin (1)</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1.22">Ayirilmasin (1.22)</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1.4">Ayirilmasin (1.4)</button>',
-      '<button type="button" class="coef-menu__item" data-box-value="1.05">Ayirilmasin (1.05)</button>',
-    ].join("");
     els.coefChips.insertAdjacentElement("afterend", menu);
     els.coefBoxMenu = menu;
+    renderCoefBoxMenu();
     return menu;
   }
 
@@ -2388,13 +2642,7 @@
       menu.style.display = "none";
       menu.hidden = true;
     }
-    els.coefBoxMenu.querySelectorAll("[data-box-value]").forEach((btn) => {
-      const v = Number(btn.dataset.boxValue) || 0;
-      btn.textContent = v > 0 ? `Ayirilmasin (${v})` : "Ayirilmasin";
-      const on = (state.coef.mode === "none" && v === 0) ||
-        (state.coef.mode === "box" && sameNum(v, state.coef.boxWeight || 0));
-      btn.classList.toggle("is-active", on);
-    });
+    renderCoefBoxMenu();
   }
 
   function updateCoefNoneLabel() {
@@ -2410,7 +2658,7 @@
     state.coef = boxWeight > 0
       ? { mode: "box", value: 0, boxWeight }
       : { mode: "none", value: 0, boxWeight: 0 };
-    els.coefChips.querySelectorAll(".chip").forEach((c) => {
+    els.coefChips.querySelectorAll(".chip[data-mode]").forEach((c) => {
       c.classList.toggle("is-active", c.dataset.mode === "none");
     });
     updateCoefNoneLabel();
@@ -2420,13 +2668,13 @@
   }
 
   function setCoefUI(mode, value) {
-    const chips = [...els.coefChips.querySelectorAll(".chip")];
+    const chips = [...els.coefChips.querySelectorAll(".chip[data-mode]")];
     let boxWeight = 0;
     if (mode === "box") boxWeight = Number(value) || 0;
     let target = null;
     if (mode === "none") target = chips.find((c) => c.dataset.mode === "none");
     else if (mode === "box") target = chips.find((c) => c.dataset.mode === "none");
-    else if (mode === "fixed") target = chips.find((c) => c.dataset.mode === "fixed" && parseFloat(c.dataset.value) === value);
+    else if (mode === "fixed") target = chips.find((c) => c.dataset.mode === "fixed" && sameNum(c.dataset.value, value));
     if (!target) { mode = "custom"; boxWeight = 0; target = chips.find((c) => c.dataset.mode === "custom"); }
     chips.forEach((c) => c.classList.toggle("is-active", c === target));
     state.coef = { mode, value: mode === "fixed" || mode === "custom" ? value : 0, boxWeight };
@@ -4358,52 +4606,61 @@
 
   // ---- Coefficient ----
   els.coefChips.addEventListener("click", (ev) => {
-    const chip = closestNode(ev.target, '.chip[data-mode="none"]');
-    if (!chip || !els.coefChips.contains(chip)) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    ev.stopImmediatePropagation();
-    els.coefCustomWrap.hidden = true;
-    const menu = ensureCoefBoxMenu();
-    setCoefBoxMenu(menu ? menu.hidden : true);
-    haptic("select");
-  }, true);
-
-  els.coefChips.querySelectorAll(".chip").forEach((chip) => {
-    chip.addEventListener("click", (ev) => {
+    // 1. Add button
+    const addBtn = closestNode(ev.target, "#coefAddBtn, .chip--add");
+    if (addBtn && els.coefChips.contains(addBtn)) {
+      ev.preventDefault();
       ev.stopPropagation();
-      els.coefChips.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
-      chip.classList.add("is-active");
-      const mode = chip.dataset.mode;
-      if (mode === "none") {
-        state.coef = { mode: "none", value: 0, boxWeight: 0 };
-        updateCoefNoneLabel();
-        els.coefCustomWrap.hidden = true;
-        setCoefBoxMenu(els.coefBoxMenu ? els.coefBoxMenu.hidden : false);
-        haptic("select");
-        return;
-      }
-      state.coef.mode = mode;
-      setCoefBoxMenu(false);
-      if (mode === "custom") {
-        els.coefCustomWrap.hidden = false;
-        state.coef.boxWeight = 0;
-        updateCoefNoneLabel();
-        setTimeout(() => els.coefCustom.focus(), 60);
-      } else {
-        els.coefCustomWrap.hidden = true;
-        const value = parseFloat(chip.dataset.value);
-        state.coef.value = mode === "fixed" ? value : 0;
-        state.coef.boxWeight = mode === "box" ? value : 0;
-        updateCoefNoneLabel();
-      }
+      openPresetSheet("coef", "coef");
+      return;
+    }
+    // 2. Chip with data-mode
+    const chip = closestNode(ev.target, ".chip[data-mode]");
+    if (!chip || !els.coefChips.contains(chip)) return;
+    ev.stopPropagation();
+    const mode = chip.dataset.mode;
+    if (mode === "none") {
+      ev.preventDefault();
+      els.coefCustomWrap.hidden = true;
+      const menu = ensureCoefBoxMenu();
+      setCoefBoxMenu(menu ? menu.hidden : true);
       haptic("select");
-    });
+      return;
+    }
+    els.coefChips.querySelectorAll(".chip[data-mode]").forEach((c) => c.classList.remove("is-active"));
+    chip.classList.add("is-active");
+    state.coef.mode = mode;
+    setCoefBoxMenu(false);
+    if (mode === "custom") {
+      els.coefCustomWrap.hidden = false;
+      state.coef.boxWeight = 0;
+      updateCoefNoneLabel();
+      setTimeout(() => els.coefCustom.focus(), 60);
+    } else {
+      els.coefCustomWrap.hidden = true;
+      const value = parseFloat(chip.dataset.value);
+      state.coef.value = mode === "fixed" ? value : 0;
+      state.coef.boxWeight = mode === "box" ? value : 0;
+      updateCoefNoneLabel();
+    }
+    haptic("select");
   });
+
   ensureCoefBoxMenu();
   if (els.coefBoxMenu) {
     let coefBoxPointerHandledAt = 0;
     const onCoefBoxPick = (ev, fromPointer) => {
+      // 1. Add new box weight
+      const addBtn = closestNode(ev.target, "#coefBoxAddBtn, .coef-menu__add");
+      if (addBtn && els.coefBoxMenu.contains(addBtn)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+        setCoefBoxMenu(false);
+        openPresetSheet("box", "box_menu");
+        return;
+      }
+      // 2. Value pick
       const btn = closestNode(ev.target, "[data-box-value]");
       if (!btn || !els.coefBoxMenu.contains(btn)) return;
       ev.preventDefault();
@@ -4429,25 +4686,50 @@
     updateCoefNoneLabel();
   });
 
-  els.topCoefChips.querySelectorAll(".chip").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      els.topCoefChips.querySelectorAll(".chip").forEach((c) => c.classList.remove("is-active"));
-      chip.classList.add("is-active");
-      const mode = chip.dataset.mode;
-      state.topCoef.mode = mode;
-      if (mode === "custom") {
-        els.topCoefCustomWrap.hidden = false;
-        setTimeout(() => els.topCoefCustom.focus(), 60);
-      } else {
-        els.topCoefCustomWrap.hidden = true;
-        state.topCoef.value = mode === "none" ? 0 : parseFloat(chip.dataset.value);
-      }
-      haptic("select");
-    });
+  els.topCoefChips.addEventListener("click", (ev) => {
+    // 1. Add button
+    const addBtn = closestNode(ev.target, "#topCoefAddBtn, .chip--add");
+    if (addBtn && els.topCoefChips.contains(addBtn)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openPresetSheet("box", "top");
+      return;
+    }
+    // 2. Chip with data-mode
+    const chip = closestNode(ev.target, ".chip[data-mode]");
+    if (!chip || !els.topCoefChips.contains(chip)) return;
+    els.topCoefChips.querySelectorAll(".chip[data-mode]").forEach((c) => c.classList.remove("is-active"));
+    chip.classList.add("is-active");
+    const mode = chip.dataset.mode;
+    state.topCoef.mode = mode;
+    if (mode === "custom") {
+      els.topCoefCustomWrap.hidden = false;
+      setTimeout(() => els.topCoefCustom.focus(), 60);
+    } else {
+      els.topCoefCustomWrap.hidden = true;
+      state.topCoef.value = mode === "none" ? 0 : parseFloat(chip.dataset.value);
+    }
+    haptic("select");
   });
   els.topCoefCustom.addEventListener("input", (e) => {
     state.topCoef.value = parseFloat(e.target.value.replace(",", "."));
   });
+
+  // ---- Preset Sheet Events ----
+  if (els.presetSheetClose) els.presetSheetClose.addEventListener("click", closePresetSheet);
+  if (els.presetBackdrop) els.presetBackdrop.addEventListener("click", closePresetSheet);
+  if (els.presetSaveBtn) els.presetSaveBtn.addEventListener("click", submitPreset);
+  if (els.presetValueInput) {
+    els.presetValueInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitPreset();
+      }
+    });
+  }
+  if (els.presetTagsList) {
+    els.presetTagsList.addEventListener("click", handlePresetTagClick);
+  }
 
   // ---- Weight ----
   els.weight.addEventListener("input", (e) => { state.weightRaw = e.target.value; });
@@ -4834,7 +5116,7 @@
       els.coefCustom.value = "";
       els.coefCustomWrap.hidden = true;
       setCoefBoxMenu(false);
-      els.coefChips.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-active", i === 0));
+      els.coefChips.querySelectorAll(".chip[data-mode]").forEach((c) => c.classList.toggle("is-active", c.dataset.mode === "none"));
       updateCoefNoneLabel();
     }
     renderPhotos("photos");
@@ -5045,5 +5327,8 @@
   renderAllPhotos();
   renderAdjust();
   renderBalances();
+  renderCoefChips();
+  renderCoefBoxMenu();
+  renderTopCoefChips();
   gateAccess();
 })();

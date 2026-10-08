@@ -224,4 +224,10 @@ Saving is a `FormData` POST carrying `tg.initData`.
     - 4-qator: `(O'zimizga qolgan.)`.
     - 5-qator+: Umumiy hisobot C ustunidagi og'irliklar: `{CARGO_NOMI} ({special_name}) - {weight:.2f} KG` (`mandarin` formuladagi og'irlik, `akb`, `jet`, `xabib`, va h.k. > 0 bo'lgan barcha kargolar).
   - **Filtr va Qidiruv**: Asosiy qidiruv maydoni (`#homeSearchInput`) reys nomi hamda maxsus reys nomi bo'yicha qidiradi. Ko'p reysli filtr oynasida (`#reportsFilterSheet`) har bir reys yonida maxsus reys badge ko'rsatiladi, `#filterReportsSearch` orqali real vaqtda qidirish va `#filterSpecialOnlyReports` tugmasi bilan faqat maxsus reyslarni bir zumda belgilash imkoniyati qo'shilgan. Assets cache-busted with `?v=specialdocx1`.
+- **Dinamik Koeffitsient va Karobka Og'irligi Presets ('+' tugmasi va boshqaruv)**:
+  - Kargolarga tarqatish (`#coefChips`) va Obshiy ves (`#topCoefChips`) bo'limlarida yangi qiymatlarni kiritish uchun interaktiv `+` tugmasi (`.chip--add`) hamda Kargolarga tarqatish "Ayirilmasin" ochiluvchi menyusida (`#coefBoxMenu`) `+ Yangi karobka og'irligi` elementi qo'shildi.
+  - Yangi Bottom Sheet (`#presetSheet`): Foydalanuvchi yangi qiymat kiritganda (`inputmode="decimal"`), u `localStorage` ga saqlanadi (`reys_coef_presets` va `reys_box_presets`), chiplar dinamik ravishda qayta chiziladi va yangi kiritilgan qiymat darhol tanlanadi.
+  - Shaxsiy qiymatlarni o'chirish: Sheet ichida mavjud qiymatlar ko'rinadi va foydalanuvchi qo'shgan shaxsiy qiymatlar yonidagi `×` tugmasi orqali istalgan payt osongina o'chirib tashlanishi mumkin.
+  - Default qiymatlar: Koeffitsientlar uchun `[0.94, 1.22, 1.4, 1.05]`, Karobka og'irliklari uchun `[1, 1.22, 1.4, 1.05]`. Assets cache-busted with `?v=presets1`.
+
 

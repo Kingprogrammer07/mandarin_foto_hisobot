@@ -330,6 +330,24 @@ reys_hisoboti_v2/
     - `#filterSpecialOnlyReports` ("Maxsus reyslar") tugmasi orqali birgina bosishda faqat maxsus reyslarni belgilash.
   - Kesh yangilanishi: `?v=specialdocx1`.
 
+### S. Dinamik Koeffitsient va Karobka Og'irligi Presets ('+' tugmasi va boshqaruv) (2026-10-08)
+- **Talab & Maqsad**:
+  - Kargolarga tarqatish (`#workScreen`) va Obshiy ves (`#topScreen`) oynalarida koeffitsient va karobka og'irliklarini tezkor tanlash imkonini kengaytirish.
+  - Foydalanuvchilar har safar "O'zim kiritaman" orqali yangi sonlarni qayta-qayta yozib o'tirmasligi uchun dinamik `+` tugmasi orqali yangi qiymatlarni kiritish, ularni qurilma xotirasida (`localStorage`) saqlab qolish va istalgan payt o'chirish/boshqarish imkoniyatini ta'minlash.
+- **Foydalanuvchi Interfeysi & Amallar**:
+  - **Kargolarga tarqatish (`#coefChips`)**: Boshlang'ich `0.94`, `1.22`, `1.4`, `1.05` chiplari yonida interaktiv `+` tugmasi (`.chip--add`) joylashtirildi. Bosilganda koeffitsient qo'shish paneli ochiladi.
+  - **Obshiy ves (`#topCoefChips`)**: Boshlang'ich `1`, `1.22`, `1.4`, `1.05` chiplari yonida interaktiv `+` tugmasi (`.chip--add`) joylashtirildi.
+  - **"Ayirilmasin" menyusi (`#coefBoxMenu`)**: Kargolarga tarqatishdagi ochiluvchi menyu pastida `+ Yangi karobka og'irligi` elementi qo'shildi. Kiritilgan yangi og'irlik ham Obshiy ves, ham Ayirilmasin menyusida bir zumda paydo bo'ladi.
+  - **Yangi Bottom Sheet (`#presetSheet`)**:
+    - Zamonaviy va ixcham modal: sarlavha, o'nlik klaviatura (`inputmode="decimal"`), "Saqlash va tanlash" tugmasi.
+    - **Mavjud qiymatlarni boshqarish / o'chirish**: Sheet pastida barcha mavjud qiymatlar ko'rinadi va foydalanuvchi qo'shgan shaxsiy qiymatlar yonidagi `×` tugmasi orqali tasodifiy xato kiritilgan qiymatlarni bir zumda o'chirib tashlash mumkin.
+- **Saqlash va Barqarorlik**:
+  - Qiymatlar `localStorage` dagi `reys_coef_presets` va `reys_box_presets` kalitlarida saqlanadi.
+  - Xatoliklardan himoyalangan (`try/catch` va musbat son tekshiruvi).
+  - Yangi qiymat kiritilganda chiplar avtomatik qayta chiziladi va yangi kiritilgan qiymat darhol tanlanadi (`setCoefUI` / `setTopCoefUI`).
+- **Kesh yangilanishi**:
+  - `webapp/index.html` da CSS va JS versiyalari `?v=presets1` ga yangilandi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
