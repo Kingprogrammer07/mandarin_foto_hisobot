@@ -365,6 +365,13 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
                 ws.cell(row, 2).value = "oneway"
             label_rows[label] = row
 
+    inv_raw = await db.get_inventory(report_id)
+    display_names: dict[str, str] = {}
+    for t in inv_raw:
+        k = _summary_type_key(t)
+        if k and (k not in display_names or (t and t[0].isupper())):
+            display_names[k] = t
+
     represented = set(label_rows)
     custom_types = [
         t for t, value in inv.items()
@@ -373,11 +380,11 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     next_row = max([r for r in label_rows.values()] + [15]) + 1
     for tovar_turi in custom_types:
         _copy_row_style(ws, 15, next_row, 8)
-        ws.cell(next_row, 2).value = tovar_turi
+        ws.cell(next_row, 2).value = display_names.get(tovar_turi, tovar_turi.upper())
         label_rows[tovar_turi] = next_row
         next_row += 1
 
-    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt"}
+    NON_DISTRIBUTED_LABELS = {"izi", "triton", "top"}
     for label, row in label_rows.items():
         if label == "karobka":
             continue
@@ -388,11 +395,11 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
 
     distributable_rows = [
         row for label, row in label_rows.items()
-        if label in distributed_labels
+        if label not in NON_DISTRIBUTED_LABELS and label not in {"karobka", "mandarin"}
     ]
     non_distributed_rows = [
         row for label, row in label_rows.items()
-        if label not in distributed_labels and label not in {"karobka", "mandarin"}
+        if label in NON_DISTRIBUTED_LABELS
     ]
     for row in non_distributed_rows:
         ws.cell(row, 4).value = None
@@ -578,10 +585,14 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
         if t and t not in all_labels and t not in {"karobka", "top", "uztez"}:
             all_labels.append(t)
 
-    distributed_labels = {"akb", "jet", "xabib", "navo", "jon", "oneway", "redwing", "uzt"}
+    NON_DISTRIBUTED_LABELS = {"izi", "triton", "top"}
     non_distributed_labels = [
         label for label in all_labels
-        if label not in distributed_labels and label not in {"karobka", "mandarin", "top"}
+        if label in NON_DISTRIBUTED_LABELS
+    ]
+    distributed_labels = [
+        label for label in all_labels
+        if label not in NON_DISTRIBUTED_LABELS and label not in {"karobka", "mandarin"}
     ]
 
     non_distributed_sum = sum(_num(inv.get(l, 0)) for l in non_distributed_labels)

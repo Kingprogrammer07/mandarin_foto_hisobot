@@ -1,8 +1,9 @@
 import io
 import time
+import docx
 import httpx
 import pytest
-from app import config, db, passwords, security
+from app import config, db, passwords, security, excel_export
 from app.server import app
 
 @pytest.mark.asyncio
@@ -595,6 +596,78 @@ async def test_api_export_docx():
             assert "(O'zimizga qolgan.)" in doc.paragraphs[3].text
         finally:
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_custom_types_umumiy_excel():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        username = list(config.ADMIN_CREDENTIALS.keys())[0] if config.ADMIN_CREDENTIALS else "testadmin"
+        if not config.ADMIN_CREDENTIALS:
+            config.ADMIN_CREDENTIALS[username] = passwords.hash_password("adminpass")
+        token = security.issue_session(username)
+        cookies = {"reys_session": token}
+        headers = {"Origin": "https://testserver", "Referer": "https://testserver/"}
+
+        rep_name = f"Custom Cargo Test {int(time.time() * 1000)}"
+        r = await client.post("/api/reports", json={"name": rep_name}, cookies=cookies, headers=headers)
+        assert r.status_code == 200
+        rid = r.json()["report"]["id"]
+
+        try:
+            # 1. Add standard cargo (AKB)
+            await db.add_reys(rid, "tester", "AKB", 50.0, 1.0, 49.0, 0)
+
+            # 2. Add custom cargo (XON CARGO)
+            await db.add_reys(rid, "tester", "XON CARGO", 10.0, 1.0, 9.0, 0)
+
+            # 3. Add bizda entry in obshiy ves (actor="tester", action="bizda")
+            await db.add_obshiy(rid, "tester", "bizda", "001", 100.0, 0, 100.0, 0, 2.0)
+
+            # 4. Generate umumiy excel
+            content, fname = await excel_export.build_umumiy_excel(rid)
+            assert content is not None
+            assert "UMUMIY HISOBOT" in fname
+
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=False)
+            ws = wb.active
+
+            # Find row for XON CARGO
+            xon_row = None
+            for row in range(4, ws.max_row + 1):
+                val = str(ws.cell(row, 2).value or "").strip().upper()
+                if "XON" in val:
+                    xon_row = row
+                    break
+            assert xon_row is not None
+            assert ws.cell(xon_row, 3).value == 9.0
+            assert ws.cell(xon_row, 4).value == f"=C{xon_row}*$H$3"
+            assert ws.cell(xon_row, 5).value == f"=C{xon_row}+D{xon_row}"
+
+            # Check Mandarin C4 formula includes -C{xon_row}
+            c4_formula = str(ws["C4"].value)
+            assert f"C{xon_row}" in c4_formula
+
+            # Check G3 formula does NOT include C{xon_row}
+            g3_formula = str(ws["G3"].value)
+            assert f"C{xon_row}" not in g3_formula
+
+            # 5. Check calculate_report_metrics
+            metrics = await excel_export.calculate_report_metrics(rid)
+            assert "xon cargo" in metrics
+            assert metrics["xon cargo"]["weight"] == 9.0
+            assert metrics["xon cargo"]["box_weight"] > 0
+            assert metrics["xon cargo"]["total"] > 9.0
+
+            # 6. Check build_special_docx
+            docx_bytes, docx_name = await excel_export.build_special_docx(rid)
+            doc = docx.Document(io.BytesIO(docx_bytes))
+            doc_text = "\n".join(p.text for p in doc.paragraphs)
+            assert "XON CARGO" in doc_text
+        finally:
+            await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
+
 
 
 

@@ -367,6 +367,28 @@ reys_hisoboti_v2/
   - `webapp/index.html`: Boshlang'ich tovar turi ko'rinishi `#typeValue` `AKB` ga yangilandi.
   - Avtomatlashtirilgan testlar: `tests/test_db_and_storage.py:test_uppercase_tovar_turi` qo'shildi va 20 ta test to'liq muvaffaqiyatli o'tishi tekshirildi.
 
+### U. XON CARGO To'g'rilash va Umumiy Hisobot Excel Custom Kargolari (2026-10-09)
+- **Talab & Maqsad**:
+  - `M296 UMUMIY HISOBOT.xlsx` standarti asosida foydalanuvchi "Kargolarga tarqatish" bo'limidan yangi tovar turi (`XON CARGO`, `MEBEL`, `X213` va h.k.) qo'shganda, Umumiy hisobot Excelida to'liq taqsimlanuvchi kargo sifatida D ustunida `=C{row}*$H$3`, E ustunida `=C{row}+D{row}` formulalari hosil bo'lishi, Mandarin (C4) formulasidan ayrilishi, va Toza yuk (G3) formulasidan ayrilmasligini ta'minlash.
+  - Serverdagi ma'lumotlar bazasida `XON CAROGO` nomidagi xatolik barcha jadvallarda (`custom_types`, `inventory`, `activity`) to'liq **`XON CARGO`** deb to'g'rilanishi.
+- **Baza Migratsiyasi (`schema_migrations: rename_xon_carogo_and_clean_types_20261009`)**:
+  - `activity` jadvalida: `tovar_turi`, `from_type`, `to_type` ustunlaridagi `XON CAROGO` qiymatlari `XON CARGO` ga o'zgartirildi.
+  - `custom_types` jadvalida: `XON CAROGO` to'liq `XON CARGO` ga o'zgartirildi, `DEFAULT_TYPES` da mavjud bo'lgan takroriy standart turlar olib tashlandi.
+  - `inventory` jadvalida: har bir `report_id` uchun `XON CAROGO` qiymati `XON CARGO` ga o'tkazildi, agar reysda ikkala yozuv ham bo'lsa og'irliklari birlashtirildi (`SUM(weight)`).
+  - `_clean_type(name)` va `normalize_type_key` funksiyalarida `xon carogo` -> `XON CARGO` / `xon cargo` avtomatik xavfsiz moslash kodi kiritildi.
+- **Umumiy hisobot Excel Formulalari (`app/excel_export.py:build_umumiy_excel`)**:
+  - `NON_DISTRIBUTED_LABELS = {"izi", "triton", "top"}` qilib belgilandi.
+  - `distributable_rows`: `NON_DISTRIBUTED_LABELS` va `karobka`/`mandarin` dan tashqari BARCHA standart va yangi custom kargolar.
+  - Har bir taqsimlanuvchi yangi qator uchun D ustuniga `=C{row}*$H$3`, E ustuniga `=C{row}+D{row}` formulalari yoziladi.
+  - Mandarin `C4` formulasiga barcha taqsimlanuvchi qatorlar `-C{row}` sifatida ulanadi.
+  - `G3` sof yukdan faqat `izi`, `triton`, `top` va `C3` (karobka) ayriladi.
+  - `calculate_report_metrics` va Word DOCX (`build_special_docx`) funksiyalarida yangi kargolar avtomatik taqsimlangan karobka og'irligi bilan qo'shildi.
+  - `assets/umumiy_hisobot_shabloni.xlsx` da B11 katakchasi `oneway` ga keltirildi.
+- **Avtomatlashtirilgan Testlar**:
+  - `tests/test_db_and_storage.py:test_xon_cargo_normalization`
+  - `tests/test_server_api.py:test_custom_types_umumiy_excel`
+  - Jami 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

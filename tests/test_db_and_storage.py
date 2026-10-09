@@ -163,4 +163,15 @@ async def test_uppercase_tovar_turi():
             pass
 
 
+@pytest.mark.asyncio
+async def test_xon_cargo_normalization():
+    assert db._clean_type("xon carogo") == "XON CARGO"
+    assert db._clean_type("XON CAROGO") == "XON CARGO"
+    assert db._clean_type("xon cargo") == "XON CARGO"
+    assert db.normalize_type_key("xon carogo") == "xon cargo"
+    assert db.normalize_type_key("XON CARGO") == "xon cargo"
+    assert db.normalize_telegram_type_key("xon carogo") == "xon cargo"
+
+
+
 

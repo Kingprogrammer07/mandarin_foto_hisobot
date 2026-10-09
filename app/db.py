@@ -69,7 +69,10 @@ OBSHIY_ACTIONS = {"top", "topchiqgan", "bizda", "chiqgan"}
 
 
 def _clean_type(name: str) -> str:
-    return str(name or "").strip().upper()
+    cleaned = str(name or "").strip().upper()
+    if cleaned in ("XON CAROGO", "XON_CAROGO"):
+        return "XON CARGO"
+    return cleaned
 
 
 def _is_default_type(name: str) -> bool:
@@ -363,6 +366,59 @@ async def init() -> None:
             await c.execute(
                 "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
                 (uppercase_types_migration, int(time.time())),
+            )
+
+        rename_types_migration = "rename_xon_carogo_and_clean_types_20261009"
+        if await (await c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (rename_types_migration,))).fetchone() is None:
+            # 1. Update activity: rename XON CAROGO -> XON CARGO
+            await c.execute("UPDATE activity SET tovar_turi = 'XON CARGO' WHERE UPPER(tovar_turi) = 'XON CAROGO'")
+            await c.execute("UPDATE activity SET from_type = 'XON CARGO' WHERE UPPER(from_type) = 'XON CAROGO'")
+            await c.execute("UPDATE activity SET to_type = 'XON CARGO' WHERE UPPER(to_type) = 'XON CAROGO'")
+
+            # 2. Update custom_types:
+            async with c.execute("SELECT created_at FROM custom_types WHERE UPPER(name) = 'XON CAROGO'") as cur:
+                xon_row = await cur.fetchone()
+            if xon_row:
+                created_at = xon_row[0]
+                await c.execute("DELETE FROM custom_types WHERE UPPER(name) IN ('XON CAROGO', 'XON CARGO')")
+                await c.execute("INSERT INTO custom_types(name, created_at, deleted_at) VALUES('XON CARGO', ?, NULL)", (created_at,))
+
+            # Remove any DEFAULT_TYPES from custom_types
+            default_uppers = [t.upper() for t in DEFAULT_TYPES]
+            placeholders = ",".join("?" for _ in default_uppers)
+            await c.execute(f"DELETE FROM custom_types WHERE UPPER(name) IN ({placeholders})", default_uppers)
+
+            # 3. Update inventory:
+            async with c.execute("SELECT report_id, weight, updated_at FROM inventory WHERE UPPER(tovar_turi) = 'XON CAROGO'") as cur:
+                xon_inv = await cur.fetchall()
+            for r in xon_inv:
+                rid = r["report_id"]
+                w = float(r["weight"] or 0)
+                up_at = r["updated_at"]
+                async with c.execute("SELECT weight FROM inventory WHERE report_id = ? AND tovar_turi = 'XON CARGO'", (rid,)) as c2:
+                    exist = await c2.fetchone()
+                if exist:
+                    await c.execute(
+                        "UPDATE inventory SET weight = weight + ?, updated_at = MAX(updated_at, ?) WHERE report_id = ? AND tovar_turi = 'XON CARGO'",
+                        (w, up_at, rid),
+                    )
+                    await c.execute("DELETE FROM inventory WHERE report_id = ? AND UPPER(tovar_turi) = 'XON CAROGO'", (rid,))
+                else:
+                    await c.execute("UPDATE inventory SET tovar_turi = 'XON CARGO' WHERE report_id = ? AND UPPER(tovar_turi) = 'XON CAROGO'", (rid,))
+
+            # 4. In inventory, ensure no duplicate case variations exist across any types
+            async with c.execute(
+                "SELECT report_id, UPPER(tovar_turi) as up_tovar, SUM(weight) as total_w, MAX(updated_at) as max_up "
+                "FROM inventory GROUP BY report_id, UPPER(tovar_turi) HAVING COUNT(*) > 1"
+            ) as cur:
+                dup_inv = await cur.fetchall()
+            for dup in dup_inv:
+                await c.execute("DELETE FROM inventory WHERE report_id = ? AND UPPER(tovar_turi) = ?", (dup["report_id"], dup["up_tovar"]))
+                await c.execute("INSERT INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, ?, ?)", (dup["report_id"], dup["up_tovar"], dup["total_w"], dup["max_up"]))
+
+            await c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (rename_types_migration, int(time.time())),
             )
 
         now = int(time.time())
@@ -1066,10 +1122,12 @@ async def photo_blobs(entry_id: int) -> list[tuple[bytes, str]]:
 
 def normalize_type_key(tovar_turi: str) -> str:
     key = str(tovar_turi or "").strip().lower()
-    if key == "one":
+    if key in ("one", "oneway"):
         return "oneway"
-    if key == "uztez":
+    if key in ("uztez", "uzt"):
         return "uzt"
+    if key in ("xon carogo", "xon cargo", "xon_carogo", "xon_cargo"):
+        return "xon cargo"
     if key.startswith("xabib") or (len(key) > 1 and key[0] == "x" and key[1].isdigit()):
         return "xabib"
     return key
@@ -1078,10 +1136,12 @@ def normalize_type_key(tovar_turi: str) -> str:
 def normalize_telegram_type_key(tovar_turi: str) -> str:
     """For Telegram forwarding ONLY: keep x-codes (x637, x517, x657, etc.) strictly separate from xabib."""
     key = str(tovar_turi or "").strip().lower()
-    if key == "one":
+    if key in ("one", "oneway"):
         return "oneway"
-    if key == "uztez":
+    if key in ("uztez", "uzt"):
         return "uzt"
+    if key in ("xon carogo", "xon cargo", "xon_carogo", "xon_cargo"):
+        return "xon cargo"
     return key
 
 

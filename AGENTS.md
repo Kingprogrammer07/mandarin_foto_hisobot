@@ -230,8 +230,21 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Shaxsiy qiymatlarni o'chirish: Sheet ichida mavjud qiymatlar ko'rinadi va foydalanuvchi qo'shgan shaxsiy qiymatlar yonidagi `×` tugmasi orqali istalgan payt osongina o'chirib tashlanishi mumkin.
   - Default qiymatlar: Koeffitsientlar uchun `[0.94, 1.22, 1.4, 1.05]`, Karobka og'irliklari uchun `[1, 1.22, 1.4, 1.05]`. Assets cache-busted with `?v=presets1`.
 - **Barcha Tovar Turlarini Uppercase Qilish (`schema_migrations: uppercase_all_tovar_turi_20261009`)**:
-  - Ma'lumotlar bazasida (`data/reys.db`) barcha tovar turlari (`inventory.tovar_turi`, `activity.tovar_turi`, `activity.from_type`, `activity.to_type`, `custom_types.name`) to'liq UPPERCASE (`AKB`, `TRITON`, `IZI`, `NAVO`, `XABIB`, `JET`, `JON`, `TOP`, `UZTEZ`, `MANDARIN`, `ONEWAY`, `X637`, `X517`, `REDWING`, `MEBEL`, `XON CAROGO`, `MUSR`) ga o'tkazildi.
+  - Ma'lumotlar bazasida (`data/reys.db`) barcha tovar turlari (`inventory.tovar_turi`, `activity.tovar_turi`, `activity.from_type`, `activity.to_type`, `custom_types.name`) to'liq UPPERCASE (`AKB`, `TRITON`, `IZI`, `NAVO`, `XABIB`, `JET`, `JON`, `TOP`, `UZTEZ`, `MANDARIN`, `ONEWAY`, `X637`, `X517`, `REDWING`, `MEBEL`, `XON CARGO`, `MUSR`) ga o'tkazildi.
   - `_clean_type(name)` endi har doim `.strip().upper()` qaytaradi, `DEFAULT_TYPES` hamda frontend `DEFAULT_TYPES` to'liq bosh harflarda sinxronlashtirildi.
   - Zero data loss: `inventory` va `custom_types` dagi duplikatlar birlashtirildi, barcha og'irlik va audit qaydlari 100% saqlandi.
+- **XON CARGO To'g'rilash va Umumiy Hisobot Excel Custom Kargolari (`M296 UMUMIY HISOBOT.xlsx` standarti)**:
+  - **Baza Tozalash (`schema_migrations: rename_xon_carogo_and_clean_types_20261009`)**:
+    - `XON CAROGO` dagi imlo xatosi barcha jadvallarda (`custom_types`, `inventory`, `activity`) to'liq **`XON CARGO`** ga o'zgartirildi. Agar bir xil reysda ikkala tur bo'lsa, og'irliklari birlashtirildi (`SUM(weight)`).
+    - `custom_types` jadvalidan `DEFAULT_TYPES` da mavjud bo'lgan takroriy standart turlar olib tashlandi.
+    - `_clean_type` va `normalize_type_key` funksiyalarida `xon carogo` -> `XON CARGO` / `xon cargo` xavfsiz avto-almashtiruvi joriy etildi.
+  - **Umumiy hisobot Excel Formulalari (`app/excel_export.py:build_umumiy_excel`)**:
+    - Taqsimlanmaydigan kargolar faqat va faqat: `NON_DISTRIBUTED_LABELS = {"izi", "triton", "top"}`.
+    - Foydalanuvchi qo'shgan barcha yangi tovar turlari (`XON CARGO`, `MEBEL`, `X213` va h.k.) avtomatik ravishda **taqsimlanuvchi** deb olinadi:
+      - 16+ qatorlarda D ustuniga `=C{row}*$H$3` (karobka og'irligi) va E ustuniga `=C{row}+D{row}` yoziladi.
+      - Mandarin (C4) formulasidan ayirib tashlanadi (`=G3 - C5 - C6 - ... - C{row}`).
+      - Toza yuk (G3) formulasida esa sof yukdan ayrilmaydi (faqat izi, triton, top va C3 karobka ayriladi).
+    - `calculate_report_metrics` va Word DOCX hisobotida (`build_special_docx`) ham barcha yangi kargolar taqsimlangan karobka og'irligi bilan to'liq hisob-kitobga kiritildi.
+
 
 
