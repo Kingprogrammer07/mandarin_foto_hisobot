@@ -20,8 +20,8 @@
 
   const MAX_PHOTOS = 10;
   const DEFAULT_TYPES = [
-    "akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin",
-    "oneway", "x637", "x517", "redwing",
+    "AKB", "TRITON", "IZI", "NAVO", "XABIB", "JET", "JON", "TOP", "UZTEZ", "MANDARIN",
+    "ONEWAY", "X637", "X517", "REDWING",
   ];
   const OBSHIY_SECTIONS = ["top", "topchiqgan", "bizda", "chiqgan"];
 
@@ -3636,7 +3636,7 @@
         opt.textContent = t;
         els.kgFixTovarSelect.appendChild(opt);
       });
-      if (allTypes().includes("akb")) els.kgFixTovarSelect.value = "akb";
+      if (allTypes().includes("AKB")) els.kgFixTovarSelect.value = "AKB";
     }
     if (els.kgFixWeightInput) els.kgFixWeightInput.value = "";
     if (els.kgFixNoteInput) els.kgFixNoteInput.value = "";
@@ -4469,7 +4469,7 @@
   }
 
   async function addType(value) {
-    value = (value || "").trim();
+    value = (value || "").trim().toUpperCase();
     if (!value) return;
     // Prefer the canonical casing of an existing option; only add if new.
     const existing = allTypes().find((t) => t.toLowerCase() === value.toLowerCase());
@@ -4514,9 +4514,9 @@
 
   // Selector targets
   const reysTypeTarget = {
-    title: "Tovar turi", fallback: "akb",
+    title: "Tovar turi", fallback: "AKB",
     get value() { return state.type; },
-    onSelect(t) { state.type = t || "akb"; els.typeValue.textContent = state.type; },
+    onSelect(t) { state.type = t || "AKB"; els.typeValue.textContent = state.type; },
   };
   const adjFromTarget = {
     title: "Qaysi turdan ayirish", fallback: "",
@@ -5110,9 +5110,9 @@
     // Keep the type + coefficient when "remember" is on (unless a full reset,
     // e.g. opening a report — each report starts from 0).
     if (full || !remember) {
-      state.type = "akb";
+      state.type = "AKB";
       state.coef = { mode: "none", value: 0, boxWeight: 0 };
-      els.typeValue.textContent = "akb";
+      els.typeValue.textContent = "AKB";
       els.coefCustom.value = "";
       els.coefCustomWrap.hidden = true;
       setCoefBoxMenu(false);

@@ -34,10 +34,10 @@ def _get_lock() -> asyncio.Lock:
 
 
 DEFAULT_TYPES = [
-    "akb", "triton", "izi", "navo", "xabib", "jet", "jon", "top", "uztez", "mandarin",
-    "oneway", "x637", "x517", "redwing",
+    "AKB", "TRITON", "IZI", "NAVO", "XABIB", "JET", "JON", "TOP", "UZTEZ", "MANDARIN",
+    "ONEWAY", "X637", "X517", "REDWING",
 ]
-DEFAULT_TYPE_SET = {t.lower() for t in DEFAULT_TYPES}
+DEFAULT_TYPE_SET = {t.upper() for t in DEFAULT_TYPES}
 MAX_REPORTS = config.MAX_REPORTS
 
 
@@ -69,7 +69,7 @@ OBSHIY_ACTIONS = {"top", "topchiqgan", "bizda", "chiqgan"}
 
 
 def _clean_type(name: str) -> str:
-    return str(name or "").strip().lower()
+    return str(name or "").strip().upper()
 
 
 def _is_default_type(name: str) -> bool:
@@ -99,9 +99,10 @@ async def _all_type_names(c: aiosqlite.Connection) -> list[str]:
     out = list(DEFAULT_TYPES)
     seen = {_clean_type(t) for t in out}
     for name in await _active_custom_types(c):
-        if name not in seen:
-            out.append(name)
-            seen.add(name)
+        cleaned = _clean_type(name)
+        if cleaned not in seen:
+            out.append(cleaned)
+            seen.add(cleaned)
     return out
 
 
@@ -339,6 +340,30 @@ async def init() -> None:
                     "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
                     (custom_prune, int(time.time())),
                 )
+
+        uppercase_types_migration = "uppercase_all_tovar_turi_20261009"
+        if await (await c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (uppercase_types_migration,))).fetchone() is None:
+            async with c.execute("SELECT report_id, UPPER(tovar_turi) as up_tovar, SUM(weight) as total_w, MAX(updated_at) as max_up FROM inventory GROUP BY report_id, UPPER(tovar_turi) HAVING COUNT(*) > 1") as cur:
+                dup_inv = await cur.fetchall()
+            for dup in dup_inv:
+                await c.execute("DELETE FROM inventory WHERE report_id = ? AND UPPER(tovar_turi) = ?", (dup["report_id"], dup["up_tovar"]))
+                await c.execute("INSERT INTO inventory(report_id, tovar_turi, weight, updated_at) VALUES(?, ?, ?, ?)", (dup["report_id"], dup["up_tovar"], dup["total_w"], dup["max_up"]))
+
+            async with c.execute("SELECT UPPER(name) as up_name, MIN(created_at) as min_cr FROM custom_types GROUP BY UPPER(name) HAVING COUNT(*) > 1") as cur:
+                dup_ct = await cur.fetchall()
+            for dup in dup_ct:
+                await c.execute("DELETE FROM custom_types WHERE UPPER(name) = ?", (dup["up_name"],))
+                await c.execute("INSERT INTO custom_types(name, created_at, deleted_at) VALUES(?, ?, NULL)", (dup["up_name"], dup["min_cr"]))
+
+            await c.execute("UPDATE custom_types SET name = UPPER(name)")
+            await c.execute("UPDATE inventory SET tovar_turi = UPPER(tovar_turi)")
+            await c.execute("UPDATE activity SET tovar_turi = UPPER(tovar_turi) WHERE tovar_turi IS NOT NULL")
+            await c.execute("UPDATE activity SET from_type = UPPER(from_type) WHERE from_type IS NOT NULL")
+            await c.execute("UPDATE activity SET to_type = UPPER(to_type) WHERE to_type IS NOT NULL")
+            await c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (uppercase_types_migration, int(time.time())),
+            )
 
         now = int(time.time())
         async with c.execute("SELECT id FROM reports") as rcur:
@@ -583,6 +608,7 @@ async def add_reys(report_id: int, actor: str, tovar_turi: str, weight: float,
         and math.isfinite(box_weight)
     ):
         raise ValueError("non-finite value")
+    tovar_turi = _clean_type(tovar_turi)
     now = int(time.time())
     async with _db() as c:
         await _ensure_type(c, report_id, tovar_turi)
@@ -608,6 +634,8 @@ async def adjust(report_id: int, actor: str, from_type: str, to_type: str, weigh
                  photos: int = 0) -> dict:
     if not (math.isfinite(weight) and weight > 0):
         raise ValueError("non-finite value")
+    from_type = _clean_type(from_type)
+    to_type = _clean_type(to_type)
     now = int(time.time())
     async with _db() as c:
         await _ensure_type(c, report_id, from_type)
@@ -660,7 +688,7 @@ async def fix_report_kg(report_id: int, actor: str, tovar_turi: str, weight_delt
     """Manually adjust kg (+/-) for a product type in a report, recording actor in activity audit."""
     if not math.isfinite(weight_delta) or weight_delta == 0:
         raise ValueError("weight delta must be a non-zero finite number")
-    raw_type = str(tovar_turi or "").strip().lower()
+    raw_type = _clean_type(tovar_turi)
     if not raw_type:
         raise ValueError("tovar_turi required")
     now = int(time.time())
@@ -737,6 +765,7 @@ async def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: floa
         and math.isfinite(box_weight)
     ):
         raise ValueError("non-finite value")
+    tovar_turi = _clean_type(tovar_turi)
     now = int(time.time())
     async with _db() as c:
         old = await _get_entry(c, report_id, entry_id, "reys")
@@ -765,6 +794,8 @@ async def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: st
                       weight: float) -> dict:
     if not (math.isfinite(weight) and weight > 0):
         raise ValueError("non-finite value")
+    from_type = _clean_type(from_type)
+    to_type = _clean_type(to_type)
     now = int(time.time())
     async with _db() as c:
         old = await _get_entry(c, report_id, entry_id, "adjust")

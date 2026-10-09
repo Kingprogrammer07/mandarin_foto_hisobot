@@ -513,7 +513,7 @@ async def api_adjust_kg(request: Request, report_id: int):
     identity = _auth_or_403(request, str(body.get("init_data", "")), state_changing=True)
     rid = await _require_report(report_id)
 
-    tovar_turi = str(body.get("tovar_turi", "")).strip().lower()
+    tovar_turi = str(body.get("tovar_turi", "")).strip().upper()
     if not tovar_turi:
         raise HTTPException(status_code=400, detail="Tovar turi tanlanmagan")
 

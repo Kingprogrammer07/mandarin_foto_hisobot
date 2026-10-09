@@ -346,7 +346,26 @@ reys_hisoboti_v2/
   - Xatoliklardan himoyalangan (`try/catch` va musbat son tekshiruvi).
   - Yangi qiymat kiritilganda chiplar avtomatik qayta chiziladi va yangi kiritilgan qiymat darhol tanlanadi (`setCoefUI` / `setTopCoefUI`).
 - **Kesh yangilanishi**:
-  - `webapp/index.html` da CSS va JS versiyalari `?v=presets1` ga yangilandi.
+### T. Barcha Tovar Turlarini Uppercase Qilish (2026-10-09)
+- **Talab & Maqsad**:
+  - Ma'lumotlar bazasida (`data/reys.db`) barcha tovar turlari (`tovar_turi`, `from_type`, `to_type`, `custom_types.name`) bosh harflarga (UPPERCASE: `AKB`, `TRITON`, `IZI`, `NAVO`, `XABIB`, `JET`, `JON`, `TOP`, `UZTEZ`, `MANDARIN`, `ONEWAY`, `X637`, `X517`, `REDWING`, `MEBEL`, `XON CAROGO`, `MUSR`) o'tkazildi.
+  - Tizimda aralash holat (masalan bir joyda `x637` va `X637`, `oneway` va `ONEWAY`) to'liq bartaraf qilindi va yagona bosh harf standartiga keltirildi.
+- **Baza Migratsiyasi (`schema_migrations: uppercase_all_tovar_turi_20261009`)**:
+  - `init()` funksiyasida idempotent xavfsiz migratsiya qo'shildi:
+    1. `inventory` jadvalidagi mumkin bo'lgan duplikatlar tekshirilib birlashtiriladi.
+    2. `custom_types` dagi duplikatlar birlashtiriladi.
+    3. `UPDATE custom_types SET name = UPPER(name)`
+    4. `UPDATE inventory SET tovar_turi = UPPER(tovar_turi)`
+    5. `UPDATE activity SET tovar_turi = UPPER(tovar_turi) WHERE tovar_turi IS NOT NULL`
+    6. `UPDATE activity SET from_type = UPPER(from_type) WHERE from_type IS NOT NULL`
+    7. `UPDATE activity SET to_type = UPPER(to_type) WHERE to_type IS NOT NULL`
+  - Hech qanday og'irlik, audit yozuvi yoki rasm yo'qotilmadi (to'liq zero data loss).
+- **Backend & Frontend Sinxronizatsiyasi**:
+  - `app/db.py`: `DEFAULT_TYPES = ["AKB", "TRITON", "IZI", "NAVO", "XABIB", "JET", "JON", "TOP", "UZTEZ", "MANDARIN", "ONEWAY", "X637", "X517", "REDWING"]`, `DEFAULT_TYPE_SET = {t.upper() for t in DEFAULT_TYPES}`.
+  - `_clean_type(name: str)` endi har doim `.strip().upper()` qaytaradi, shuningdek `add_reys`, `adjust`, `fix_report_kg`, `edit_reys`, `edit_adjust` amallarida barcha kiritilgan turlar avtomatik ravishda bosh harflarga normallashtiriladi.
+  - `webapp/js/app.js`: `DEFAULT_TYPES` massivi va boshlang'ich tanlovlar `AKB` ga yangilandi, yangi tovar turi kiritilganda `addType` uni avtomatik `.toUpperCase()` qiladi.
+  - `webapp/index.html`: Boshlang'ich tovar turi ko'rinishi `#typeValue` `AKB` ga yangilandi.
+  - Avtomatlashtirilgan testlar: `tests/test_db_and_storage.py:test_uppercase_tovar_turi` qo'shildi va 20 ta test to'liq muvaffaqiyatli o'tishi tekshirildi.
 
 ---
 

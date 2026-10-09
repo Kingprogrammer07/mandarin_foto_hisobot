@@ -135,3 +135,32 @@ def test_normalize_type_key_distinct():
     assert db.normalize_telegram_type_key("x657") != db.normalize_telegram_type_key("xabib")
 
 
+@pytest.mark.asyncio
+async def test_uppercase_tovar_turi():
+    await db.init()
+    for t in db.DEFAULT_TYPES:
+        assert t == t.upper()
+
+    rep = await db.create_report(f"Uppercase Test {int(time.time() * 1000)}")
+    rid = rep["id"]
+    try:
+        res = await db.add_reys(rid, "tester", "akb", 25.0, 1.0, 24.0, 0)
+        assert res["tovar_turi"] == "AKB"
+
+        inv = await db.get_inventory(rid)
+        assert "AKB" in inv
+        assert inv["AKB"] == 24.0
+
+        added = await db.add_custom_type("test_cargo")
+        assert added == "TEST_CARGO"
+        types = await db.list_types()
+        assert "TEST_CARGO" in types["custom"]
+    finally:
+        await db.delete_report(rid)
+        try:
+            await db.delete_custom_type("TEST_CARGO")
+        except Exception:
+            pass
+
+
+

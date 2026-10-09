@@ -437,7 +437,7 @@ async def test_api_adjust_kg():
             assert res1.status_code == 200
             data1 = res1.json()
             assert data1["ok"] is True
-            assert float(data1["balances"]["akb"]) == 6.0
+            assert float(data1["balances"]["AKB"]) == 6.0
 
             # 2. Subtract -2.5 kg from akb
             res2 = await client.post(
@@ -448,7 +448,7 @@ async def test_api_adjust_kg():
             )
             assert res2.status_code == 200
             data2 = res2.json()
-            assert float(data2["balances"]["akb"]) == 3.5
+            assert float(data2["balances"]["AKB"]) == 3.5
 
             # 3. Verify activity record
             act_res = await client.get(f"/api/activity?report_id={rid}&start=0&end=9999999999", cookies=cookies, headers=headers)
@@ -456,7 +456,7 @@ async def test_api_adjust_kg():
             acts = act_res.json()["activity"]
             assert len(acts) == 2
             assert acts[0]["action"] == "kg_fix"
-            assert acts[0]["tovar_turi"] == "akb"
+            assert acts[0]["tovar_turi"] == "AKB"
             assert acts[0]["actor"] in (username, f"pw:{username}")
             assert acts[0]["weight"] == -2.5
 

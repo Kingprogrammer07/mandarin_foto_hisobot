@@ -229,5 +229,9 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Yangi Bottom Sheet (`#presetSheet`): Foydalanuvchi yangi qiymat kiritganda (`inputmode="decimal"`), u `localStorage` ga saqlanadi (`reys_coef_presets` va `reys_box_presets`), chiplar dinamik ravishda qayta chiziladi va yangi kiritilgan qiymat darhol tanlanadi.
   - Shaxsiy qiymatlarni o'chirish: Sheet ichida mavjud qiymatlar ko'rinadi va foydalanuvchi qo'shgan shaxsiy qiymatlar yonidagi `×` tugmasi orqali istalgan payt osongina o'chirib tashlanishi mumkin.
   - Default qiymatlar: Koeffitsientlar uchun `[0.94, 1.22, 1.4, 1.05]`, Karobka og'irliklari uchun `[1, 1.22, 1.4, 1.05]`. Assets cache-busted with `?v=presets1`.
+- **Barcha Tovar Turlarini Uppercase Qilish (`schema_migrations: uppercase_all_tovar_turi_20261009`)**:
+  - Ma'lumotlar bazasida (`data/reys.db`) barcha tovar turlari (`inventory.tovar_turi`, `activity.tovar_turi`, `activity.from_type`, `activity.to_type`, `custom_types.name`) to'liq UPPERCASE (`AKB`, `TRITON`, `IZI`, `NAVO`, `XABIB`, `JET`, `JON`, `TOP`, `UZTEZ`, `MANDARIN`, `ONEWAY`, `X637`, `X517`, `REDWING`, `MEBEL`, `XON CAROGO`, `MUSR`) ga o'tkazildi.
+  - `_clean_type(name)` endi har doim `.strip().upper()` qaytaradi, `DEFAULT_TYPES` hamda frontend `DEFAULT_TYPES` to'liq bosh harflarda sinxronlashtirildi.
+  - Zero data loss: `inventory` va `custom_types` dagi duplikatlar birlashtirildi, barcha og'irlik va audit qaydlari 100% saqlandi.
 
 
