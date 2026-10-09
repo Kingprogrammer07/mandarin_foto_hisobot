@@ -385,9 +385,23 @@ reys_hisoboti_v2/
   - `calculate_report_metrics` va Word DOCX (`build_special_docx`) funksiyalarida yangi kargolar avtomatik taqsimlangan karobka og'irligi bilan qo'shildi.
   - `assets/umumiy_hisobot_shabloni.xlsx` da B11 katakchasi `oneway` ga keltirildi.
 - **Avtomatlashtirilgan Testlar**:
-  - `tests/test_db_and_storage.py:test_xon_cargo_normalization`
-  - `tests/test_server_api.py:test_custom_types_umumiy_excel`
   - Jami 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
+
+### V. Kg to'g'rilashni Umumiy Hisobot E ustuniga ("To'lanishi kerak bo'lgan summa") bog'lash (2026-10-09)
+- **Talab & Muammo**:
+  - Ilgari `fix_report_kg` amali to'g'ridan-to'g'ri `inventory` jadvalini (C ustuni - sof yuk) o'zgartirar edi. Natijada D ustunidagi karobka taqsimoti, Mandarin (C4) formulasi va boshqa hisoblar asossiz qayta hisoblanib ketar edi. Mandarin kabi formulali kargolarda esa C ustuniga umuman ta'sir qilmas edi.
+  - Foydalanuvchi talabi: Kg to'g'rilash (`+` / `-` kg) sof yukka (C ustuni) emas, aynan **E ustuni ("To'lashi kerak bo'lgan summa:")** ga qo'llanilishi kerak.
+- **Yechim & Arxitektura**:
+  - `fix_report_kg`: `inventory` jadvaliga tegmaydi (sof ombor qoldig'i 100% buzilmaydi). Faqat `activity` jadvaliga `action = 'kg_fix'` deb audit yozuvini kiritadi.
+  - `db.get_report_kg_fixes(report_id)` va `db.get_report_kg_fix_totals(report_id)`: Reys bo'yicha har bir tovar turining `kg_fix` deltalari ro'yxatini qaytaradi.
+  - `app/excel_export.py:build_umumiy_excel`:
+    - Har bir kargo uchun (Mandarin, standart kargolar va barcha custom kargolar) E ustuniga jonli formula yoziladi:
+      - Agar to'g'rilash bo'lsa: `=C{row}+D{row}+{delta}` (masalan, `=C5+D5+6` yoki `=C5+D5-2.5` yoki `=C4+D4+0.01`).
+      - Agar to'g'rilash bo'lmasa: standart `=C{row}+D{row}`.
+    - C ustuni (sof yuk), D ustuni (karobka taqsimoti), Mandarin (C4) va Toza yuk (G3) formulalari toza va o'zgarishsiz qoladi.
+  - `calculate_report_metrics` va Ko'p reysli filtr (`build_filtered_cross_report_excel`): Jami og'irlik E ustuniga to'liq mos keladi.
+  - `schema_migrations: unlink_kg_fix_from_inventory_20261009`: Eskidan qolgan `kg_fix` tufayli `inventory` ga qo'shilib qolgan deltalarni to'liq qaytarib, inventarni asl holiga keltirdi.
+  - `#kgFixSheet` modalidagi tushuntirish hinti yangilandi.
 
 ---
 

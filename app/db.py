@@ -421,6 +421,30 @@ async def init() -> None:
                 (rename_types_migration, int(time.time())),
             )
 
+        unlink_kg_fix_migration = "unlink_kg_fix_from_inventory_20261009"
+        if await (await c.execute("SELECT 1 FROM schema_migrations WHERE name = ?", (unlink_kg_fix_migration,))).fetchone() is None:
+            async with c.execute(
+                """SELECT report_id, tovar_turi, SUM(weight) as total_delta
+                   FROM activity
+                   WHERE action = 'kg_fix' AND deleted_at IS NULL
+                   GROUP BY report_id, tovar_turi"""
+            ) as cur:
+                rows = await cur.fetchall()
+            for r in rows:
+                rid = r["report_id"]
+                tovar = r["tovar_turi"]
+                delta = float(r["total_delta"] or 0)
+                if abs(delta) > 1e-9:
+                    await c.execute(
+                        "UPDATE inventory SET weight = weight - ? WHERE report_id = ? AND tovar_turi = ?",
+                        (delta, rid, tovar),
+                    )
+            await c.execute("UPDATE inventory SET weight = 0 WHERE tovar_turi = 'MANDARIN'")
+            await c.execute(
+                "INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)",
+                (unlink_kg_fix_migration, int(time.time())),
+            )
+
         now = int(time.time())
         async with c.execute("SELECT id FROM reports") as rcur:
             report_rows = await rcur.fetchall()
@@ -741,7 +765,11 @@ async def add_obshiy(report_id: int, actor: str, action: str, code: str,
 
 
 async def fix_report_kg(report_id: int, actor: str, tovar_turi: str, weight_delta: float, note: str = "") -> dict:
-    """Manually adjust kg (+/-) for a product type in a report, recording actor in activity audit."""
+    """Manually adjust kg (+/-) for a product type in a report, recording actor in activity audit.
+
+    This adjustment applies to the billed total ("To'lanishi kerak bo'lgan summa" / Column E)
+    without tampering with the raw received inventory in Column C.
+    """
     if not math.isfinite(weight_delta) or weight_delta == 0:
         raise ValueError("weight delta must be a non-zero finite number")
     raw_type = _clean_type(tovar_turi)
@@ -755,23 +783,40 @@ async def fix_report_kg(report_id: int, actor: str, tovar_turi: str, weight_delt
             if not await cur.fetchone():
                 raise ReportNotFound()
 
-        await c.execute(
-            """INSERT INTO inventory(report_id, tovar_turi, weight, updated_at)
-               VALUES(?, ?, ?, ?)
-               ON CONFLICT(report_id, tovar_turi)
-               DO UPDATE SET weight = weight + excluded.weight, updated_at = excluded.updated_at""",
-            (report_id, raw_type, weight_delta, now),
-        )
-
         cur = await c.execute(
             """INSERT INTO activity(report_id, ts, actor, action, tovar_turi, from_type, to_type, weight, coefficient, net, photos)
                VALUES(?, ?, ?, 'kg_fix', ?, ?, ?, ?, 0, ?, 0)""",
             (report_id, now, actor, raw_type, clean_note, raw_type, weight_delta, weight_delta),
         )
         entry_id = cur.lastrowid
-        new_inv = await _inventory(c, report_id)
+        inv = await _inventory(c, report_id)
 
-    return {"entry_id": entry_id, "balances": new_inv}
+    return {"entry_id": entry_id, "balances": inv}
+
+
+async def get_report_kg_fixes(report_id: int) -> dict[str, list[float]]:
+    """Return dict of {normalized_type_key: [delta1, delta2, ...]} for active kg_fix entries in a report."""
+    async with _db() as c:
+        async with c.execute(
+            """SELECT tovar_turi, weight
+               FROM activity
+               WHERE report_id = ? AND action = 'kg_fix' AND deleted_at IS NULL
+               ORDER BY id ASC""",
+            (report_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            out: dict[str, list[float]] = {}
+            for r in rows:
+                key = normalize_type_key(r["tovar_turi"])
+                if key:
+                    out.setdefault(key, []).append(round(float(r["weight"] or 0), 4))
+            return out
+
+
+async def get_report_kg_fix_totals(report_id: int) -> dict[str, float]:
+    """Return dict of {normalized_type_key: total_delta}."""
+    fixes = await get_report_kg_fixes(report_id)
+    return {k: round(sum(deltas), 4) for k, deltas in fixes.items()}
 
 
 # --------------------------------------------------------------------------

@@ -438,7 +438,6 @@ async def test_api_adjust_kg():
             assert res1.status_code == 200
             data1 = res1.json()
             assert data1["ok"] is True
-            assert float(data1["balances"]["AKB"]) == 6.0
 
             # 2. Subtract -2.5 kg from akb
             res2 = await client.post(
@@ -449,7 +448,18 @@ async def test_api_adjust_kg():
             )
             assert res2.status_code == 200
             data2 = res2.json()
-            assert float(data2["balances"]["AKB"]) == 3.5
+            assert data2["ok"] is True
+
+            # 2b. Verify that build_umumiy_excel applies kg_fix to Column E ("To'lashi kerak bo'lgan summa")
+            content, _ = await excel_export.build_umumiy_excel(rid)
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=False)
+            ws = wb.active
+            # AKB is row 5: E5 should be =C5+D5+6-2.5
+            e5_val = str(ws["E5"].value)
+            assert "C5+D5" in e5_val
+            assert "+6" in e5_val
+            assert "-2.5" in e5_val
 
             # 3. Verify activity record
             act_res = await client.get(f"/api/activity?report_id={rid}&start=0&end=9999999999", cookies=cookies, headers=headers)

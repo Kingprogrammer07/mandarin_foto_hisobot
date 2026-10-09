@@ -397,13 +397,29 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         row for label, row in label_rows.items()
         if label not in NON_DISTRIBUTED_LABELS and label not in {"karobka", "mandarin"}
     ]
+    kg_fixes = await db.get_report_kg_fixes(report_id)
+
+    def _format_e_cell_formula(row_idx: int, label_key: str) -> str:
+        deltas = kg_fixes.get(label_key, [])
+        expr = f"C{row_idx}+D{row_idx}"
+        if not deltas:
+            return f"={expr}"
+        parts = [expr]
+        for delta in deltas:
+            if abs(delta) < 1e-9:
+                continue
+            n = _formula_num(abs(delta))
+            parts.append(("-" if delta < 0 else "+") + n)
+        return "=" + "".join(parts)
+
     non_distributed_rows = [
         row for label, row in label_rows.items()
         if label in NON_DISTRIBUTED_LABELS
     ]
-    for row in non_distributed_rows:
-        ws.cell(row, 4).value = None
-        ws.cell(row, 5).value = f"=C{row}+D{row}"
+    for label, row in label_rows.items():
+        if label in NON_DISTRIBUTED_LABELS:
+            ws.cell(row, 4).value = None
+            ws.cell(row, 5).value = _format_e_cell_formula(row, label)
 
     mandarin_row = label_rows.get("mandarin", 4)
     non_distributed_refs = [f"C{row}" for row in non_distributed_rows]
@@ -413,11 +429,12 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
         "=G3" + ("-" + "-".join(f"C{row}" for row in distributable_rows) if distributable_rows else "")
     )
     ws.cell(mandarin_row, 4).value = f"=C{mandarin_row}*$H$3"
-    ws.cell(mandarin_row, 5).value = f"=C{mandarin_row}+D{mandarin_row}"
+    ws.cell(mandarin_row, 5).value = _format_e_cell_formula(mandarin_row, "mandarin")
 
-    for row in distributable_rows:
-        ws.cell(row, 4).value = f"=C{row}*$H$3"
-        ws.cell(row, 5).value = f"=C{row}+D{row}"
+    for label, row in label_rows.items():
+        if label not in NON_DISTRIBUTED_LABELS and label not in {"karobka", "mandarin"}:
+            ws.cell(row, 4).value = f"=C{row}*$H$3"
+            ws.cell(row, 5).value = _format_e_cell_formula(row, label)
 
     for row in set([3, mandarin_row] + distributable_rows + non_distributed_rows):
         for col in (3, 4, 5, 7, 8):
@@ -603,47 +620,60 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
     mandarin_weight = round(g3 - distributable_sum, 4)
     mandarin_box_weight = round(mandarin_weight * h3, 4)
 
+    kg_fix_totals = await db.get_report_kg_fix_totals(report_id)
+
     metrics: dict[str, dict[str, float]] = {}
+    mandarin_fix = kg_fix_totals.get("mandarin", 0.0)
     metrics["mandarin"] = {
         "weight": mandarin_weight,
         "box_weight": mandarin_box_weight,
-        "total": round(mandarin_weight + mandarin_box_weight, 4),
+        "kg_fix": mandarin_fix,
+        "total": round(mandarin_weight + mandarin_box_weight + mandarin_fix, 4),
     }
 
     for label in distributed_labels:
         w = _num(inv.get(label, 0))
         bw = round(w * h3, 4)
+        delta = kg_fix_totals.get(label, 0.0)
         metrics[label] = {
             "weight": w,
             "box_weight": bw,
-            "total": round(w + bw, 4),
+            "kg_fix": delta,
+            "total": round(w + bw + delta, 4),
         }
 
     for label in non_distributed_labels:
         w = _num(inv.get(label, 0))
+        delta = kg_fix_totals.get(label, 0.0)
         metrics[label] = {
             "weight": w,
             "box_weight": 0.0,
-            "total": w,
+            "kg_fix": delta,
+            "total": round(w + delta, 4),
         }
 
     if "karobka" in inv or box_weight_total:
         metrics["karobka"] = {
             "weight": box_weight_total,
             "box_weight": 0.0,
+            "kg_fix": 0.0,
             "total": box_weight_total,
         }
 
     # "top" product type takes weight from "bizda qoladigan" in Obshiy ves
+    top_fix = kg_fix_totals.get("top", 0.0)
     metrics["top"] = {
         "weight": bizda_total,
         "box_weight": 0.0,
-        "total": bizda_total,
+        "kg_fix": top_fix,
+        "total": round(bizda_total + top_fix, 4),
     }
+    bizda_fix = kg_fix_totals.get("bizda", 0.0)
     metrics["bizda"] = {
         "weight": bizda_total,
         "box_weight": 0.0,
-        "total": bizda_total,
+        "kg_fix": bizda_fix,
+        "total": round(bizda_total + bizda_fix, 4),
     }
 
     return metrics
@@ -687,6 +717,7 @@ async def build_filtered_cross_report_excel(
             "name": rname,
             "weight": m["weight"],
             "box_weight": m["box_weight"],
+            "kg_fix": m.get("kg_fix", 0.0),
         })
 
     wb = Workbook()
@@ -742,7 +773,13 @@ async def build_filtered_cross_report_excel(
         c3.border = cell_border
 
         c4 = ws.cell(row_idx, 4)
-        c4.value = f"=B{row_idx}+C{row_idx}"
+        fix_delta = r.get("kg_fix", 0.0)
+        if fix_delta > 0:
+            c4.value = f"=B{row_idx}+C{row_idx}+{_formula_num(fix_delta)}"
+        elif fix_delta < 0:
+            c4.value = f"=B{row_idx}+C{row_idx}-{_formula_num(abs(fix_delta))}"
+        else:
+            c4.value = f"=B{row_idx}+C{row_idx}"
         c4.number_format = "0.00"
         c4.font = Font(name="Calibri", size=11, bold=True)
         c4.alignment = Alignment(horizontal="right", vertical="center")
