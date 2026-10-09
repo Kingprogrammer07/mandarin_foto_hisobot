@@ -905,7 +905,7 @@ async def build_special_docx(report_id: int) -> tuple[bytes, str]:
     bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 2)
     total_ves = round(top_total + bizda_total, 2)
 
-    # 3. Cargo items from Umumiy hisobot Column C
+    # 3. Cargo items from Umumiy hisobot Column E (To'lashi kerak bo'lgan summa)
     metrics = await calculate_report_metrics(report_id)
     inv = await _inventory_for_summary(report_id)
 
@@ -918,7 +918,7 @@ async def build_special_docx(report_id: int) -> tuple[bytes, str]:
     cargo_lines: list[str] = []
     for label in all_labels:
         m = metrics.get(label)
-        w = round(m["weight"], 2) if m else 0.0
+        w = round(m["total"], 2) if m else 0.0
         if w > 0:
             cargo_name = label.upper()
             special_label = f" ({special_name})" if special_name else ""

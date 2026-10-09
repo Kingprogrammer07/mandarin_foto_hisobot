@@ -315,7 +315,7 @@ reys_hisoboti_v2/
   - **2-qator**: `TOP CARGO {special_name} ({report_name}) - {top_total:.2f} KG. {date}` (Obshiy ves `top` worksheet D ustun jami).
   - **3-qator**: `Avia {special_name} ({report_name})  - {bizda_total:.2f} KG. {date}` (Obshiy ves `bizda qoladigan` worksheet D ustun jami).
   - **4-qator**: `(O'zimizga qolgan.)`.
-  - **5-qator va keyingilari**: Umumiy hisobot C ustunidagi og'irliklar: `{CARGO_NOMI} ({special_name}) - {weight:.2f} KG` (`mandarin` formuladagi og'irlik, `akb`, `jet`, `xabib`, va h.k. > 0 bo'lgan barcha kargolar).
+  - **5-qator va keyingilari**: Umumiy hisobot E ustunidagi og'irliklar ("To'lashi kerak bo'lgan summa:"): `{CARGO_NOMI} ({special_name}) - {total:.2f} KG` (`mandarin`, `akb`, `jet`, `xabib` va barcha kargolar bo'yicha karobka taqsimoti va kg_fix qo'shilgan yakuniy to'lov og'irligi).
   - Toza va ixcham Calibri 11.5pt shrifti, qalin sarlavhalar va 1.15 qatorlar oralig'i bilan `python-docx` orqali hosil qilinadi.
 - **Backend API & Bog'liqliklar**:
   - `requirements.txt`: `python-docx>=1.1.0`.
@@ -400,6 +400,7 @@ reys_hisoboti_v2/
       - Agar to'g'rilash bo'lmasa: standart `=C{row}+D{row}`.
     - C ustuni (sof yuk), D ustuni (karobka taqsimoti), Mandarin (C4) va Toza yuk (G3) formulalari toza va o'zgarishsiz qoladi.
   - `calculate_report_metrics` va Ko'p reysli filtr (`build_filtered_cross_report_excel`): Jami og'irlik E ustuniga to'liq mos keladi.
+  - `build_special_docx`: Word (.docx) hisobotidagi kargo qatorlari ham C ustunidan emas, aynan E ustunidan (`m["total"]`) olinadigan qilindi (karobka taqsimoti va kg_fix hisobga olingan holda).
   - `schema_migrations: unlink_kg_fix_from_inventory_20261009`: Eskidan qolgan `kg_fix` tufayli `inventory` ga qo'shilib qolgan deltalarni to'liq qaytarib, inventarni asl holiga keltirdi.
   - `#kgFixSheet` modalidagi tushuntirish hinti yangilandi.
 

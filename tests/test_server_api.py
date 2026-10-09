@@ -670,11 +670,14 @@ async def test_custom_types_umumiy_excel():
             assert metrics["xon cargo"]["box_weight"] > 0
             assert metrics["xon cargo"]["total"] > 9.0
 
-            # 6. Check build_special_docx
+            # 6. Check build_special_docx uses Column E (total)
             docx_bytes, docx_name = await excel_export.build_special_docx(rid)
             doc = docx.Document(io.BytesIO(docx_bytes))
             doc_text = "\n".join(p.text for p in doc.paragraphs)
             assert "XON CARGO" in doc_text
+            xon_tot_str = f"{round(metrics['xon cargo']['total'], 2):.2f} KG"
+            assert xon_tot_str in doc_text
+            assert "XON CARGO - 9.00 KG" not in doc_text
         finally:
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
 

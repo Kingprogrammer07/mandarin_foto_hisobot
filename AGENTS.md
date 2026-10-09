@@ -222,7 +222,7 @@ Saving is a `FormData` POST carrying `tg.initData`.
     - 2-qator: `TOP CARGO {special_name} ({report_name}) - {top_total:.2f} KG. {date}` (`top` worksheet jami).
     - 3-qator: `Avia {special_name} ({report_name})  - {bizda_total:.2f} KG. {date}` (`bizda qoladigan` worksheet jami).
     - 4-qator: `(O'zimizga qolgan.)`.
-    - 5-qator+: Umumiy hisobot C ustunidagi og'irliklar: `{CARGO_NOMI} ({special_name}) - {weight:.2f} KG` (`mandarin` formuladagi og'irlik, `akb`, `jet`, `xabib`, va h.k. > 0 bo'lgan barcha kargolar).
+    - 5-qator+: Umumiy hisobot E ustunidagi og'irliklar ("To'lashi kerak bo'lgan summa:"): `{CARGO_NOMI} ({special_name}) - {total:.2f} KG` (`mandarin`, `akb`, `jet`, `xabib` va barcha kargolar bo'yicha karobka taqsimoti va kg_fix qo'shilgan yakuniy to'lov og'irligi).
   - **Filtr va Qidiruv**: Asosiy qidiruv maydoni (`#homeSearchInput`) reys nomi hamda maxsus reys nomi bo'yicha qidiradi. Ko'p reysli filtr oynasida (`#reportsFilterSheet`) har bir reys yonida maxsus reys badge ko'rsatiladi, `#filterReportsSearch` orqali real vaqtda qidirish va `#filterSpecialOnlyReports` tugmasi bilan faqat maxsus reyslarni bir zumda belgilash imkoniyati qo'shilgan. Assets cache-busted with `?v=specialdocx1`.
 - **Dinamik Koeffitsient va Karobka Og'irligi Presets ('+' tugmasi va boshqaruv)**:
   - Kargolarga tarqatish (`#coefChips`) va Obshiy ves (`#topCoefChips`) bo'limlarida yangi qiymatlarni kiritish uchun interaktiv `+` tugmasi (`.chip--add`) hamda Kargolarga tarqatish "Ayirilmasin" ochiluvchi menyusida (`#coefBoxMenu`) `+ Yangi karobka og'irligi` elementi qo'shildi.
