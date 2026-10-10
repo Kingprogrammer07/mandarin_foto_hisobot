@@ -400,7 +400,11 @@ async def build_umumiy_excel(report_id: int) -> tuple[bytes, str]:
     kg_fixes = await db.get_report_kg_fixes(report_id)
 
     def _format_e_cell_formula(row_idx: int, label_key: str) -> str:
-        deltas = kg_fixes.get(label_key, [])
+        deltas = list(kg_fixes.get(label_key, []))
+        if label_key == "xabib":
+            for k, d_list in kg_fixes.items():
+                if k != "xabib" and db.normalize_type_key(k) == "xabib":
+                    deltas.extend(d_list)
         expr = f"C{row_idx}+D{row_idx}"
         if not deltas:
             return f"={expr}"
@@ -676,6 +680,24 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
         "total": round(bizda_total + bizda_fix, 4),
     }
 
+    metrics["_h3"] = h3
+
+    # Add distinct entries for raw inventory types (e.g. x637, x517, x657, x213, etc.)
+    raw_inv = await db.get_inventory(report_id)
+    for raw_t, raw_val in raw_inv.items():
+        distinct_k = db.normalize_telegram_type_key(raw_t)
+        if not distinct_k or distinct_k in metrics:
+            continue
+        rw = _num(raw_val)
+        rbw = 0.0 if distinct_k in NON_DISTRIBUTED_LABELS else round(rw * h3, 4)
+        rdelta = kg_fix_totals.get(distinct_k, 0.0)
+        metrics[distinct_k] = {
+            "weight": rw,
+            "box_weight": rbw,
+            "kg_fix": rdelta,
+            "total": round(rw + rbw + rdelta, 4),
+        }
+
     return metrics
 
 
@@ -698,7 +720,7 @@ async def build_filtered_cross_report_excel(
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-    norm_tovar = db.normalize_type_key(tovar_turi)
+    target_key = db.normalize_telegram_type_key(tovar_turi)
     raw_tovar = str(tovar_turi or "").strip().lower()
 
     rows_data = []
@@ -707,11 +729,23 @@ async def build_filtered_cross_report_excel(
         rname = await db.report_name(rid) or f"Reys #{rid}"
         metrics = await calculate_report_metrics(rid)
 
-        m = metrics.get(norm_tovar) or metrics.get(raw_tovar)
-        if not m:
-            inv = await db.get_inventory(rid)
-            w = _num(inv.get(raw_tovar, 0))
-            m = {"weight": w, "box_weight": 0.0, "total": w}
+        if target_key in ("top", "bizda"):
+            m = metrics.get("top") or metrics.get("bizda")
+        elif target_key == "mandarin":
+            m = metrics.get("mandarin")
+        elif target_key == "xabib":
+            # Pure XABIB (only entries specifically marked as xabib, distinct from x637, x517, x657, etc.)
+            raw_inv = await db.get_inventory(rid)
+            w = sum(_num(val) for k, val in raw_inv.items() if db.normalize_telegram_type_key(k) == "xabib")
+            h3 = metrics.get("_h3", 0.0)
+            bw = round(w * h3, 4)
+            kg_fixes = await db.get_report_kg_fix_totals(rid)
+            delta = kg_fixes.get("xabib", 0.0)
+            m = {"weight": w, "box_weight": bw, "kg_fix": delta, "total": round(w + bw + delta, 4)}
+        else:
+            m = metrics.get(target_key) or metrics.get(raw_tovar)
+            if not m:
+                m = {"weight": 0.0, "box_weight": 0.0, "kg_fix": 0.0, "total": 0.0}
 
         rows_data.append({
             "name": rname,

@@ -312,6 +312,37 @@ async def test_cross_report_filtered_export():
             assert top_ws.cell(4, 2).value == "=SUM(B2:B3)"
             assert top_ws.cell(4, 4).value == "=SUM(D2:D3)"
 
+            # 2c. Add XABIB and X657 entries and verify they are strictly distinct (no mixing in filtered export)
+            await db.add_reys(rid1, "tester", "XABIB", 50.0, 0.0, 50.0, 0)
+            await db.add_reys(rid1, "tester", "X657", 15.0, 0.0, 15.0, 0)
+            await db.add_reys(rid2, "tester", "XABIB", 30.0, 0.0, 30.0, 0)
+
+            # Export filtered for X657: rid1 should have 15.0, rid2 should have 0.0
+            x657_res = await client.post(
+                "/api/export/filtered",
+                json={"report_ids": [rid1, rid2], "tovar_turi": "X657"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert x657_res.status_code == 200
+            x657_wb = openpyxl.load_workbook(io.BytesIO(x657_res.content))
+            x657_ws = x657_wb.active
+            assert float(x657_ws.cell(2, 2).value) == 15.0
+            assert float(x657_ws.cell(3, 2).value) == 0.0
+
+            # Export filtered for XABIB: rid1 should have 50.0, rid2 should have 30.0 (x657 not mixed in)
+            xabib_res = await client.post(
+                "/api/export/filtered",
+                json={"report_ids": [rid1, rid2], "tovar_turi": "XABIB"},
+                cookies=cookies,
+                headers=headers,
+            )
+            assert xabib_res.status_code == 200
+            xabib_wb = openpyxl.load_workbook(io.BytesIO(xabib_res.content))
+            xabib_ws = xabib_wb.active
+            assert float(xabib_ws.cell(2, 2).value) == 50.0
+            assert float(xabib_ws.cell(3, 2).value) == 30.0
+
             # 3. Test POST /api/send-filtered
             # 3a. Validation error: missing channel
             bad_send = await client.post(
@@ -386,7 +417,7 @@ async def test_cross_report_filtered_export():
                     headers=headers,
                 )
                 assert xabib_send.status_code == 200
-                assert xabib_send.json()["count"] == 1
+                assert xabib_send.json()["count"] == 2
             finally:
                 outbox.set_bot(orig_bot)
 

@@ -807,7 +807,7 @@ async def get_report_kg_fixes(report_id: int) -> dict[str, list[float]]:
             rows = await cur.fetchall()
             out: dict[str, list[float]] = {}
             for r in rows:
-                key = normalize_type_key(r["tovar_turi"])
+                key = normalize_telegram_type_key(r["tovar_turi"])
                 if key:
                     out.setdefault(key, []).append(round(float(r["weight"] or 0), 4))
             return out

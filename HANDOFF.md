@@ -284,8 +284,8 @@ reys_hisoboti_v2/
 
 ### Q. Tovar Turlarini To'g'ri Ajratish (x637 vs xabib) va Reys Kartasi 3-Talik Nuqta Menyusi (2026-10-07)
 - **Tovar Turlari Normalizatsiyasi (`normalize_type_key` & `normalize_telegram_type_key`)**:
-  - Umumiy hisobotlar, inventar va Excel jadvallarida (`normalize_type_key`) `x637`, `x517`, `x657` kabi barcha `x`+raqamli turlar avvalgidek `xabib` hisobiga jamlanadi.
-  - **Faqat Telegramga yuborishda (`normalize_telegram_type_key`)**: Har bir `x`+raqamli tur (`x637`, `x517`, `x657`) `xabib` dan to'liq alohida mustaqil tur sifatida ajratiladi, natijada kanalga `x637` yuborilganda faqat `x637` yozuvlari va rasmlari yuboriladi, `xabib` qo'shilib ketmaydi.
+  - Reysning umumiy hisobotlarida (Umumiy hisobot Excel, Word DOCX summary) `x637`, `x517`, `x657` kabi barcha `x`+raqamli turlar 7-qator (`xabib`) hisobiga jamlanadi.
+  - **Ko'p reysli filtr & Excel eksport (`POST /api/export/filtered`) hamda Telegramga yuborishda (`normalize_telegram_type_key`)**: Har bir `x`+raqamli tur (`x637`, `x517`, `x657`) va sof `xabib` to'liq alohida mustaqil tur sifatida ajratiladi, natijada `x657` Excel yuklab olinganda yoki kanalga yuborilganda `xabib` yoki boshqa `x`-kodlar aralashib ketmaydi.
 - **Reys Kartasida 3 Talik Nuqtacha Menyusi (Kebab menu ⋮)**:
   - Bosh ekrandagi har bir reys kartasiga qulay 3-talik nuqtacha tugmasi (`.report-item__more`) qo'shildi.
   - Bosilganda zamonaviy `#reportMoreSheet` menyusi ochiladi va 2 ta asosiy amaliyotni taklif etadi:
@@ -403,6 +403,18 @@ reys_hisoboti_v2/
   - `build_special_docx`: Word (.docx) hisobotidagi kargo qatorlari ham C ustunidan emas, aynan E ustunidan (`m["total"]`) olinadigan qilindi (karobka taqsimoti va kg_fix hisobga olingan holda).
   - `schema_migrations: unlink_kg_fix_from_inventory_20261009`: Eskidan qolgan `kg_fix` tufayli `inventory` ga qo'shilib qolgan deltalarni to'liq qaytarib, inventarni asl holiga keltirdi.
   - `#kgFixSheet` modalidagi tushuntirish hinti yangilandi.
+
+### W. Ko'p Reysli Filtr Excel Eksportida X-Kodlarni (x657, x637, x517) Xabibdan To'liq Ajratish (2026-10-10)
+- **Talab & Muammo**:
+  - Foydalanuvchi "Filtr va Excel eksport" modalida (`#reportsFilterSheet`) `x657` (yoki `x637`, `x517`) tovar turini tanlab "Excel yuklab olish" tugmasini bosganda, yuklangan Excel jadvaliga `xabib` tovarining og'irligi ham qo'shilib ketayotgan edi.
+  - Sababi: `build_filtered_cross_report_excel` funksiyasida `norm_tovar = db.normalize_type_key(tovar_turi)` ishlatilgan va u barcha `x`+raqamli kodlarni `"xabib"` ga aylantirib, umumiy hisobotdagi jamlangan `xabib` (82.82 kg) metrikasini olib berayotgan edi.
+- **Yechim & Arxitektura**:
+  - `build_filtered_cross_report_excel`: Tovar turini normalizatsiya qilishda `db.normalize_telegram_type_key` ga o'tkazildi. `x657`, `x637`, `x517` va sof `xabib` alohida-alohida olinadi.
+  - `calculate_report_metrics`: Reys inventaridagi har bir xom tovar turi (`raw_inv = db.get_inventory(report_id)`) uchun o'zining mustaqil vazni, $H3$ karobka taqsimoti va $kg\_fix$ deltalari bilan `metrics` ga joylashtiriladi.
+  - Agar reysda `X657` mavjud bo'lmasa, `0.00 kg` deb ko'rsatiladi (avvalgidek xabib og'irligi qo'shilmaydi).
+  - Agar reysda `X657` (yoki `X637`, `X517`) mavjud bo'lsa, faqat uning sof vazni va unga tegishli karobka og'irligi ko'rsatiladi.
+  - `db.get_report_kg_fixes`: `kg_fix` deltalari ham har bir tovar turi bo'yicha (`normalize_telegram_type_key`) alohida saqlanadi.
+  - Barcha 22 ta avtomatlashtirilgan testlar muvaffaqiyatli o'tdi.
 
 ---
 
