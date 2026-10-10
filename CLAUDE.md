@@ -245,6 +245,10 @@ Saving is a `FormData` POST carrying `tg.initData`.
       - Mandarin (C4) formulasidan ayirib tashlanadi (`=G3 - C5 - C6 - ... - C{row}`).
       - Toza yuk (G3) formulasida esa sof yukdan ayrilmaydi (faqat izi, triton, top va C3 karobka ayriladi).
     - `calculate_report_metrics` va Word DOCX hisobotida (`build_special_docx`) ham barcha yangi kargolar taqsimlangan karobka og'irligi bilan to'liq hisob-kitobga kiritildi.
+- **Filtr va Excel Eksport Oynasida Reys Yaratilgan Vaqti va Sana Qidiruvi (`#reportsFilterSheet`)**:
+  - Ko'p reysli filtr oynasida har bir reys nomi yoniga yaratilgan sanasi va vaqti (`fmtTs(rep.created_at)` $\rightarrow$ `DD.MM.YYYY HH:MM`) ixcham badge (`.filter-report-checkbox__time`) sifatida joylashtirildi.
+  - Flex konteyner (`.filter-report-checkbox__info`) orqali keng ekranlarda nom, maxsus badge va vaqt bir qatorda turadi, tor mobil ekranlarda esa vaqt ravon tarzda pastga tushadi.
+  - `#filterReportsSearch` qidiruv maydoni reys nomi va maxsus nomdan tashqari sana/vaqt (`dataset.time`) bo'yicha ham real vaqtda filtrlaydi. Aktivlar `?v=filterdate1` bilan cache-bust qilindi.
 
 
 

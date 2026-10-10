@@ -1045,14 +1045,26 @@ body.work-open #panel-lost .transfer-arrow {
   cursor: pointer;
   flex: none;
 }
-.filter-report-checkbox__name {
+.filter-report-checkbox__info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-report-checkbox__name {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.filter-report-checkbox__time {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--hint);
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 .filter-report-checkbox__badge {
   font-size: 12px;
@@ -1061,6 +1073,8 @@ body.work-open #panel-lost .transfer-arrow {
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 600;
+  flex: none;
+  margin-left: auto;
 }
 .filter-reports-search-wrap {
   position: relative;
@@ -1086,7 +1100,6 @@ body.work-open #panel-lost .transfer-arrow {
 .filter-report-checkbox__special {
   display: inline-flex;
   align-items: center;
-  margin-left: 6px;
   padding: 2px 7px;
   border-radius: 6px;
   font-size: 11px;

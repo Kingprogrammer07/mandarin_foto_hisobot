@@ -3793,12 +3793,26 @@
           label.className = "filter-report-checkbox";
           label.dataset.name = (rep.name || "").toLowerCase();
           label.dataset.special = (rep.special_name || "").toLowerCase();
-          const specialBadge = rep.special_name
-            ? `<span class="filter-report-checkbox__special">${escapeHtml(rep.special_name)}</span>`
+          const timeText = rep.created_at ? fmtTs(rep.created_at) : "";
+          label.dataset.time = timeText.toLowerCase();
+          const specialBadges = rep.special_name
+            ? String(rep.special_name)
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((p) => `<span class="filter-report-checkbox__special">${escapeHtml(p)}</span>`)
+                .join("")
+            : "";
+          const timeBadge = timeText
+            ? `<span class="filter-report-checkbox__time">${escapeHtml(timeText)}</span>`
             : "";
           label.innerHTML = `
             <input type="checkbox" value="${rep.id}" checked />
-            <span class="filter-report-checkbox__name">${escapeHtml(rep.name || "Reys")}${specialBadge}</span>
+            <div class="filter-report-checkbox__info">
+              <span class="filter-report-checkbox__name">${escapeHtml(rep.name || "Reys")}</span>
+              ${specialBadges}
+              ${timeBadge}
+            </div>
             <span class="filter-report-checkbox__badge">${rep.entries || 0} ta</span>
           `;
           els.filterReportsList.appendChild(label);
@@ -4024,7 +4038,8 @@
       els.filterReportsList.querySelectorAll(".filter-report-checkbox").forEach((item) => {
         const name = item.dataset.name || "";
         const spec = item.dataset.special || "";
-        const match = !q || name.includes(q) || spec.includes(q);
+        const time = item.dataset.time || "";
+        const match = !q || name.includes(q) || spec.includes(q) || time.includes(q);
         item.style.display = match ? "" : "none";
       });
     });

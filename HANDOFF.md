@@ -416,6 +416,22 @@ reys_hisoboti_v2/
   - `db.get_report_kg_fixes`: `kg_fix` deltalari ham har bir tovar turi bo'yicha (`normalize_telegram_type_key`) alohida saqlanadi.
   - Barcha 22 ta avtomatlashtirilgan testlar muvaffaqiyatli o'tdi.
 
+### X. Filtr va Excel Eksport Oynasida Reys Yaratilgan Vaqtini Ko'rsatish (2026-10-10)
+- **Talab & Maqsad**:
+  - Foydalanuvchi "Filtr va Excel eksport" oynasida (`#reportsFilterSheet`) qaysi reys qachon ochilganini darhol ko'rish va adashmaslik uchun reys nomlari yonida uning yaratilgan sanasi va vaqti ko'rsatilishi so'raldi.
+- **Yechim & Arxitektura**:
+  - `webapp/js/app.js` (`openReportsFilter`):
+    - Har bir reys uchun `timeText = rep.created_at ? fmtTs(rep.created_at) : ""` hisoblanadi (masalan, `10.10.2026 14:30`).
+    - Har bir reys checkbox qatorida `<div class="filter-report-checkbox__info">` konteyneri ichida `<span class="filter-report-checkbox__name">` (reys nomi), `${specialBadges}` (agar maxsus reys nomi bo'lsa) va `<span class="filter-report-checkbox__time">` (yaratilgan sana/vaqt) joylashtirildi.
+    - `label.dataset.time = timeText.toLowerCase()` qo'shildi va `#filterReportsSearch` qidiruv maydonida sana bo'yicha ham real vaqtda qidirish imkoniyati ta'minlandi.
+  - `webapp/css/styles.css`:
+    - `.filter-report-checkbox__info`: `flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;` — keng ekranlarda nom, badge va vaqt bir qatorda chiroyli joylashadi, tor ekranlarda esa vaqt avtomatik tarzda ikkinchi qatorga tushadi, hech qanday matn ezilmaydi.
+    - `.filter-report-checkbox__time`: `font-size: 12px; font-weight: 500; color: var(--hint); letter-spacing: 0.01em;`.
+    - `.filter-report-checkbox__badge`: `flex: none; margin-left: auto;` bilan o'ng tomonga qat'iy biriktirildi.
+  - `webapp/index.html`:
+    - Qidiruv placeholderi yangilandi: `"Reys nomi, maxsus nom yoki sana bo'yicha qidirish..."`.
+    - Keshni tozalash (cache busting) uchun aktivlar versiyasi `?v=filterdate1` ga ko'tarildi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
