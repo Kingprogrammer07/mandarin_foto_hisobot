@@ -432,6 +432,23 @@ reys_hisoboti_v2/
     - Qidiruv placeholderi yangilandi: `"Reys nomi, maxsus nom yoki sana bo'yicha qidirish..."`.
     - Keshni tozalash (cache busting) uchun aktivlar versiyasi `?v=filterdate1` ga ko'tarildi.
 
+### Y. Tezkor Rejimda (Fast Mode) Koeffitsient va Karobka Og'irligini Eslab Qolish hamda Reyslar Sahifasida Refresh Tugmasi (2026-10-11)
+- **Talab & Maqsad**:
+  - Obshiy ves xizmat formalarida (`top`, `topchiqgan`, `bizda`, `chiqgan`) tezkor rejim (`Fast Mode`) yoniq bo'lganda, har safar rasm olib saqlangandan keyin tanlangan karobka og'irligi (masalan, 1.22 yoki 1.4 yoki boshqa chip) o'chib ketmay, keyingi yozuvlar uchun ham saqlanib qolishi so'raldi.
+  - Kargolarga tarqatishda ham xuddi shu qulaylik: tezkor rejimda (`reysFast`) koeffitsient (ayirilmasin, karobka og'irligi yoki 0.94, 1.22 chiplari) va tovar turi keyingi yozuvlar uchun eslab qolinishi.
+  - Asosiy reyslar sahifasida (`#/reports`) sahifani butunlay yangilaydigan (reload) `Refresh` tugmasi bo'lishi (navbarda mavzu almashtirish tugmasi yonida).
+- **Yechim & Arxitektura**:
+  - `webapp/js/app.js`:
+    - `resetTop(full)`: `if (full || (!state.topFast && !remember))` tekshiruvi o'rnatildi. Yangi yozuv saqlangandan so'ng (`resetTop(false)`), agar `topFast` (yoki `remember`) yoniq bo'lsa, tanlangan karobka og'irligi (`topCoef`, faol chip va custom qiymat) tozalanmaydi va keyingi kiritishlar uchun saqlanib qoladi.
+    - `resetForm(full)`: `if (full || (!remember && !state.reysFast))` tekshiruvi orqali Kargolarga tarqatishda ham tezkor rejim faol bo'lganda tovar turi va koeffitsient (`Ayirilmasin` karobka og'irligi yoki yonidagi chiplar) to'liq saqlanib qoladi.
+    - `els.homeRefreshBtn`: Click bo'lganda tebranish (haptic feedback), aylanuvchi animatsiya (`.is-spinning`) va butun sahifani qayta yuklash (`window.location.reload()`) bajariladi.
+  - `webapp/index.html`:
+    - `homeScreen` navbari ichida `.screen__top-actions` konteyneri yaratilib, `#homeRefreshBtn` (Material Design reload ikonkasi) va `#homeThemeBtn` yonma-yon joylashtirildi.
+    - Keshni tozalash (cache-busting) uchun versiyalar `?v=fastmode1` ga oshirildi.
+  - `webapp/css/styles.css`:
+    - `.screen__top-actions`: `display: flex; align-items: center; gap: 8px;`.
+    - `.theme-btn.is-spinning .ic`: `@keyframes spin-refresh` orqali 360° silliq aylanish animatsiyasi berildi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

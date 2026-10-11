@@ -249,6 +249,7 @@ Saving is a `FormData` POST carrying `tg.initData`.
   - Ko'p reysli filtr oynasida har bir reys nomi yoniga yaratilgan sanasi va vaqti (`fmtTs(rep.created_at)` $\rightarrow$ `DD.MM.YYYY HH:MM`) ixcham badge (`.filter-report-checkbox__time`) sifatida joylashtirildi.
   - Flex konteyner (`.filter-report-checkbox__info`) orqali keng ekranlarda nom, maxsus badge va vaqt bir qatorda turadi, tor mobil ekranlarda esa vaqt ravon tarzda pastga tushadi.
   - `#filterReportsSearch` qidiruv maydoni reys nomi va maxsus nomdan tashqari sana/vaqt (`dataset.time`) bo'yicha ham real vaqtda filtrlaydi. Aktivlar `?v=filterdate1` bilan cache-bust qilindi.
-
-
-
+- **Tezkor Rejimda (Fast Mode) Qiymatlarni Eslab Qolish va Reyslar Sahifasida Refresh Tugmasi**:
+  - **Obshiy ves**: `Fast Mode` (`topFast`) yoki `remember` yoniq bo'lganda, `resetTop(false)` orqali har safar saqlangandan keyin tanlangan karobka og'irligi (`topCoef`, faol chip va custom qiymat) o'chib ketmasdan keyingi yozuvlar uchun avtomatik saqlanib qoladi.
+  - **Kargolarga tarqatish**: `Fast Mode` (`reysFast`) yoki `remember` yoniq bo'lganda, `resetForm(false)` orqali tanlangan tovar turi hamda koeffitsient (`Ayirilmasin` karobka og'irligi yoki 0.94, 1.22 chiplari) keyingi yozuvlar uchun eslab qolinadi.
+  - **Reyslar sahifasi (#/reports) Refresh tugmasi**: `homeScreen` navbarida (`.screen__top-actions`) mavzu tugmasi yoniga `#homeRefreshBtn` (Material Design reload) qo'shildi — bosilganda tebranish (haptic), 360° aylanuvchi animatsiya (`.is-spinning`) va sahifani to'liq qayta yuklash (`window.location.reload()`) ishlaydi. Aktivlar `?v=fastmode1` bilan cache-bust qilindi.

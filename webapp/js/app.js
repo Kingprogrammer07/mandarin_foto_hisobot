@@ -270,6 +270,7 @@
     reportName: $("#reportName"),
     settingsBtn: $("#settingsBtn"),
     homeScreen: $("#homeScreen"),
+    homeRefreshBtn: $("#homeRefreshBtn"),
     homeThemeBtn: $("#homeThemeBtn"),
     newReportBtn: $("#newReportBtn"),
     homeFilterBtn: $("#homeFilterBtn"),
@@ -1578,8 +1579,10 @@
     state.topWeightRaw = "";
     els.topWeight.value = "";
     renderPhotos("topPhotos");
-    if (state.formSection === "bizda") setTopCoefUI("fixed", 1);
-    else setTopCoefUI("none", 0);
+    if (full || (!state.topFast && !remember)) {
+      if (state.formSection === "bizda") setTopCoefUI("fixed", 1);
+      else setTopCoefUI("none", 0);
+    }
     if (full) {
       // Opening a report resets the free-text unlock back to numeric-only;
       // fast mode is a persisted workflow preference, so it's kept.
@@ -3486,6 +3489,13 @@
     }
   }
 
+  if (els.homeRefreshBtn) {
+    els.homeRefreshBtn.addEventListener("click", () => {
+      haptic("medium");
+      els.homeRefreshBtn.classList.add("is-spinning");
+      window.location.reload();
+    });
+  }
   els.newReportBtn.addEventListener("click", openNameSheet);
   els.nameSave.addEventListener("click", submitNameSheet);
   els.nameClose.addEventListener("click", closeNameSheet);
@@ -5122,9 +5132,9 @@
     state.photos = [];
     state.weightRaw = "";
     els.weight.value = "";
-    // Keep the type + coefficient when "remember" is on (unless a full reset,
+    // Keep the type + coefficient when fast mode or remember is on (unless a full reset,
     // e.g. opening a report — each report starts from 0).
-    if (full || !remember) {
+    if (full || (!remember && !state.reysFast)) {
       state.type = "AKB";
       state.coef = { mode: "none", value: 0, boxWeight: 0 };
       els.typeValue.textContent = "AKB";
