@@ -60,6 +60,8 @@ async def test_api_routes():
             assert r.status_code == 200
             inv = r.json()["inventory"]
             assert abs(inv[t1] - 40.0) < 1e-4
+            box_counts = r.json().get("box_counts", {})
+            assert box_counts.get(t1) == 1
 
             # 8. Export Excel
             for ep in ("kargo", "obshiy", "summary"):

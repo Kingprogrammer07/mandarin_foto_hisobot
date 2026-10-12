@@ -478,6 +478,35 @@ reys_hisoboti_v2/
   - `tests/test_server_api.py`:
     - `/api/reports/{rid}/special-text` endpointi va barcha kargo qatorlari oxirida `.` mavjudligi bo'yicha avtomatlashtirilgan test tekshiruvi qo'shildi. Barcha 22 ta test 100% muvaffaqiyatli o'tmoqda.
 
+### AA. Kargolarga Tarqatishda Yangi "Ombor Holati" Tabi va Karobkalar Soni Ko'rsatkichi (2026-10-12)
+- **Talab & Maqsad**:
+  - Kargolarga tarqatish ekraniga yangi mustaqil tab qo'shish ("Ombor holati").
+  - "Adashgan yuklar" (tab 2) pastida joylashgan barcha tovar turlari ombor qoldig'ini (`#balances`) yangi tabga ko'chirish.
+  - Har bir tovar turi bo'yicha nafaqat uning sof og'irligi (`kg`), balki ushbu reys bo'yicha nechtadan karobka (yuk yozuvi) mavjudligini ham ko'rsatish (`4 ta karobka`, `0 ta karobka`).
+- **Yechim & Arxitektura**:
+  - `app/db.py`:
+    - `_box_counts(c, report_id)` va `get_box_counts(report_id)` qo'shildi (`SELECT UPPER(TRIM(tovar_turi)) AS t_type, COUNT(*) AS count FROM activity WHERE report_id = ? AND action = 'reys' AND deleted_at IS NULL GROUP BY UPPER(TRIM(tovar_turi))`).
+    - `add_reys`, `edit_reys`, `delete_entry` funksiyalari o'zgarish sodir bo'lganda yangilangan `box_counts` lug'atini qaytaradi.
+  - `app/server.py`:
+    - `GET /api/inventory`: Endi `{"inventory": inv, "box_counts": counts}` ko'rinishida tovar turlari qoldiqlari bilan birga karobkalar sonini ham qaytaradi.
+    - `POST /api/report`, `PUT /api/report/{id}`, `DELETE /api/entry/{id}` yangilangan `box_counts` ni o'z ichiga oladi.
+  - `webapp/index.html`:
+    - Kargolarga tarqatish navbarida 3-tab: `<button class="tab" role="tab" data-tab="stock">Ombor holati</button>`.
+    - `#panel-lost` dan pastdagi `work-card--balances` olib tashlandi (transfer ekrani ixcham va toza bo'ldi).
+    - Yangi `#panel-stock` qo'shildi: yuqorisida xulosa kartalari (Jami og'irlik, Jami karobkalar, Mavjud tovarlar), real vaqtda tovar qidirish maydoni (`#stockSearchInput`) va ombor kartalari tarmog'i (`#balances`).
+    - Keshni tozalash uchun versiya `?v=ombor1` ga ko'tarildi.
+  - `webapp/css/styles.css`:
+    - 3 ta tab mobil qurilmalarda sig'ishi uchun `.tab` font-size va padding qiymatlari moslashtirildi (`clamp(12px, 3.2vw, 14px)`).
+    - `#panel-lost` ning desktop media query griddagi ortiqcha bo'sh joyi olib tashlandi.
+    - `.stock-summary`, `.stock-summary__card`, `.stock-search-wrap`, `.bal-cell--active`, `.bal-cell__boxes`, `.bal-cell__boxes--has` dizayni ishlab chiqildi.
+  - `webapp/js/app.js`:
+    - `els.panels` ga `stock: $("#panel-stock")` ulandi.
+    - `setTab("stock")` va `/report/:id/kargo/stock` marshrutlash qo'llab-quvvatlandi.
+    - `renderBalances()`: Qidiruv bo'yicha saralash, umumiy xulosa metrikalarini hisoblash, har bir kartada tovar nomi, og'irligi va `${count} ta karobka` badge ko'rsatish hamda kartani bosganda shu tovar turining yozuvlariga tezkor o'tish imkoniyatlari qo'shildi.
+    - `loadInventory` va outbox sinxronizatsiyasida `box_counts` to'liq qabul qilinadi.
+  - `tests/test_server_api.py`:
+    - `/api/inventory` da `box_counts` qaytishi va kargo yozilganda uning hisoblagichi 1 ga teng bo'lishi tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

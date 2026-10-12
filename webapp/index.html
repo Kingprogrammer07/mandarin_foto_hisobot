@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#ffffff" id="themeColor" />
   <title>Reys hisoboti</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/css/styles.css?v=specialtext1" />
+  <link rel="stylesheet" href="/css/styles.css?v=ombor1" />
 </head>
 <body>
   <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
@@ -40,6 +40,7 @@
     <nav class="tabs" role="tablist" aria-label="Bo'limlar">
       <button class="tab is-active" role="tab" data-tab="report" aria-selected="true">Reys hisoboti</button>
       <button class="tab" role="tab" data-tab="lost" aria-selected="false">Adashgan yuklar</button>
+      <button class="tab" role="tab" data-tab="stock" aria-selected="false">Ombor holati</button>
     </nav>
   </header>
 
@@ -213,11 +214,39 @@
       </div>
 
       <button type="button" class="btn btn--primary save-btn work-save" id="adjSaveBtn">Saqlash</button>
+    </section>
 
-      <!-- Current stock (each tovar turi separately) -->
-      <div class="field work-card work-card--balances">
-        <span class="field__label">Ombor holati</span>
-        <div class="balances" id="balances"></div>
+    <!-- ============ TAB 3: OMBOR HOLATI ============ -->
+    <section class="panel" id="panel-stock" role="tabpanel" hidden>
+      <!-- Stock summary metrics cards -->
+      <div class="stock-summary">
+        <div class="stock-summary__card">
+          <span class="stock-summary__label">Jami og'irlik</span>
+          <span class="stock-summary__val" id="stockTotalWeight">0<span> kg</span></span>
+        </div>
+        <div class="stock-summary__card">
+          <span class="stock-summary__label">Jami karobkalar</span>
+          <span class="stock-summary__val" id="stockTotalBoxes">0<span> ta</span></span>
+        </div>
+        <div class="stock-summary__card">
+          <span class="stock-summary__label">Mavjud tovarlar</span>
+          <span class="stock-summary__val" id="stockActiveTypes">0<span> tur</span></span>
+        </div>
+      </div>
+
+      <!-- Search bar -->
+      <div class="stock-search-wrap">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M10 18a8 8 0 1 1 5.3-2l5.4 5.3-1.4 1.4-5.3-5.4A8 8 0 0 1 10 18Zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>
+        <input type="text" id="stockSearchInput" class="stock-search__input" placeholder="Tovar turini qidirish..." />
+      </div>
+
+      <!-- Current stock grid -->
+      <div class="field work-card work-card--balances work-card--stock-panel">
+        <div class="field__head">
+          <span class="field__label">Ombor holati</span>
+          <span class="stock-count-badge" id="stockListCount">0 ta tovar</span>
+        </div>
+        <div class="balances balances--stock" id="balances"></div>
       </div>
     </section>
   </main>
@@ -994,6 +1023,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=specialtext1"></script>
+  <script src="/js/app.js?v=ombor1"></script>
 </body>
 </html>

@@ -72,6 +72,8 @@
     type: "akb",
     customTypes: [], // server-persisted user-added types
     inventory: {}, // tovar_turi -> weight (from server)
+    boxCounts: {}, // tovar_turi -> count of boxes (from server)
+    stockSearch: "",
     coef: { mode: "none", value: 0, boxWeight: 0 }, // mode: none | box | fixed | custom
     weightRaw: "",
     adjFrom: "",
@@ -178,7 +180,7 @@
   const $ = (sel) => document.querySelector(sel);
   const els = {
     tabs: document.querySelectorAll(".tab"),
-    panels: { report: $("#panel-report"), lost: $("#panel-lost") },
+    panels: { report: $("#panel-report"), lost: $("#panel-lost"), stock: $("#panel-stock") },
     photoGrid: $("#photoGrid"),
     photoCounter: $("#photoCounter"),
     btnGallery: $("#btnGallery"),
@@ -237,6 +239,11 @@
     adjWeight: $("#adjWeight"),
     adjSaveBtn: $("#adjSaveBtn"),
     balances: $("#balances"),
+    stockSearchInput: $("#stockSearchInput"),
+    stockTotalWeight: $("#stockTotalWeight"),
+    stockTotalBoxes: $("#stockTotalBoxes"),
+    stockActiveTypes: $("#stockActiveTypes"),
+    stockListCount: $("#stockListCount"),
     // activity
     activityBtn: $("#activityBtn"),
     activityScreen: $("#activityScreen"),
@@ -604,10 +611,18 @@
     els.panels.report.hidden = name !== "report";
     els.panels.lost.classList.toggle("is-active", name === "lost");
     els.panels.lost.hidden = name !== "lost";
+    if (els.panels.stock) {
+      els.panels.stock.classList.toggle("is-active", name === "stock");
+      els.panels.stock.hidden = name !== "stock";
+    }
     // Save only applies to the report tab.
     els.saveBtn.style.display = name === "report" ? "" : "none";
     if (!suppressTabRoute && workAreaVisible()) {
-      setRoute(`/report/${state.reportId}/kargo/${name === "lost" ? "adjust" : "reys"}`, true);
+      const sub = name === "lost" ? "adjust" : name === "stock" ? "stock" : "reys";
+      setRoute(`/report/${state.reportId}/kargo/${sub}`, true);
+    }
+    if (name === "stock") {
+      loadInventory();
     }
     haptic("select");
   }
@@ -1479,7 +1494,7 @@
     try {
       openReport(rep);
       if (route.page === "kargo") {
-        openWork(route.section === "adjust" ? "lost" : "report");
+        openWork(route.section === "adjust" ? "lost" : route.section === "stock" ? "stock" : "report");
       } else if (route.page === "obshiy") {
         if (OBSHIY_SECTIONS.includes(route.section)) openForm(route.section);
         else showObshiy();
@@ -1585,7 +1600,8 @@
     setTab(nextTab);
     suppressTabRoute = false;
     syncFastModeBanners();
-    if (state.reportId) setRoute(`/report/${state.reportId}/kargo/${nextTab === "lost" ? "adjust" : "reys"}`);
+    const sub = nextTab === "lost" ? "adjust" : nextTab === "stock" ? "stock" : "reys";
+    if (state.reportId) setRoute(`/report/${state.reportId}/kargo/${sub}`);
     syncBackButton();
   }
 
@@ -2759,6 +2775,8 @@
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.ok) throw new Error(json.detail || "O'chirib bo'lmadi");
         state.inventory = json.balances || state.inventory;
+        if (json.box_counts) state.boxCounts = json.box_counts;
+        else loadInventory();
         renderBalances();
         renderAdjust();
       } catch (e) {
@@ -2920,6 +2938,8 @@
     entry.sendStatus = null;
     if (item.reportId === state.reportId) {
       state.inventory = json.inventory || json.balances || state.inventory;
+      if (json.box_counts) state.boxCounts = json.box_counts;
+      else loadInventory();
       renderBalances();
       renderAdjust();
     }
@@ -4969,25 +4989,99 @@
       if (!res.ok) return;
       const json = await res.json();
       state.inventory = json.inventory || {};
+      state.boxCounts = json.box_counts || {};
       renderBalances();
       renderAdjust();
     } catch (_) {}
   }
 
   function renderBalances() {
+    if (!els.balances) return;
+    const q = (state.stockSearch || "").trim().toLowerCase();
     const entries = Object.entries(state.inventory).sort((a, b) => a[0].localeCompare(b[0]));
-    els.balances.innerHTML = "";
+
+    let totalWeight = 0;
+    let totalBoxes = 0;
+    let activeTypes = 0;
+
     entries.forEach(([t, w]) => {
+      const numW = Number(w) || 0;
+      const count = Number(state.boxCounts?.[t] || 0);
+      totalWeight += numW;
+      totalBoxes += count;
+      if (numW > 0 || count > 0) activeTypes++;
+    });
+
+    if (els.stockTotalWeight) {
+      els.stockTotalWeight.innerHTML = `${(Math.round(totalWeight * 100) / 100).toLocaleString("en-US")}<span> kg</span>`;
+    }
+    if (els.stockTotalBoxes) {
+      els.stockTotalBoxes.innerHTML = `${totalBoxes.toLocaleString("en-US")}<span> ta</span>`;
+    }
+    if (els.stockActiveTypes) {
+      els.stockActiveTypes.innerHTML = `${activeTypes}<span> tur</span>`;
+    }
+
+    const filtered = entries.filter(([t]) => !q || t.toLowerCase().includes(q));
+
+    if (els.stockListCount) {
+      els.stockListCount.textContent = q ? `${filtered.length} ta topildi` : `${entries.length} ta tovar`;
+    }
+
+    els.balances.innerHTML = "";
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "balances-empty";
+      empty.textContent = q ? "Bunday tovar turi topilmadi" : "Ma'lumot yo'q";
+      els.balances.appendChild(empty);
+      return;
+    }
+
+    filtered.forEach(([t, w]) => {
+      const numW = Math.round(Number(w) * 100) / 100;
+      const count = Number(state.boxCounts?.[t] || 0);
+      const isZero = numW === 0 && count === 0;
+
       const cell = document.createElement("div");
-      cell.className = "bal-cell";
+      cell.className = "bal-cell" + (isZero ? " bal-cell--zero" : " bal-cell--active");
+
+      const head = document.createElement("div");
+      head.className = "bal-cell__head";
+
       const name = document.createElement("div");
       name.className = "bal-cell__name";
       name.textContent = t;
+
+      const boxBadge = document.createElement("div");
+      boxBadge.className = "bal-cell__boxes" + (count > 0 ? " bal-cell__boxes--has" : "");
+      boxBadge.innerHTML = `<span class="bal-cell__boxes-num">${count}</span> ta karobka`;
+
+      head.append(name, boxBadge);
+
       const val = document.createElement("div");
       val.className = "bal-cell__val";
-      val.innerHTML = `${(Math.round(Number(w) * 100) / 100).toLocaleString("en-US")}<span> kg</span>`;
-      cell.append(name, val);
+      val.innerHTML = `${numW.toLocaleString("en-US")}<span> kg</span>`;
+
+      cell.append(head, val);
+
+      if (count > 0) {
+        cell.style.cursor = "pointer";
+        cell.title = `${t} yozuvlarini ko'rish`;
+        cell.addEventListener("click", () => {
+          entriesFilterState.type = t;
+          openEntries("reys");
+          haptic("light");
+        });
+      }
+
       els.balances.appendChild(cell);
+    });
+  }
+
+  if (els.stockSearchInput) {
+    els.stockSearchInput.addEventListener("input", (e) => {
+      state.stockSearch = e.target.value;
+      renderBalances();
     });
   }
 

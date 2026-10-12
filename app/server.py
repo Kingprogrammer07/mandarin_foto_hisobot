@@ -629,7 +629,7 @@ async def submit_report(
     log.info("reys by %s [r%s e%s]: %s +%s (weight=%s coef=%s photos=%d)",
              identity, rid, entry_id, tovar_turi, net, weight, coefficient, len(photo_data))
     return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
-                         "inventory": result["inventory"], "entry_id": entry_id,
+                         "inventory": result["inventory"], "box_counts": result.get("box_counts", {}), "entry_id": entry_id,
                          "photo_idxs": list(range(len(photo_data)))})
 
 
@@ -678,7 +678,7 @@ async def edit_report_entry(
     log.info("reys edit by %s [r%s e%s]: %s (weight=%s coef=%s)",
              identity, rid, entry_id, tovar_turi, weight, coefficient)
     return JSONResponse({"ok": True, "net": net, "balance": result["balance"],
-                         "inventory": result["inventory"], "entry_id": entry_id,
+                         "inventory": result["inventory"], "box_counts": result.get("box_counts", {}), "entry_id": entry_id,
                          "edited": bool(result.get("edited"))})
 
 
@@ -895,7 +895,7 @@ async def delete_entry(request: Request, entry_id: int, report_id: int | None = 
             detail=f"{exc.tovar_turi}da yetarli emas: {round(exc.have, 2)} kg mavjud",
         )
     log.info("entry %s deleted by %s [r%s]", entry_id, identity, rid)
-    return {"ok": True, "balances": result["balances"]}
+    return {"ok": True, "balances": result["balances"], "box_counts": result.get("box_counts", {})}
 
 
 @app.get("/api/entries")
@@ -1264,7 +1264,9 @@ async def api_entry_photo(request: Request, entry_id: int, idx: int):
 async def api_inventory(request: Request, report_id: int | None = None):
     _auth_or_403(request, state_changing=False)
     rid = await _require_report(report_id)
-    return {"inventory": await db.get_inventory(rid)}
+    inv = await db.get_inventory(rid)
+    counts = await db.get_box_counts(rid)
+    return {"inventory": inv, "box_counts": counts}
 
 
 @app.get("/api/activity")

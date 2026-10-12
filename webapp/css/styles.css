@@ -656,10 +656,13 @@ body.work-open .tabs {
 body.work-open .tab {
   flex: 1;
   min-height: 38px;
-  padding: 0 10px;
+  padding: 0 6px;
   border-radius: 13px;
-  font-size: 14px;
+  font-size: clamp(12px, 3.2vw, 14px);
   font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 body.work-open .tab.is-active {
   background: color-mix(in srgb, var(--section-bg) 92%, transparent);
@@ -821,8 +824,7 @@ body.work-open #panel-lost .transfer-arrow {
       "photos from"
       "photos to"
       "photos weight"
-      "photos save"
-      "balances balances";
+      "photos save";
     align-items: start;
   }
   body.work-open #panel-lost .work-card--photos { grid-area: photos; position: sticky; top: 116px; }
@@ -830,7 +832,6 @@ body.work-open #panel-lost .transfer-arrow {
   body.work-open #panel-lost .work-card--to { grid-area: to; }
   body.work-open #panel-lost .work-card--weight { grid-area: weight; }
   body.work-open #panel-lost .work-save { grid-area: save; }
-  body.work-open #panel-lost .work-card--balances { grid-area: balances; }
   body.work-open .work-card--photos {
     min-height: 420px;
   }
@@ -1263,14 +1264,160 @@ body.locked { overflow: hidden; }
 .transfer-arrow svg { width: 26px; height: 26px; }
 .balances { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .balances:empty::after { content: "Ma'lumot yo'q"; color: var(--hint); font-size: 14px; }
-.bal-cell {
-  background: var(--fill);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
+
+/* ---------- Tab 3: Ombor holati ---------- */
+.stock-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.bal-cell__name { font-size: 12px; color: var(--hint); text-transform: uppercase; letter-spacing: .3px; }
-.bal-cell__val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
-.bal-cell__val span { font-size: 12px; font-weight: 500; color: var(--hint); }
+.stock-summary__card {
+  background: var(--card-bg, var(--fill));
+  border: 1px solid color-mix(in srgb, var(--separator) 45%, transparent);
+  border-radius: 16px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stock-summary__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.stock-summary__val {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.2;
+}
+.stock-summary__val span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+  margin-left: 2px;
+}
+.stock-search-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+.stock-search-wrap .ic {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--hint);
+  pointer-events: none;
+}
+.stock-search__input {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px 0 38px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--separator) 55%, transparent);
+  background: var(--fill);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.stock-search__input:focus {
+  border-color: var(--accent);
+}
+.stock-count-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+}
+.work-card--stock-panel {
+  padding: 14px;
+  background: var(--card-bg, var(--fill));
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--separator) 45%, transparent);
+}
+.balances--stock {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.bal-cell {
+  background: color-mix(in srgb, var(--fill) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 72px;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  user-select: none;
+}
+.bal-cell--active {
+  background: color-mix(in srgb, var(--accent) 7%, var(--fill));
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.bal-cell--active:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.bal-cell--zero {
+  opacity: 0.62;
+}
+.bal-cell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.bal-cell__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.bal-cell__boxes {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hint);
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--separator) 35%, transparent);
+  white-space: nowrap;
+}
+.bal-cell__boxes--has {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  font-weight: 700;
+}
+.bal-cell__boxes-num {
+  font-variant-numeric: tabular-nums;
+}
+.bal-cell__val {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.bal-cell__val span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+}
+.balances-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px 16px;
+  color: var(--hint);
+  font-size: 14px;
+}
 
 /* ---------- Full-screen overlay (Faolligim) ---------- */
 .screen {

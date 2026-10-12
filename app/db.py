@@ -679,6 +679,23 @@ async def get_inventory(report_id: int) -> dict[str, float]:
         return await _inventory(c, report_id)
 
 
+async def _box_counts(c: aiosqlite.Connection, report_id: int) -> dict[str, int]:
+    async with c.execute(
+        """SELECT UPPER(TRIM(tovar_turi)) AS t_type, COUNT(*) AS count
+           FROM activity
+           WHERE report_id = ? AND action = 'reys' AND deleted_at IS NULL
+           GROUP BY UPPER(TRIM(tovar_turi))""",
+        (report_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+        return {r["t_type"]: int(r["count"]) for r in rows if r["t_type"]}
+
+
+async def get_box_counts(report_id: int) -> dict[str, int]:
+    async with _db() as c:
+        return await _box_counts(c, report_id)
+
+
 async def add_reys(report_id: int, actor: str, tovar_turi: str, weight: float,
                    coefficient: float, net: float, photos: int, box_weight: float = 0) -> dict:
     if not (
@@ -707,7 +724,8 @@ async def add_reys(report_id: int, actor: str, tovar_turi: str, weight: float,
         ) as bcur:
             bal = (await bcur.fetchone())["weight"]
         inv = await _inventory(c, report_id)
-        return {"tovar_turi": tovar_turi, "balance": bal, "inventory": inv, "entry_id": cur.lastrowid}
+        counts = await _box_counts(c, report_id)
+        return {"tovar_turi": tovar_turi, "balance": bal, "inventory": inv, "box_counts": counts, "entry_id": cur.lastrowid}
 
 
 async def adjust(report_id: int, actor: str, from_type: str, to_type: str, weight: float,
@@ -888,7 +906,8 @@ async def edit_reys(report_id: int, entry_id: int, tovar_turi: str, weight: floa
             "UPDATE activity SET tovar_turi = ?, weight = ?, coefficient = ?, net = ?, box_weight = ?, edited_at = ? WHERE id = ?",
             (tovar_turi, weight, coefficient, net, box_weight, now, entry_id),
         )
-        return {"balance": balances.get(tovar_turi, 0), "inventory": balances, "edited": True}
+        counts = await _box_counts(c, report_id)
+        return {"balance": balances.get(tovar_turi, 0), "inventory": balances, "box_counts": counts, "edited": True}
 
 
 async def edit_adjust(report_id: int, entry_id: int, from_type: str, to_type: str,
@@ -995,7 +1014,8 @@ async def delete_entry(report_id: int, entry_id: int) -> dict:
                WHERE entry_id = ? AND status = 'pending'""",
             (now, now, entry_id),
         )
-        return {"balances": balances}
+        counts = await _box_counts(c, report_id)
+        return {"balances": balances, "box_counts": counts}
 
 
 async def get_activity(report_id: int, actor: str | None = None, limit: int = 500,
