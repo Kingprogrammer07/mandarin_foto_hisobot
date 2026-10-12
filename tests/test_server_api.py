@@ -635,6 +635,18 @@ async def test_api_export_docx():
             assert "TOP CARGO M184" in doc.paragraphs[1].text
             assert "Avia M184" in doc.paragraphs[2].text
             assert "(O'zimizga qolgan.)" in doc.paragraphs[3].text
+
+            # Test special-text API
+            txt_res = await client.get(f"/api/reports/{rid}/special-text", cookies=cookies)
+            assert txt_res.status_code == 200
+            txt_json = txt_res.json()
+            assert txt_json["ok"] is True
+            assert txt_json["special_name"] == "M184"
+            assert len(txt_json["lines"]) >= 4
+            assert "AVIA M184" in txt_json["lines"][0]
+            assert txt_json["lines"][3] == "(O'zimizga qolgan.)"
+            for p in txt_json["lines"][4:]:
+                assert p.endswith(".")
         finally:
             await client.delete(f"/api/reports/{rid}", cookies=cookies, headers=headers)
 

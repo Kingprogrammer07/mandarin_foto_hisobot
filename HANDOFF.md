@@ -449,6 +449,35 @@ reys_hisoboti_v2/
     - `.screen__top-actions`: `display: flex; align-items: center; gap: 8px;`.
     - `.theme-btn.is-spinning .ic`: `@keyframes spin-refresh` orqali 360° silliq aylanish animatsiyasi berildi.
 
+### Z. Maxsus Reys Hisobot Matnlarini Alohida Qatorlar Bo'yicha Nusxalash Modali va Yakuniy Nuqta Standarti (2026-10-12)
+- **Talab & Maqsad**:
+  - Maxsus reys nomi (`special_name`) biriktirilgan reyslarda hisobot matnlarini (Word DOCX dagidek) har bir qatorini alohida copy tugmasi bilan modal oynada ochib berish.
+  - `(O'zimizga qolgan.)` qatoridan pastdagi barcha kargo ma'lumotlari (`MANDARIN`, `AKB`, `JET`, `XABIB` va h.k.) oxirida qat'iy nuqta (`.`) qo'yilishi (masalan, `MANDARIN (M219) - 179.83 KG.`). Bu qoida DOCX hujjati hamda nusxalanuvchi modal oynada 100% bir xil qo'llanilishi kerak.
+  - Shuningdek modal oynada "Barchasini nusxalash" va Word (.docx) faylini to'g'ridan-to'g'ri yuklab olish tugmalari bo'lishi.
+- **Yechim & Arxitektura**:
+  - `app/excel_export.py`:
+    - `get_special_docx_lines(report_id: int)` funksiyasi ajratildi — Word hujjati va API uchun yagona ishonchli manba (single source of truth).
+    - `(O'zimizga qolgan.)` dan keyingi barcha kargo qatorlari oxiriga nuqta qo'shildi: `cargo_lines.append(f"{cargo_name}{special_label} - {w:.2f} KG.")`.
+    - `build_special_docx(report_id: int)` endi `get_special_docx_lines` dan foydalanadi va shu qatorlarni Word paragraf sifatida yozadi.
+  - `app/server.py`:
+    - `GET /api/reports/{id}/special-text`: Ushbu reys uchun hisobot matnlarini qatorlar massivi sifatida (`lines: list[str]`) qaytaruvchi yangi JSON endpoint.
+    - `GET /api/export/docx-text`: `report_id` query parametri bilan ishlaydigan muqobil endpoint.
+  - `webapp/index.html`:
+    - 3 nuqta (kebab) menyusida `#reportMoreTextBtn` ("Hisobot matnlari (nusxalash)") qo'shildi.
+    - `#specialTextBackdrop` va `#specialTextSheet`: Har bir qator uchun alohida `.special-text-row` va `.special-text-row__copy` tugmasi, tepada "Barchasini nusxalash" (`#specialTextCopyAllBtn`) hamda "DOCX yuklab olish" (`#specialTextDownloadDocxBtn`) tugmalari.
+    - Keshni tozalash uchun aktivlar versiyasi `?v=specialtext1` ga oshirildi.
+  - `webapp/css/styles.css`:
+    - `.sheet--special-text`: Mobil uchun qulay balandlik (88vh), elastik aylantirish (scrolling).
+    - `.special-text-row`: Qator tartib raqami, monospace qalin matn, hover effekti va alohida nusxalash tugmasi.
+    - `.special-text-row__copy.is-copied`: Yashil rang, nusxalanganlik ikonasi va tebranish effekti.
+  - `webapp/js/app.js`:
+    - `openSpecialTextModal(rep)`: Modalni ochadi, API dan qatorlarni yuklab oladi va chizadi.
+    - Kartadagi maxsus reys nomining o'zi (`.report-item__special-badge`) bosilganda ham shu modal darhol ochiladi.
+    - `copyToClipboard(text)`: `navigator.clipboard` va iOS Telegram WebApp fallback (`document.execCommand('copy')`) orqali xavfsiz buferga nusxalash.
+    - `anyOverlayOpen`, `syncBackButton`, `onBack`: Telegram Mini App apparat orqaga tugmasi va `body.locked` to'g'ri sinxronlashtirildi.
+  - `tests/test_server_api.py`:
+    - `/api/reports/{rid}/special-text` endpointi va barcha kargo qatorlari oxirida `.` mavjudligi bo'yicha avtomatlashtirilgan test tekshiruvi qo'shildi. Barcha 22 ta test 100% muvaffaqiyatli o'tmoqda.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

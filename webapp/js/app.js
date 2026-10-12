@@ -378,6 +378,7 @@
     reportMoreSheet: $("#reportMoreSheet"),
     reportMoreTitle: $("#reportMoreTitle"),
     reportMoreClose: $("#reportMoreClose"),
+    reportMoreTextBtn: $("#reportMoreTextBtn"),
     reportMoreDocxBtn: $("#reportMoreDocxBtn"),
     reportMoreSpecialBtn: $("#reportMoreSpecialBtn"),
     reportMoreSpecialLabel: $("#reportMoreSpecialLabel"),
@@ -390,6 +391,14 @@
     specialReysSaveBtn: $("#specialReysSaveBtn"),
     specialReysClearBtn: $("#specialReysClearBtn"),
     specialReysError: $("#specialReysError"),
+    specialTextBackdrop: $("#specialTextBackdrop"),
+    specialTextSheet: $("#specialTextSheet"),
+    specialTextTitle: $("#specialTextTitle"),
+    specialTextClose: $("#specialTextClose"),
+    specialTextCopyAllBtn: $("#specialTextCopyAllBtn"),
+    specialTextDownloadDocxBtn: $("#specialTextDownloadDocxBtn"),
+    specialTextList: $("#specialTextList"),
+    specialTextError: $("#specialTextError"),
     kgFixBackdrop: $("#kgFixBackdrop"),
     kgFixSheet: $("#kgFixSheet"),
     kgFixTitle: $("#kgFixTitle"),
@@ -526,7 +535,8 @@
       !els.camModal.hidden || !els.lightbox.hidden || !els.activityScreen.hidden ||
       !els.entriesScreen.hidden || !els.entryActSheet.hidden ||
       !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden ||
-      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden);
+      (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) ||
+      (els.specialTextSheet && !els.specialTextSheet.hidden);
     if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
     else tg.BackButton.hide();
   }
@@ -545,6 +555,7 @@
       (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) ||
       (els.reportMoreSheet && !els.reportMoreSheet.hidden) ||
       (els.specialReysSheet && !els.specialReysSheet.hidden) ||
+      (els.specialTextSheet && !els.specialTextSheet.hidden) ||
       (els.kgFixSheet && !els.kgFixSheet.hidden) ||
       (els.presetSheet && !els.presetSheet.hidden)
     );
@@ -565,6 +576,7 @@
     if (!els.entryActSheet.hidden) { closeEntryActions(); return; }
     if (!els.outboxSheet.hidden) { closeOutboxDiag(); return; }
     if (els.presetSheet && !els.presetSheet.hidden) { closePresetSheet(); return; }
+    if (els.specialTextSheet && !els.specialTextSheet.hidden) { closeSpecialTextModal(); return; }
     if (els.specialReysSheet && !els.specialReysSheet.hidden) { closeSpecialReysSheet(); return; }
     if (els.kgFixSheet && !els.kgFixSheet.hidden) { closeKgFixSheet(); return; }
     if (els.reportMoreSheet && !els.reportMoreSheet.hidden) { closeReportMore(); return; }
@@ -1265,10 +1277,15 @@
       parts.forEach((p) => {
         const badge = document.createElement("span");
         badge.className = "report-item__special-badge";
+        badge.title = "Hisobot matnlarini ko'rish va nusxalash";
         badge.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
         const txt = document.createElement("span");
         txt.textContent = p;
         badge.append(txt);
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openSpecialTextModal(rep);
+        });
         head.append(badge);
       });
     }
@@ -3539,6 +3556,9 @@
     if (els.reportMoreDocxBtn) {
       els.reportMoreDocxBtn.hidden = !rep.special_name;
     }
+    if (els.reportMoreTextBtn) {
+      els.reportMoreTextBtn.hidden = !rep.special_name;
+    }
     if (els.reportMoreBackdrop) els.reportMoreBackdrop.hidden = false;
     if (els.reportMoreSheet) els.reportMoreSheet.hidden = false;
     syncLock();
@@ -3732,6 +3752,15 @@
 
   if (els.reportMoreClose) els.reportMoreClose.addEventListener("click", closeReportMore);
   if (els.reportMoreBackdrop) els.reportMoreBackdrop.addEventListener("click", closeReportMore);
+  if (els.reportMoreTextBtn) {
+    els.reportMoreTextBtn.addEventListener("click", () => {
+      if (activeMoreReport) {
+        const rep = activeMoreReport;
+        closeReportMore();
+        openSpecialTextModal(rep);
+      }
+    });
+  }
   if (els.reportMoreDocxBtn) {
     els.reportMoreDocxBtn.addEventListener("click", () => {
       if (activeMoreReport) {
@@ -3743,6 +3772,176 @@
   }
   if (els.reportMoreSpecialBtn) els.reportMoreSpecialBtn.addEventListener("click", openSpecialReysSheet);
   if (els.reportMoreKgFixBtn) els.reportMoreKgFixBtn.addEventListener("click", openKgFixSheet);
+
+  // --- Maxsus Hisobot Matnlari (Alohida Nusxalash Modali) ---
+  let activeSpecialTextReport = null;
+  let cachedSpecialTextLines = [];
+
+  async function copyToClipboard(text) {
+    if (!text) return false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) {}
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function openSpecialTextModal(rep) {
+    if (!rep || !rep.id) return;
+    activeSpecialTextReport = rep;
+    cachedSpecialTextLines = [];
+
+    if (els.specialTextTitle) {
+      els.specialTextTitle.textContent = `${rep.special_name || rep.name || "Reys"} matnlari`;
+    }
+    if (els.specialTextError) {
+      els.specialTextError.hidden = true;
+      els.specialTextError.textContent = "";
+    }
+    if (els.specialTextList) {
+      els.specialTextList.innerHTML = `
+        <div class="special-text-skeleton"></div>
+        <div class="special-text-skeleton"></div>
+        <div class="special-text-skeleton"></div>
+        <div class="special-text-skeleton"></div>
+      `;
+    }
+    if (els.specialTextBackdrop) els.specialTextBackdrop.hidden = false;
+    if (els.specialTextSheet) els.specialTextSheet.hidden = false;
+    syncLock();
+    syncBackButton();
+    haptic("light");
+
+    try {
+      const res = await fetch(`/api/reports/${rep.id}/special-text`, { headers: authHeaders() });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || "Matnlarni yuklab bo'lmadi");
+      }
+      const data = await res.json();
+      const lines = data.lines || [];
+      cachedSpecialTextLines = lines;
+      renderSpecialTextLines(lines);
+    } catch (err) {
+      if (els.specialTextError) {
+        els.specialTextError.textContent = err.message || "Xatolik yuz berdi";
+        els.specialTextError.hidden = false;
+      }
+      if (els.specialTextList) {
+        els.specialTextList.innerHTML = `<div class="special-text-empty">${escapeHtml(err.message || "Xatolik")}</div>`;
+      }
+    }
+  }
+
+  function renderSpecialTextLines(lines) {
+    if (!els.specialTextList) return;
+    els.specialTextList.innerHTML = "";
+    if (!lines || !lines.length) {
+      els.specialTextList.innerHTML = '<div class="special-text-empty">Hisobotda matnlar mavjud emas</div>';
+      return;
+    }
+
+    const ICON_COPY = '<svg viewBox="0 0 24 24" class="ic"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+    const ICON_CHECK = '<svg viewBox="0 0 24 24" class="ic"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+
+    lines.forEach((line, idx) => {
+      const row = document.createElement("div");
+      row.className = "special-text-row" + (idx < 4 ? " special-text-row--header" : "");
+
+      const content = document.createElement("div");
+      content.className = "special-text-row__content";
+      const txt = document.createElement("div");
+      txt.className = "special-text-row__text";
+      txt.textContent = line;
+      content.appendChild(txt);
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "special-text-row__copy";
+      copyBtn.setAttribute("aria-label", "Qatorni nusxalash");
+      copyBtn.innerHTML = `${ICON_COPY}<span>Nusxa</span>`;
+
+      let copyTimer = null;
+      const doCopy = async (e) => {
+        if (e) e.stopPropagation();
+        const ok = await copyToClipboard(line);
+        if (ok) {
+          haptic("light");
+          copyBtn.classList.add("is-copied");
+          copyBtn.innerHTML = `${ICON_CHECK}<span>Nusxalandi</span>`;
+          showToast("Nusxalandi ✓");
+          clearTimeout(copyTimer);
+          copyTimer = setTimeout(() => {
+            copyBtn.classList.remove("is-copied");
+            copyBtn.innerHTML = `${ICON_COPY}<span>Nusxa</span>`;
+          }, 1400);
+        } else {
+          showToast("Nusxalab bo'lmadi", true);
+        }
+      };
+
+      copyBtn.addEventListener("click", doCopy);
+      row.addEventListener("click", doCopy);
+
+      row.appendChild(content);
+      row.appendChild(copyBtn);
+      els.specialTextList.appendChild(row);
+    });
+  }
+
+  function closeSpecialTextModal() {
+    if (els.specialTextSheet) els.specialTextSheet.hidden = true;
+    if (els.specialTextBackdrop) els.specialTextBackdrop.hidden = true;
+    syncLock();
+    syncBackButton();
+  }
+
+  if (els.specialTextClose) els.specialTextClose.addEventListener("click", closeSpecialTextModal);
+  if (els.specialTextBackdrop) els.specialTextBackdrop.addEventListener("click", closeSpecialTextModal);
+  if (els.specialTextCopyAllBtn) {
+    els.specialTextCopyAllBtn.addEventListener("click", async () => {
+      if (!cachedSpecialTextLines || !cachedSpecialTextLines.length) return;
+      const fullText = cachedSpecialTextLines.join("\n");
+      const ok = await copyToClipboard(fullText);
+      if (ok) {
+        haptic("medium");
+        showToast("Barcha matnlar nusxalandi ✓");
+        const orig = els.specialTextCopyAllBtn.innerHTML;
+        els.specialTextCopyAllBtn.classList.add("is-copied");
+        els.specialTextCopyAllBtn.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg><span>Nusxalandi ✓</span>';
+        setTimeout(() => {
+          els.specialTextCopyAllBtn.classList.remove("is-copied");
+          els.specialTextCopyAllBtn.innerHTML = orig;
+        }, 1400);
+      } else {
+        showToast("Nusxalab bo'lmadi", true);
+      }
+    });
+  }
+  if (els.specialTextDownloadDocxBtn) {
+    els.specialTextDownloadDocxBtn.addEventListener("click", () => {
+      if (activeSpecialTextReport) {
+        downloadDocx(activeSpecialTextReport, els.specialTextDownloadDocxBtn);
+      }
+    });
+  }
 
   if (els.specialReysClose) els.specialReysClose.addEventListener("click", closeSpecialReysSheet);
   if (els.specialReysBackdrop) els.specialReysBackdrop.addEventListener("click", closeSpecialReysSheet);

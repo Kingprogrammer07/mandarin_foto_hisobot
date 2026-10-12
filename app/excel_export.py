@@ -896,9 +896,7 @@ def _safe_docx_filename(report_name: str, special_name: str = "") -> str:
     return f"{name}.docx"
 
 
-async def build_special_docx(report_id: int) -> tuple[bytes, str]:
-    import docx
-    from docx.shared import Inches, Pt
+async def get_special_docx_lines(report_id: int) -> tuple[list[str], str]:
     from datetime import datetime
 
     report = await db.get_report(report_id) or {}
@@ -956,7 +954,7 @@ async def build_special_docx(report_id: int) -> tuple[bytes, str]:
         if w > 0:
             cargo_name = label.upper()
             special_label = f" ({special_name})" if special_name else ""
-            cargo_lines.append(f"{cargo_name}{special_label} - {w:.2f} KG")
+            cargo_lines.append(f"{cargo_name}{special_label} - {w:.2f} KG.")
 
     # 4. Construct lines matching user specification
     spec_paren = f"{special_name} ({report_name})" if special_name else report_name
@@ -967,8 +965,17 @@ async def build_special_docx(report_id: int) -> tuple[bytes, str]:
         "(O'zimizga qolgan.)",
     ]
     lines.extend(cargo_lines)
+    filename = _safe_docx_filename(report_name, special_name)
+    return lines, filename
 
-    # 5. Create Word document
+
+async def build_special_docx(report_id: int) -> tuple[bytes, str]:
+    import docx
+    from docx.shared import Inches, Pt
+
+    lines, filename = await get_special_docx_lines(report_id)
+
+    # Create Word document
     doc = docx.Document()
     for s in doc.sections:
         s.top_margin = Inches(0.8)
@@ -989,5 +996,5 @@ async def build_special_docx(report_id: int) -> tuple[bytes, str]:
 
     bio = BytesIO()
     doc.save(bio)
-    return bio.getvalue(), _safe_docx_filename(report_name, special_name)
+    return bio.getvalue(), filename
 

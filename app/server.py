@@ -1020,6 +1020,28 @@ async def api_export_docx(request: Request, report_id: int | None = None):
     )
 
 
+@app.get("/api/reports/{id}/special-text")
+@app.get("/api/export/docx-text")
+async def api_report_special_text(request: Request, id: int | None = None, report_id: int | None = None):
+    _auth_or_403(request, state_changing=False)
+    target_id = id if id is not None else report_id
+    rid = await _require_report(target_id)
+    try:
+        lines, filename = await excel_export.get_special_docx_lines(rid)
+    except Exception as exc:
+        log.exception("get_special_docx_lines failed: report_id=%s", rid)
+        raise HTTPException(status_code=500, detail=f"Matnlarni olishda xato: {exc}")
+    report = await db.get_report(rid) or {}
+    return {
+        "ok": True,
+        "report_id": rid,
+        "report_name": report.get("name") or "",
+        "special_name": (report.get("special_name") or "").strip(),
+        "lines": lines,
+        "filename": filename,
+    }
+
+
 @app.post("/api/export/filtered")
 async def api_export_filtered_post(request: Request):
     if not _rate_ok(f"export:{_client_ip(request)}", limit=30, window=60):

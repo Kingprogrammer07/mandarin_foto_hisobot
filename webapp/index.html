@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#ffffff" id="themeColor" />
   <title>Reys hisoboti</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/css/styles.css?v=fastmode1" />
+  <link rel="stylesheet" href="/css/styles.css?v=specialtext1" />
 </head>
 <body>
   <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
@@ -731,6 +731,10 @@
     </div>
     <div class="sheet__pad">
       <div class="report-more-menu">
+        <button type="button" class="btn btn--ghost report-more-btn" id="reportMoreTextBtn" hidden>
+          <svg viewBox="0 0 24 24" class="ic"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          <span>Hisobot matnlari (nusxalash)</span>
+        </button>
         <button type="button" class="btn btn--ghost report-more-btn" id="reportMoreDocxBtn" hidden>
           <svg viewBox="0 0 24 24" class="ic"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
           <span>Word (DOCX) yuklab olish</span>
@@ -797,6 +801,33 @@
       </div>
       <button type="button" class="btn btn--primary" id="kgFixSaveBtn">Saqlash</button>
       <p class="login__error" id="kgFixError" hidden></p>
+    </div>
+  </div>
+
+  <!-- Maxsus hisobot matnlari (alohida nusxalash) sheet -->
+  <div class="sheet-backdrop" id="specialTextBackdrop" hidden></div>
+  <div class="sheet sheet--tall sheet--special-text" id="specialTextSheet" hidden role="dialog" aria-modal="true" aria-label="Maxsus hisobot matnlari">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title" id="specialTextTitle">Hisobot matnlari</span>
+      <button type="button" class="sheet__close" id="specialTextClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <div class="special-text-toolbar">
+        <button type="button" class="btn btn--primary special-text-copy-all" id="specialTextCopyAllBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          <span>Barchasini nusxalash</span>
+        </button>
+        <button type="button" class="btn btn--ghost special-text-download-btn" id="specialTextDownloadDocxBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span>Word (DOCX)</span>
+        </button>
+      </div>
+      <div class="special-text-hint">Istalgan qatorni nusxalash uchun ustiga yoki "Nusxa" tugmasiga bosing:</div>
+      <div class="special-text-list" id="specialTextList"></div>
+      <p class="login__error" id="specialTextError" hidden></p>
     </div>
   </div>
 
@@ -963,6 +994,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=fastmode1"></script>
+  <script src="/js/app.js?v=specialtext1"></script>
 </body>
 </html>
