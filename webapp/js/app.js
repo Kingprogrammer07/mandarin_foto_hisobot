@@ -5045,24 +5045,19 @@
       const cell = document.createElement("div");
       cell.className = "bal-cell" + (isZero ? " bal-cell--zero" : " bal-cell--active");
 
-      const head = document.createElement("div");
-      head.className = "bal-cell__head";
-
       const name = document.createElement("div");
       name.className = "bal-cell__name";
       name.textContent = t;
-
-      const boxBadge = document.createElement("div");
-      boxBadge.className = "bal-cell__boxes" + (count > 0 ? " bal-cell__boxes--has" : "");
-      boxBadge.innerHTML = `<span class="bal-cell__boxes-num">${count}</span> ta karobka`;
-
-      head.append(name, boxBadge);
 
       const val = document.createElement("div");
       val.className = "bal-cell__val";
       val.innerHTML = `${numW.toLocaleString("en-US")}<span> kg</span>`;
 
-      cell.append(head, val);
+      const boxBadge = document.createElement("div");
+      boxBadge.className = "bal-cell__boxes" + (count > 0 ? " bal-cell__boxes--has" : "");
+      boxBadge.innerHTML = `<span class="bal-cell__boxes-num">${count}</span> ta karobka`;
+
+      cell.append(name, val, boxBadge);
 
       if (count > 0) {
         cell.style.cursor = "pointer";

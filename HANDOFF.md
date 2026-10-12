@@ -494,15 +494,16 @@ reys_hisoboti_v2/
     - Kargolarga tarqatish navbarida 3-tab: `<button class="tab" role="tab" data-tab="stock">Ombor holati</button>`.
     - `#panel-lost` dan pastdagi `work-card--balances` olib tashlandi (transfer ekrani ixcham va toza bo'ldi).
     - Yangi `#panel-stock` qo'shildi: yuqorisida xulosa kartalari (Jami og'irlik, Jami karobkalar, Mavjud tovarlar), real vaqtda tovar qidirish maydoni (`#stockSearchInput`) va ombor kartalari tarmog'i (`#balances`).
-    - Keshni tozalash uchun versiya `?v=ombor1` ga ko'tarildi.
+    - Keshni tozalash uchun versiya `?v=ombor2` ga ko'tarildi.
   - `webapp/css/styles.css`:
     - 3 ta tab mobil qurilmalarda sig'ishi uchun `.tab` font-size va padding qiymatlari moslashtirildi (`clamp(12px, 3.2vw, 14px)`).
     - `#panel-lost` ning desktop media query griddagi ortiqcha bo'sh joyi olib tashlandi.
     - `.stock-summary`, `.stock-summary__card`, `.stock-search-wrap`, `.bal-cell--active`, `.bal-cell__boxes`, `.bal-cell__boxes--has` dizayni ishlab chiqildi.
+    - **UI Grid va Karta Collision Tuzatishi**: Tor ekranlarda kartalar bir-birining ustiga chiqib ketishi (overflow) butunlay bartaraf etildi. `body.work-open .balances, body.work-open .balances--stock` uchun ustun kengligi `minmax(150px, 1fr)` (mobilda `minmax(130px, 1fr)`) ga oshirildi. `.bal-cell` 96px balandlik va vertikal flex bilan ta'minlandi.
   - `webapp/js/app.js`:
     - `els.panels` ga `stock: $("#panel-stock")` ulandi.
     - `setTab("stock")` va `/report/:id/kargo/stock` marshrutlash qo'llab-quvvatlandi.
-    - `renderBalances()`: Qidiruv bo'yicha saralash, umumiy xulosa metrikalarini hisoblash, har bir kartada tovar nomi, og'irligi va `${count} ta karobka` badge ko'rsatish hamda kartani bosganda shu tovar turining yozuvlariga tezkor o'tish imkoniyatlari qo'shildi.
+    - `renderBalances()`: Karta ichki tuzilishi 3 qavatli toza vertikal tartibga keltirildi: 1-qator tovar nomi (`.bal-cell__name`), 2-qator tabular 20px og'irlik (`.bal-cell__val`), 3-qator pastda `fit-content` karobkalar soni nishoni (`.bal-cell__boxes`, `${count} ta karobka`). Shu tariqa nom uzunligi yoki nishon sig'may qo'shni kartalarni yopib qo'yishi 100% bartaraf etildi.
     - `loadInventory` va outbox sinxronizatsiyasida `box_counts` to'liq qabul qilinadi.
   - `tests/test_server_api.py`:
     - `/api/inventory` da `box_counts` qaytishi va kargo yozilganda uning hisoblagichi 1 ga teng bo'lishi tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.

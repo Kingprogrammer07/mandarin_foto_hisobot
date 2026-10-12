@@ -787,12 +787,20 @@ body.work-open .save-btn {
 body.work-open .transfer-arrow {
   margin: -2px 0 10px;
 }
-body.work-open .balances {
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
-  gap: 10px;
+body.work-open .balances,
+body.work-open .balances--stock {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  body.work-open .balances,
+  body.work-open .balances--stock {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+  }
 }
 body.work-open .bal-cell {
-  border-radius: 15px;
+  border-radius: 16px;
   background: color-mix(in srgb, var(--fill) 84%, transparent);
 }
 body.work-open #panel-lost .transfer-arrow {
@@ -1343,73 +1351,84 @@ body.locked { overflow: hidden; }
 }
 .balances--stock {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
   margin-top: 10px;
 }
 .bal-cell {
   background: color-mix(in srgb, var(--fill) 85%, transparent);
   border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
-  border-radius: 14px;
-  padding: 10px 12px;
+  border-radius: 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 72px;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  min-height: 96px;
+  gap: 6px;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   user-select: none;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 .bal-cell--active {
-  background: color-mix(in srgb, var(--accent) 7%, var(--fill));
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--fill));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .bal-cell--active:hover {
   border-color: var(--accent);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(36, 87, 255, 0.16);
 }
 .bal-cell--zero {
-  opacity: 0.62;
-}
-.bal-cell__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 6px;
+  opacity: 0.55;
+  background: color-mix(in srgb, var(--fill) 60%, transparent);
 }
 .bal-cell__name {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   color: var(--text);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.bal-cell__val {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.1;
+  margin: 2px 0;
+}
+.bal-cell__val span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
 }
 .bal-cell__boxes {
   font-size: 11px;
   font-weight: 600;
   color: var(--hint);
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--separator) 35%, transparent);
+  background: color-mix(in srgb, var(--separator) 50%, transparent);
+  width: fit-content;
+  max-width: 100%;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  line-height: 1.3;
 }
 .bal-cell__boxes--has {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
   font-weight: 700;
 }
 .bal-cell__boxes-num {
   font-variant-numeric: tabular-nums;
-}
-.bal-cell__val {
-  font-size: 18px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-.bal-cell__val span {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--hint);
 }
 .balances-empty {
   grid-column: 1 / -1;
