@@ -621,6 +621,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* ---------- iOS-style Kargolarga tarqatish work area ---------- */
+body:not(.work-open) .topbar,
+body:not(.work-open) .content {
+  display: none !important;
+}
+
 body.work-open {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 280px),
@@ -4037,7 +4042,7 @@ body.locked { overflow: hidden; }
 .app-bg-wrap {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1 !important;
   pointer-events: none;
   overflow: hidden;
   background: var(--bg);
@@ -4068,6 +4073,12 @@ body.has-custom-bg {
 }
 body.has-custom-bg .screen {
   background: transparent !important;
+}
+body.has-custom-bg #entriesScreen,
+body.has-custom-bg #activityScreen {
+  background: color-mix(in srgb, var(--bg) 88%, transparent) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 body.has-custom-bg .screen__top,
 body.has-custom-bg .topbar {

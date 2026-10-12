@@ -520,9 +520,11 @@ reys_hisoboti_v2/
     - Yangi `#bgSettingsSheet` va `#bgSettingsBackdrop` bottom sheet qo'shildi: jonli mini-prevyu ekranchasi (`#bgPreviewCard`), video yuklash (`#bgPickVideoBtn`), rasm yuklash (`#bgPickImageBtn`), standart fonga qaytarish (`#bgResetBtn`), qoraytirish slayderi (`#bgDimRange`, 10% - 85%) va xiralashtirish slayderi (`#bgBlurRange`, 0px - 20px).
     - Aktivlar versiyasi `?v=custombg1` ga oshirildi.
   - `webapp/css/styles.css`:
-    - `.app-bg-wrap`: `position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;`.
+    - `body:not(.work-open) .topbar, body:not(.work-open) .content { display: none !important; }`: Foydalanuvchi hisobotlar ro'yxati (`#/reports`) yoki reys menyusida bo'lganda, orqada yotgan kargo ishchi formasi (`.content` va `.topbar`) butunlay renderdan o'chirildi, kartalar ustma-ust tushishi 100% bartaraf etildi.
+    - `.app-bg-wrap`: `position: fixed; inset: 0; z-index: -1 !important; pointer-events: none; overflow: hidden;`.
     - `body.has-custom-bg`: Barcha ekranlar (`.screen`) va toolbarlar shaffof qilinib, kartalar (`.work-card`, `.report-item`, `.menu-btn` va h.k.) zamonaviy yarim shaffof shisha (`backdrop-filter: blur(14px); background: color-mix(in srgb, var(--fill) 82%, transparent);`) uslubiga moslashtirildi.
-    - Slayderlar, tugmalar va mini mockup prevyu dizayni ishlab chiqildi.
+    - Ichki overlay ekranlar (`#entriesScreen`, `#activityScreen`): `color-mix(in srgb, var(--bg) 88%, transparent)` va `backdrop-filter: blur(24px)` bilan mustaqil shisha qoplamasiga ega bo'ldi.
+    - Slayderlar, tugmalar va mini mockup prevyu dizayni ishlab chiqildi. Aktivlar versiyasi `?v=custombg2` ga ko'tarildi.
   - `webapp/js/app.js`:
     - Alohida xavfsiz lokal baza: `BG_IDB_NAME = "reys-bg-store", BG_IDB_STORE = "background"`.
     - Video yuklashda `tempVideo.duration` tekshiriladi: agar 60 soniyadan oshsa (`> 60.5s`), o'zbekcha ogohlantirish berilib bekor qilinadi. Hajmi 60 MB gacha cheklanadi.
