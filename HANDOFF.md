@@ -508,6 +508,30 @@ reys_hisoboti_v2/
   - `tests/test_server_api.py`:
     - `/api/inventory` da `box_counts` qaytishi va kargo yozilganda uning hisoblagichi 1 ga teng bo'lishi tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
 
+### BB. Bosh Sahifada Fon Sozlamalari (Settings) va 1 Daqiqagacha Video Fon (Loop) (2026-10-12)
+- **Talab & Maqsad**:
+  - Bosh sahifa navbarida (`#/reports`) reload tugmasi yoniga sozlamalar (settings) tugmasini qo'shish.
+  - Bosilganda butun veb-saytning orqa fonini (background) o'zgartirish: 1 daqiqagacha video fon qo'yish (loop rejimida uzluksiz aylanuvchi) yoki rasm fon qo'yish imkoniyatini yaratish.
+  - O'qilishi va kontrastini ta'minlash uchun qoraytirish darajasi (dimming) va xiralashtirish (blur) sozlamalari bo'lishi.
+- **Yechim & Arxitektura**:
+  - `webapp/index.html`:
+    - `<body>` boshiga fixed fon konteyneri joylashtirildi: `#appBgWrap` ichida `#appBgVideo`, `#appBgImage` va `#appBgOverlay`.
+    - Bosh sahifa navbarida (`#homeScreen .screen__top-actions`) `#homeRefreshBtn` yoniga yangi `#homeSettingsBtn` (⚙️ ikonkasi) qo'shildi.
+    - Yangi `#bgSettingsSheet` va `#bgSettingsBackdrop` bottom sheet qo'shildi: jonli mini-prevyu ekranchasi (`#bgPreviewCard`), video yuklash (`#bgPickVideoBtn`), rasm yuklash (`#bgPickImageBtn`), standart fonga qaytarish (`#bgResetBtn`), qoraytirish slayderi (`#bgDimRange`, 10% - 85%) va xiralashtirish slayderi (`#bgBlurRange`, 0px - 20px).
+    - Aktivlar versiyasi `?v=custombg1` ga oshirildi.
+  - `webapp/css/styles.css`:
+    - `.app-bg-wrap`: `position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;`.
+    - `body.has-custom-bg`: Barcha ekranlar (`.screen`) va toolbarlar shaffof qilinib, kartalar (`.work-card`, `.report-item`, `.menu-btn` va h.k.) zamonaviy yarim shaffof shisha (`backdrop-filter: blur(14px); background: color-mix(in srgb, var(--fill) 82%, transparent);`) uslubiga moslashtirildi.
+    - Slayderlar, tugmalar va mini mockup prevyu dizayni ishlab chiqildi.
+  - `webapp/js/app.js`:
+    - Alohida xavfsiz lokal baza: `BG_IDB_NAME = "reys-bg-store", BG_IDB_STORE = "background"`.
+    - Video yuklashda `tempVideo.duration` tekshiriladi: agar 60 soniyadan oshsa (`> 60.5s`), o'zbekcha ogohlantirish berilib bekor qilinadi. Hajmi 60 MB gacha cheklanadi.
+    - Video uzluksiz `loop`, ovozsiz `muted playsinline` va `autoplay` rejimida ishlaydi, shuningdek mobil brauzerlar uchun `onended` zaxira qayta o'ynatish kodi qo'shildi.
+    - Qoraytirish (`--bg-dim`) va xiralashtirish (`--bg-blur`) parametrlari real vaqtda `localStorage` ga saqlanadi va ilova yuklanganda tiklanadi.
+    - Barcha navigatsiya hodisalari (`syncBackButton`, `anyOverlayOpen`, `onBack`) bilan to'liq integratsiya qilindi.
+  - `tests/test_server_api.py`:
+    - Barcha 22 ta avtomatlashtirilgan backend testlari muvaffaqiyatli o'tdi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

@@ -8,9 +8,16 @@
   <meta name="theme-color" content="#ffffff" id="themeColor" />
   <title>Reys hisoboti</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/css/styles.css?v=ombor2" />
+  <link rel="stylesheet" href="/css/styles.css?v=custombg1" />
 </head>
 <body>
+  <!-- Fixed App Background (Video / Image / Glassmorphism Overlay) -->
+  <div class="app-bg-wrap" id="appBgWrap" aria-hidden="true">
+    <video class="app-bg-video" id="appBgVideo" autoplay loop muted playsinline webkit-playsinline hidden></video>
+    <div class="app-bg-image" id="appBgImage" hidden></div>
+    <div class="app-bg-overlay" id="appBgOverlay"></div>
+  </div>
+
   <!-- Floating Outbox & Network Status Pill (non-blocking pointer events on wrapper) -->
   <div class="outbox-pill-wrap" id="outboxPillWrap" hidden>
     <button type="button" class="outbox-pill" id="outboxPill" aria-label="Qurilma xotirasi holati">
@@ -340,6 +347,9 @@
         <div class="screen__top-actions">
           <button type="button" class="theme-btn" id="homeRefreshBtn" aria-label="Sahifani yangilash" title="Sahifani yangilash">
             <svg viewBox="0 0 24 24" class="ic"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
+          <button type="button" class="theme-btn" id="homeSettingsBtn" aria-label="Fon va sozlamalar" title="Fon va sozlamalar">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
           </button>
           <button type="button" class="theme-btn js-theme" id="homeThemeBtn" aria-label="Mavzu"></button>
         </div>
@@ -924,6 +934,78 @@
     </div>
   </div>
 
+  <!-- Background & Appearance Settings sheet -->
+  <div class="sheet-backdrop" id="bgSettingsBackdrop" hidden></div>
+  <div class="sheet sheet--bg-settings" id="bgSettingsSheet" hidden role="dialog" aria-modal="true">
+    <div class="sheet__grip"><span class="sheet__handle" aria-hidden="true"></span></div>
+    <div class="sheet__top">
+      <span class="sheet__title">Fon sozlamalari</span>
+      <button type="button" class="sheet__close" id="bgSettingsClose" aria-label="Yopish">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M18.3 5.7 12 12 5.7 5.7 4.3 7.1 10.6 13.4 4.3 19.7l1.4 1.4L12 14.8l6.3 6.3 1.4-1.4-6.3-6.3 6.3-6.3z"/></svg>
+      </button>
+    </div>
+    <div class="sheet__pad">
+      <!-- Mini Preview card -->
+      <div class="bg-preview-card" id="bgPreviewCard">
+        <div class="bg-preview-screen" id="bgPreviewScreen">
+          <div class="bg-preview-media-wrap" id="bgPreviewMediaWrap">
+            <video class="bg-preview-video" id="bgPreviewVideo" autoplay loop muted playsinline hidden></video>
+            <div class="bg-preview-image" id="bgPreviewImage" hidden></div>
+            <div class="bg-preview-overlay" id="bgPreviewOverlay"></div>
+          </div>
+          <div class="bg-preview-mockup">
+            <div class="bg-preview-badge" id="bgPreviewBadge">Standart mavzu</div>
+            <div class="bg-preview-sample-card">
+              <span class="bg-preview-sample-title">Reys hisoboti</span>
+              <span class="bg-preview-sample-val">120.50 kg</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action buttons: Video / Rasm / Reset -->
+      <div class="bg-actions-grid">
+        <button type="button" class="btn btn--primary bg-action-btn" id="bgPickVideoBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM14 13h-3v3H9v-3H6v-2h3V8h2v3h3v2z"/></svg>
+          <span>Video yuklash (max 1 daqiqa)</span>
+        </button>
+        <button type="button" class="btn btn--ghost bg-action-btn" id="bgPickImageBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+          <span>Rasm yuklash</span>
+        </button>
+        <button type="button" class="btn btn--ghost bg-action-btn bg-action-btn--reset" id="bgResetBtn">
+          <svg viewBox="0 0 24 24" class="ic"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+          <span>Standart fonga qaytarish</span>
+        </button>
+      </div>
+
+      <!-- Hidden file inputs -->
+      <input type="file" id="bgVideoInput" accept="video/mp4,video/webm,video/quicktime,video/*" hidden />
+      <input type="file" id="bgImageInput" accept="image/*" hidden />
+
+      <!-- Sliders: Dimming (Opacity) & Blur -->
+      <div class="bg-slider-group">
+        <div class="bg-slider-item">
+          <div class="bg-slider-head">
+            <span class="bg-slider-label">Qoraytirish darajasi (Dimming)</span>
+            <span class="bg-slider-val" id="bgDimVal">45%</span>
+          </div>
+          <input type="range" class="bg-range" id="bgDimRange" min="10" max="85" step="5" value="45" />
+        </div>
+
+        <div class="bg-slider-item">
+          <div class="bg-slider-head">
+            <span class="bg-slider-label">Xiralashtirish (Blur)</span>
+            <span class="bg-slider-val" id="bgBlurVal">0px</span>
+          </div>
+          <input type="range" class="bg-range" id="bgBlurRange" min="0" max="20" step="1" value="0" />
+        </div>
+      </div>
+
+      <p class="login__error" id="bgSettingsError" hidden></p>
+    </div>
+  </div>
+
   <!-- Local IndexedDB outbox diagnostics -->
   <div class="sheet-backdrop" id="outboxBackdrop" hidden></div>
   <div class="sheet sheet--tall" id="outboxSheet" hidden role="dialog" aria-modal="true">
@@ -1023,6 +1105,6 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=ombor2"></script>
+  <script src="/js/app.js?v=custombg1"></script>
 </body>
 </html>

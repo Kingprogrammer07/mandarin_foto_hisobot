@@ -278,6 +278,7 @@
     settingsBtn: $("#settingsBtn"),
     homeScreen: $("#homeScreen"),
     homeRefreshBtn: $("#homeRefreshBtn"),
+    homeSettingsBtn: $("#homeSettingsBtn"),
     homeThemeBtn: $("#homeThemeBtn"),
     newReportBtn: $("#newReportBtn"),
     homeFilterBtn: $("#homeFilterBtn"),
@@ -453,6 +454,29 @@
     adjPhotoCounter: $("#adjPhotoCounter"),
     adjBtnGallery: $("#adjBtnGallery"),
     adjBtnCamera: $("#adjBtnCamera"),
+    // custom app background & appearance settings
+    appBgWrap: $("#appBgWrap"),
+    appBgVideo: $("#appBgVideo"),
+    appBgImage: $("#appBgImage"),
+    appBgOverlay: $("#appBgOverlay"),
+    bgSettingsBackdrop: $("#bgSettingsBackdrop"),
+    bgSettingsSheet: $("#bgSettingsSheet"),
+    bgSettingsClose: $("#bgSettingsClose"),
+    bgPreviewCard: $("#bgPreviewCard"),
+    bgPreviewVideo: $("#bgPreviewVideo"),
+    bgPreviewImage: $("#bgPreviewImage"),
+    bgPreviewOverlay: $("#bgPreviewOverlay"),
+    bgPreviewBadge: $("#bgPreviewBadge"),
+    bgPickVideoBtn: $("#bgPickVideoBtn"),
+    bgPickImageBtn: $("#bgPickImageBtn"),
+    bgResetBtn: $("#bgResetBtn"),
+    bgVideoInput: $("#bgVideoInput"),
+    bgImageInput: $("#bgImageInput"),
+    bgDimRange: $("#bgDimRange"),
+    bgDimVal: $("#bgDimVal"),
+    bgBlurRange: $("#bgBlurRange"),
+    bgBlurVal: $("#bgBlurVal"),
+    bgSettingsError: $("#bgSettingsError"),
   };
 
   // ---- Theme (admin-controllable: auto / light / dark) ----
@@ -543,7 +567,8 @@
       !els.entriesScreen.hidden || !els.entryActSheet.hidden ||
       !els.nameSheet.hidden || !els.setSheet.hidden || !els.outboxSheet.hidden ||
       (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) ||
-      (els.specialTextSheet && !els.specialTextSheet.hidden);
+      (els.specialTextSheet && !els.specialTextSheet.hidden) ||
+      (els.bgSettingsSheet && !els.bgSettingsSheet.hidden);
     if (overlay || (state.reportId && els.homeScreen.hidden)) tg.BackButton.show();
     else tg.BackButton.hide();
   }
@@ -564,7 +589,8 @@
       (els.specialReysSheet && !els.specialReysSheet.hidden) ||
       (els.specialTextSheet && !els.specialTextSheet.hidden) ||
       (els.kgFixSheet && !els.kgFixSheet.hidden) ||
-      (els.presetSheet && !els.presetSheet.hidden)
+      (els.presetSheet && !els.presetSheet.hidden) ||
+      (els.bgSettingsSheet && !els.bgSettingsSheet.hidden)
     );
   }
   function syncLock() { document.body.classList.toggle("locked", anyOverlayOpen()); }
@@ -587,6 +613,7 @@
     if (els.specialReysSheet && !els.specialReysSheet.hidden) { closeSpecialReysSheet(); return; }
     if (els.kgFixSheet && !els.kgFixSheet.hidden) { closeKgFixSheet(); return; }
     if (els.reportMoreSheet && !els.reportMoreSheet.hidden) { closeReportMore(); return; }
+    if (els.bgSettingsSheet && !els.bgSettingsSheet.hidden) { closeBgSettings(); return; }
     if (!els.nameSheet.hidden) { closeNameSheet(); syncBackButton(); return; }
     if (els.reportsFilterSheet && !els.reportsFilterSheet.hidden) { closeReportsFilter(); return; }
     if (!els.setSheet.hidden) { closeSettings(); syncBackButton(); return; }
@@ -4547,6 +4574,367 @@
     });
   }
 
+  // =========================================================================
+  // CUSTOM APP BACKGROUND STORE (INDEXEDDB + VIDEO LOOP + GLASSMORPHISM)
+  // =========================================================================
+  const BG_IDB_NAME = "reys-bg-store", BG_IDB_STORE = "background";
+  let _bgIdb = null;
+  let _currentBgBlobUrl = null;
+  let _previewBlobUrl = null;
+
+  function bgIdbOpen() {
+    return new Promise((resolve) => {
+      if (_bgIdb) return resolve(_bgIdb);
+      if (!("indexedDB" in window)) return resolve(null);
+      let req;
+      try {
+        req = indexedDB.open(BG_IDB_NAME, 1);
+      } catch (_) {
+        return resolve(null);
+      }
+      req.onupgradeneeded = () => {
+        try { req.result.createObjectStore(BG_IDB_STORE, { keyPath: "id" }); } catch (_) {}
+      };
+      req.onsuccess = () => { _bgIdb = req.result; resolve(_bgIdb); };
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    });
+  }
+
+  function getBgRecord() {
+    return bgIdbOpen().then((db) => new Promise((resolve) => {
+      if (!db) return resolve(null);
+      try {
+        const tx = db.transaction(BG_IDB_STORE, "readonly");
+        const store = tx.objectStore(BG_IDB_STORE);
+        const req = store.get("active_bg");
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    }));
+  }
+
+  function saveBgRecord(record) {
+    return bgIdbOpen().then((db) => new Promise((resolve, reject) => {
+      if (!db) return reject(new Error("IndexedDB mavjud emas"));
+      try {
+        const tx = db.transaction(BG_IDB_STORE, "readwrite");
+        const store = tx.objectStore(BG_IDB_STORE);
+        record.id = "active_bg";
+        store.put(record);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error("Saqlashda xatolik"));
+      } catch (e) {
+        reject(e);
+      }
+    }));
+  }
+
+  function deleteBgRecord() {
+    return bgIdbOpen().then((db) => new Promise((resolve) => {
+      if (!db) return resolve(false);
+      try {
+        const tx = db.transaction(BG_IDB_STORE, "readwrite");
+        const store = tx.objectStore(BG_IDB_STORE);
+        store.delete("active_bg");
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    }));
+  }
+
+  function applyBgStyles(dim, blur) {
+    const dimVal = Math.max(0.1, Math.min(0.85, (dim != null ? dim : 45) / 100));
+    const blurVal = Math.max(0, Math.min(20, blur != null ? blur : 0));
+    document.documentElement.style.setProperty("--bg-dim", dimVal.toFixed(2));
+    document.documentElement.style.setProperty("--bg-blur", `${blurVal}px`);
+    if (els.bgDimVal) els.bgDimVal.textContent = `${Math.round(dimVal * 100)}%`;
+    if (els.bgBlurVal) els.bgBlurVal.textContent = `${blurVal}px`;
+    if (els.bgDimRange) els.bgDimRange.value = Math.round(dimVal * 100);
+    if (els.bgBlurRange) els.bgBlurRange.value = blurVal;
+  }
+
+  function applyCustomBg(record) {
+    if (!record || !record.blob) {
+      if (_currentBgBlobUrl) {
+        try { URL.revokeObjectURL(_currentBgBlobUrl); } catch (_) {}
+        _currentBgBlobUrl = null;
+      }
+      if (els.appBgVideo) {
+        els.appBgVideo.pause();
+        els.appBgVideo.src = "";
+        els.appBgVideo.hidden = true;
+      }
+      if (els.appBgImage) {
+        els.appBgImage.style.backgroundImage = "";
+        els.appBgImage.hidden = true;
+      }
+      document.body.classList.remove("has-custom-bg");
+      updateBgPreview(null);
+      return;
+    }
+
+    if (_currentBgBlobUrl) {
+      try { URL.revokeObjectURL(_currentBgBlobUrl); } catch (_) {}
+      _currentBgBlobUrl = null;
+    }
+    _currentBgBlobUrl = URL.createObjectURL(record.blob);
+
+    if (record.type === "video") {
+      if (els.appBgImage) {
+        els.appBgImage.hidden = true;
+        els.appBgImage.style.backgroundImage = "";
+      }
+      if (els.appBgVideo) {
+        els.appBgVideo.src = _currentBgBlobUrl;
+        els.appBgVideo.hidden = false;
+        els.appBgVideo.muted = true;
+        els.appBgVideo.defaultMuted = true;
+        els.appBgVideo.loop = true;
+        els.appBgVideo.playsInline = true;
+        els.appBgVideo.setAttribute("playsinline", "");
+        els.appBgVideo.setAttribute("webkit-playsinline", "");
+        const playPromise = els.appBgVideo.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            const playOnTap = () => {
+              if (els.appBgVideo) els.appBgVideo.play().catch(() => {});
+              window.removeEventListener("click", playOnTap, true);
+              window.removeEventListener("touchstart", playOnTap, true);
+            };
+            window.addEventListener("click", playOnTap, { capture: true, once: true });
+            window.addEventListener("touchstart", playOnTap, { capture: true, once: true });
+          });
+        }
+        els.appBgVideo.onended = () => {
+          try {
+            els.appBgVideo.currentTime = 0;
+            els.appBgVideo.play().catch(() => {});
+          } catch (_) {}
+        };
+      }
+    } else {
+      if (els.appBgVideo) {
+        els.appBgVideo.pause();
+        els.appBgVideo.src = "";
+        els.appBgVideo.hidden = true;
+      }
+      if (els.appBgImage) {
+        els.appBgImage.style.backgroundImage = `url("${_currentBgBlobUrl}")`;
+        els.appBgImage.hidden = false;
+      }
+    }
+    document.body.classList.add("has-custom-bg");
+    updateBgPreview(record);
+  }
+
+  function updateBgPreview(record) {
+    if (!els.bgPreviewCard) return;
+    if (_previewBlobUrl) {
+      try { URL.revokeObjectURL(_previewBlobUrl); } catch (_) {}
+      _previewBlobUrl = null;
+    }
+    if (!record || !record.blob) {
+      if (els.bgPreviewVideo) {
+        els.bgPreviewVideo.pause();
+        els.bgPreviewVideo.src = "";
+        els.bgPreviewVideo.hidden = true;
+      }
+      if (els.bgPreviewImage) {
+        els.bgPreviewImage.style.backgroundImage = "";
+        els.bgPreviewImage.hidden = true;
+      }
+      if (els.bgPreviewBadge) els.bgPreviewBadge.textContent = "Standart mavzu";
+      return;
+    }
+    _previewBlobUrl = URL.createObjectURL(record.blob);
+    if (record.type === "video") {
+      if (els.bgPreviewImage) {
+        els.bgPreviewImage.hidden = true;
+        els.bgPreviewImage.style.backgroundImage = "";
+      }
+      if (els.bgPreviewVideo) {
+        els.bgPreviewVideo.src = _previewBlobUrl;
+        els.bgPreviewVideo.hidden = false;
+        els.bgPreviewVideo.muted = true;
+        els.bgPreviewVideo.loop = true;
+        els.bgPreviewVideo.playsInline = true;
+        els.bgPreviewVideo.setAttribute("playsinline", "");
+        els.bgPreviewVideo.setAttribute("webkit-playsinline", "");
+        els.bgPreviewVideo.play().catch(() => {});
+      }
+      const durStr = record.duration ? `⏱ ${Math.round(record.duration)} s` : "60 s";
+      if (els.bgPreviewBadge) els.bgPreviewBadge.textContent = `🎬 Video fon (${durStr}, loop)`;
+    } else {
+      if (els.bgPreviewVideo) {
+        els.bgPreviewVideo.pause();
+        els.bgPreviewVideo.src = "";
+        els.bgPreviewVideo.hidden = true;
+      }
+      if (els.bgPreviewImage) {
+        els.bgPreviewImage.style.backgroundImage = `url("${_previewBlobUrl}")`;
+        els.bgPreviewImage.hidden = false;
+      }
+      if (els.bgPreviewBadge) els.bgPreviewBadge.textContent = "🖼️ Rasm fon";
+    }
+  }
+
+  function openBgSettings() {
+    if (els.bgSettingsBackdrop) els.bgSettingsBackdrop.hidden = false;
+    if (els.bgSettingsSheet) els.bgSettingsSheet.hidden = false;
+    getBgRecord().then((record) => {
+      updateBgPreview(record);
+    });
+    syncBackButton();
+    syncLock();
+    haptic("light");
+  }
+
+  function closeBgSettings() {
+    if (els.bgSettingsSheet) els.bgSettingsSheet.hidden = true;
+    if (els.bgSettingsBackdrop) els.bgSettingsBackdrop.hidden = true;
+    if (_previewBlobUrl) {
+      try { URL.revokeObjectURL(_previewBlobUrl); } catch (_) {}
+      _previewBlobUrl = null;
+    }
+    syncBackButton();
+    syncLock();
+  }
+
+  function initCustomBackground() {
+    let savedDim = null, savedBlur = null;
+    try {
+      savedDim = parseInt(localStorage.getItem("app-bg-dim"), 10);
+      savedBlur = parseInt(localStorage.getItem("app-bg-blur"), 10);
+    } catch (_) {}
+    applyBgStyles(isNaN(savedDim) ? 45 : savedDim, isNaN(savedBlur) ? 0 : savedBlur);
+
+    getBgRecord().then((record) => {
+      if (record) applyCustomBg(record);
+    }).catch(() => {});
+
+    if (els.homeSettingsBtn) els.homeSettingsBtn.addEventListener("click", openBgSettings);
+    if (els.bgSettingsClose) els.bgSettingsClose.addEventListener("click", closeBgSettings);
+    if (els.bgSettingsBackdrop) els.bgSettingsBackdrop.addEventListener("click", closeBgSettings);
+
+    // Video selection
+    if (els.bgPickVideoBtn && els.bgVideoInput) {
+      els.bgPickVideoBtn.addEventListener("click", () => els.bgVideoInput.click());
+      els.bgVideoInput.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!file) return;
+
+        if (file.size > 60 * 1024 * 1024) {
+          showToast("⚠️ Video hajmi 60 MB dan oshmasligi kerak!");
+          return;
+        }
+
+        const tempVideo = document.createElement("video");
+        tempVideo.preload = "metadata";
+        tempVideo.muted = true;
+        tempVideo.playsInline = true;
+        const blobUrl = URL.createObjectURL(file);
+        tempVideo.src = blobUrl;
+
+        tempVideo.onloadedmetadata = async () => {
+          const duration = tempVideo.duration;
+          URL.revokeObjectURL(blobUrl);
+
+          if (duration > 61) {
+            showToast(`⚠️ Video davomiyligi 1 daqiqadan (60 s) oshmasligi kerak! (Joriy: ${Math.round(duration)} s)`);
+            return;
+          }
+
+          try {
+            const rec = {
+              id: "active_bg",
+              type: "video",
+              blob: file,
+              mime: file.type || "video/mp4",
+              duration: duration,
+              updatedAt: Date.now()
+            };
+            await saveBgRecord(rec);
+            applyCustomBg(rec);
+            showToast("🎬 Video fon muvaffaqiyatli o'rnatildi!");
+            haptic("medium");
+          } catch (err) {
+            showToast("Xatolik: " + (err && err.message ? err.message : "Videoni saqlab bo'lmadi"));
+          }
+        };
+
+        tempVideo.onerror = () => {
+          URL.revokeObjectURL(blobUrl);
+          showToast("⚠️ Videoni ochib bo'lmadi. Boshqa formatdagi video tanlang.");
+        };
+      });
+    }
+
+    // Image selection
+    if (els.bgPickImageBtn && els.bgImageInput) {
+      els.bgPickImageBtn.addEventListener("click", () => els.bgImageInput.click());
+      els.bgImageInput.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!file) return;
+
+        if (file.size > 25 * 1024 * 1024) {
+          showToast("⚠️ Rasm hajmi 25 MB dan oshmasligi kerak!");
+          return;
+        }
+
+        try {
+          const rec = {
+            id: "active_bg",
+            type: "image",
+            blob: file,
+            mime: file.type || "image/jpeg",
+            updatedAt: Date.now()
+          };
+          await saveBgRecord(rec);
+          applyCustomBg(rec);
+          showToast("🖼️ Rasm fon muvaffaqiyatli o'rnatildi!");
+          haptic("medium");
+        } catch (err) {
+          showToast("Xatolik: " + (err && err.message ? err.message : "Rasmni saqlab bo'lmadi"));
+        }
+      });
+    }
+
+    // Reset to default
+    if (els.bgResetBtn) {
+      els.bgResetBtn.addEventListener("click", async () => {
+        await deleteBgRecord();
+        applyCustomBg(null);
+        showToast("Fon standart holatga qaytarildi");
+        haptic("light");
+      });
+    }
+
+    // Dimming slider
+    if (els.bgDimRange) {
+      els.bgDimRange.addEventListener("input", (e) => {
+        const val = parseInt(e.target.value, 10) || 45;
+        applyBgStyles(val, parseInt(els.bgBlurRange ? els.bgBlurRange.value : 0, 10));
+        try { localStorage.setItem("app-bg-dim", String(val)); } catch (_) {}
+      });
+    }
+
+    // Blur slider
+    if (els.bgBlurRange) {
+      els.bgBlurRange.addEventListener("input", (e) => {
+        const val = parseInt(e.target.value, 10) || 0;
+        applyBgStyles(parseInt(els.bgDimRange ? els.bgDimRange.value : 45, 10), val);
+        try { localStorage.setItem("app-bg-blur", String(val)); } catch (_) {}
+      });
+    }
+  }
+
   function zeroLocalTopCoefficients() {
     (state.entries.top || []).forEach((e) => {
       if (!e || e.pending || !e.synced) return;
@@ -5636,6 +6024,7 @@
 
   // ---- Boot ----
   initTelegram();
+  initCustomBackground();
   syncFastModeBanners();
   renderAllPhotos();
   renderAdjust();

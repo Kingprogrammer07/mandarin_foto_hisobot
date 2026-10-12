@@ -3434,9 +3434,9 @@ body.locked { overflow: hidden; }
 /* ---------- Sheet padding + toggle ---------- */
 /* All sheets and backdrops sit above the home screen and overlays (z 90). */
 .sheet,
-#nameSheet, #setSheet, #entryActSheet, #outboxSheet, #reportsFilterSheet { z-index: 100 !important; }
+#nameSheet, #setSheet, #entryActSheet, #outboxSheet, #reportsFilterSheet, #bgSettingsSheet { z-index: 100 !important; }
 .sheet-backdrop,
-#nameBackdrop, #setBackdrop, #entryActBackdrop, #outboxBackdrop, #reportsFilterBackdrop { z-index: 99 !important; }
+#nameBackdrop, #setBackdrop, #entryActBackdrop, #outboxBackdrop, #reportsFilterBackdrop, #bgSettingsBackdrop { z-index: 99 !important; }
 .sheet__pad { padding: 4px 2px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
 .toggle-row__title { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
@@ -4030,3 +4030,212 @@ body.locked { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ==========================================================================
+   CUSTOM BACKGROUND (VIDEO LOOP / IMAGE / GLASSMORPHISM)
+   ========================================================================== */
+.app-bg-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--bg);
+}
+.app-bg-video,
+.app-bg-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.app-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, var(--bg-dim, 0.45));
+  backdrop-filter: blur(var(--bg-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
+  transition: background 0.15s ease, backdrop-filter 0.15s ease;
+}
+
+/* Glassmorphism theme adaptations when custom background is active */
+body.has-custom-bg {
+  background: transparent !important;
+}
+body.has-custom-bg .screen {
+  background: transparent !important;
+}
+body.has-custom-bg .screen__top,
+body.has-custom-bg .topbar {
+  background: color-mix(in srgb, var(--bg) 65%, transparent) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+}
+body.has-custom-bg .work-card,
+body.has-custom-bg .report-item,
+body.has-custom-bg .menu-btn,
+body.has-custom-bg .stock-summary__card,
+body.has-custom-bg .home-search,
+body.has-custom-bg .stock-search-wrap,
+body.has-custom-bg .bal-cell {
+  background: color-mix(in srgb, var(--fill) 82%, transparent) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: color-mix(in srgb, var(--separator) 45%, transparent);
+}
+body.has-custom-bg .home-toolbar {
+  background: transparent !important;
+}
+
+/* Background Settings Sheet */
+.sheet--bg-settings {
+  max-width: 480px;
+}
+.bg-preview-card {
+  margin-bottom: 16px;
+  border-radius: 18px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--fill) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--separator) 50%, transparent);
+}
+.bg-preview-screen {
+  position: relative;
+  height: 120px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bg-preview-media-wrap {
+  position: absolute;
+  inset: 0;
+}
+.bg-preview-video,
+.bg-preview-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-size: cover;
+  background-position: center;
+}
+.bg-preview-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, var(--bg-dim, 0.45));
+  backdrop-filter: blur(var(--bg-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--bg-blur, 0px));
+}
+.bg-preview-mockup {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.bg-preview-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.02em;
+}
+.bg-preview-sample-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fill) 85%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.bg-preview-sample-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.bg-preview-sample-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.bg-actions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.bg-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 14px;
+}
+.bg-action-btn--reset {
+  color: var(--hint);
+  border-color: color-mix(in srgb, var(--separator) 60%, transparent);
+}
+.bg-action-btn--reset:hover {
+  color: var(--destructive);
+  border-color: color-mix(in srgb, var(--destructive) 40%, transparent);
+}
+.bg-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: color-mix(in srgb, var(--fill) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+  border-radius: 16px;
+  padding: 14px;
+}
+.bg-slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bg-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.bg-slider-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.bg-slider-val {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.bg-range {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--separator) 80%, transparent);
+  outline: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
