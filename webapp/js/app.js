@@ -1590,7 +1590,7 @@
           openArchiveMonths.add(groups[0].key);
         }
         const ul = document.createElement("ul");
-        ul.className = "report-list report-list--archive-folders";
+        ul.className = "archive-folders-list";
         groups.forEach((grp) => {
           ul.appendChild(monthFolderItem(grp, openArchiveMonths.has(grp.key)));
         });

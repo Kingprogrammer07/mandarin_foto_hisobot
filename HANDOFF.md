@@ -552,20 +552,23 @@ reys_hisoboti_v2/
   - `tests/test_server_api.py`:
     - `api/entries` va query param `init_data` orqali rasm olish to'liq tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
 
-### DD. Bosh Sahifada (#/reports) Arxivni Oyma-oy Papkalar (Monthly Folders) Bo'yicha Tashkil Qilish (2026-10-17)
+### DD. Bosh Sahifada (#/reports) Arxivni Oyma-oy Papkalar (Monthly Folders) Bo'yicha Tashkil Qilish va Tugmalar Ustma-ust Tushishini Tuzatish (2026-10-17)
 - **Talab & Maqsad**:
   - `#/reports` bosh sahifasida oxirgi 3 ta hisobotdan tashqari barcha eski hisobotlar (4-dan 200 tagacha) ilgari bitta uzun tekis ro'yxat sifatida ochilar edi.
   - Foydalanuvchi talabi: Arxivni yillar va oylar bo'yicha papkalarga (folders) bo'lish, masalan, Sentabr 2026, Avgust 2026 papkalari bo'lishi va ichiga kirilganda o'sha oydagi reyslar turishi.
+  - Skrinshotdagi muammo: Papkalar desktopda 2 ustunli tor gridga tushib qolgani sababli "Oktyabr" ochilganda yonidagi "Sentabr" o'ng tomonda tiqilib turib qolgan va ichidagi kartochkalar torayib, `.report-item__actions` dagi "Nom", "Excel" va "O'chirish" tugmalari bir-birining ustiga chiqib ketgan.
 - **Yechim & Arxitektura**:
   - `webapp/js/app.js`:
     - `groupReportsByYearMonth(reports)`: Har bir hisobotning `created_at` vaqtidan Yil va Oyni ajratib olib, yangidan eskiga qarab saralangan guruhlarga (masalan: `2026-10`, `2026-09`, `2026-08`) ajratadi.
     - `openArchiveMonths`: Ochiq papkalar holati `localStorage` (`reys_open_archive_months`) ga saqlanadi. Birinchi marta ochilganda foydalanuvchi qulayligi uchun eng oxirgi oy papkasi avtomatik ochiq turadi.
     - `monthFolderItem(group, isOpen)`: Har bir oy uchun interaktiv papka kartochkasi: 📁 / 📂 ikonkasi, `Sentabr 2026` sarlavhasi, `${count} ta reys` nishoni va rotatsion chevron. Papka ichida shu oyga tegishli barcha `reportItem(rep)` kartalari (ochish, tahrirlash, Excel, 3 nuqta menyusi) to'liq ishlaydi.
+    - Papkalar ro'yxati `.archive-folders-list` klassiga o'tkazilib, `.report-list` gridiga adashib kirmasligi ta'minlandi.
     - Qidiruv (`#homeSearchInput`): Reys nomi, maxsus nom yoki oy nomi (masalan: "Sentabr", "Avgust") yozilganda, barcha reyslar orasidan bir zumda topiladi.
   - `webapp/css/styles.css`:
-    - `.archive-folder`, `.archive-folder__btn`, `.archive-folder__icon`, `.archive-folder__title`, `.archive-folder__badge`, `.archive-folder__chevron`, `.archive-folder__body` va `.report-list--archive-month` klasslari yaratildi.
-    - Papka ochilganda silliq `folderSlide` animatsiyasi va chap tomonda bolalar kartalarini birlashtiruvchi aksent chiziq dizayni berildi.
-    - Aktivlar versiyasi `?v=archivefolders1` ga ko'tarildi.
+    - `.archive-folders-list`: `display: flex !important; flex-direction: column !important; width: 100% !important;` orqali har bir oy papkasi 100% to'liq kenglikda vertikal akkordeon qilib joylashtirildi.
+    - `.report-list--archive-month`: Desktopda keng 2 ustunli (`repeat(2, minmax(0, 1fr))`), mobilda 1 ustunli qilib sozlandi.
+    - `.report-item__actions`: `display: flex; align-items: center; flex-wrap: wrap;` qilinib, `.report-item__edit, .report-item__xls, .report-item__del` tugmalariga `min-width: max-content; flex-shrink: 0; white-space: nowrap;` berildi. `.report-item__del` ga `margin-left: auto;` qo'shildi. Natijada yozuvlar hech qachon qisilib bir-birining ustiga tushib ketmaydi.
+    - Aktivlar versiyasi `?v=archivefolders2` ga ko'tarildi.
   - `tests/test_server_api.py`:
     - Barcha 22 ta avtomatlashtirilgan backend testlari muvaffaqiyatli o'tdi.
 

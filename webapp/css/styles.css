@@ -2065,6 +2065,8 @@ body.locked { overflow: hidden; }
 }
 .report-item__actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
@@ -2075,7 +2077,8 @@ body.locked { overflow: hidden; }
 .report-item__del {
   width: auto;
   height: 36px;
-  min-width: 0;
+  min-width: max-content;
+  flex-shrink: 0;
   padding: 0 12px;
   border-radius: 999px;
   display: inline-flex;
@@ -2085,6 +2088,7 @@ body.locked { overflow: hidden; }
   border: 1px solid transparent;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
   transition: transform var(--speed) var(--ease), background var(--speed) var(--ease);
 }
 .report-item__edit:active,
@@ -2097,23 +2101,27 @@ body.locked { overflow: hidden; }
 .report-item__del span {
   font-size: 13px;
   font-weight: 750;
+  white-space: nowrap;
 }
 .report-item__edit {
   color: var(--accent);
 }
 .report-item__del {
   color: var(--destructive);
+  margin-left: auto;
 }
 .report-item__edit .ic,
 .report-item__xls .ic,
 .report-item__del .ic {
   width: 17px;
   height: 17px;
+  flex: none;
 }
 .report-item__more {
   width: 36px;
   height: 36px;
   min-width: 36px;
+  flex-shrink: 0;
   padding: 0;
   border-radius: 999px;
   display: inline-flex;
@@ -2346,9 +2354,28 @@ body.locked { overflow: hidden; }
   }
   .report-archive {
     grid-column: 1 / -1;
+    width: 100%;
   }
   .report-archive__panel {
     grid-column: 1 / -1;
+    width: 100%;
+  }
+  .archive-folders-list,
+  .report-list--archive-folders {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+  .archive-folder {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+  .report-list--archive-month {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
   }
   .report-list--archive {
     display: grid;
@@ -2484,15 +2511,19 @@ body.locked { overflow: hidden; }
 }
 
 /* Monthly Archive Folders */
+.archive-folders-list,
 .report-list--archive-folders {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 0;
-  list-style: none;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  margin: 10px 0 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+  width: 100% !important;
 }
 .archive-folder {
   list-style: none;
+  width: 100% !important;
   border-radius: 16px;
   transition: all 0.2s var(--ease);
 }
@@ -2574,10 +2605,10 @@ body.locked { overflow: hidden; }
   color: var(--accent);
 }
 .archive-folder__body {
-  padding: 8px 0 4px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 25%, var(--separator));
-  margin-left: 14px;
-  margin-top: 6px;
+  padding: 10px 0 6px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, var(--separator));
+  margin-left: 8px;
+  margin-top: 8px;
   animation: folderSlide 0.22s var(--ease);
 }
 .archive-folder__body[hidden] {
@@ -2585,10 +2616,12 @@ body.locked { overflow: hidden; }
 }
 .report-list--archive-month {
   display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
+  width: 100%;
 }
 @keyframes folderSlide {
   from { opacity: 0; transform: translateY(-6px); }
