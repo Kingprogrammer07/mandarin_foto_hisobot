@@ -69,6 +69,7 @@
     reysFast: false, // kargolarga tarqatish fast-mode capture loop
     formSection: "top", // which SECTIONS entry the form is currently editing
     entries: { top: [], topchiqgan: [], bizda: [], chiqgan: [], reys: [], adjust: [] },
+    entriesLoading: { top: false, topchiqgan: false, bizda: false, chiqgan: false, reys: false, adjust: false },
     type: "akb",
     customTypes: [], // server-persisted user-added types
     inventory: {}, // tovar_turi -> weight (from server)
@@ -943,7 +944,27 @@
   let lbEditing = false;
   let lbSaving = false;
 
-  function lbItems() { return lb.mode === "form" ? state[lb.pk] : lb.files; }
+  function entryPhotoCount(e) {
+    if (!e) return 0;
+    if (e.files && e.files.length) return e.files.length;
+    if (e.photo_idxs && e.photo_idxs.length) return e.photo_idxs.length;
+    if (e.photo_urls && e.photo_urls.length) return e.photo_urls.length;
+    return Number(e.photoCount) || 0;
+  }
+
+  function entryPhotoUrl(entryId, idx) {
+    let url = `/api/entry/${entryId}/photo/${idx}`;
+    if (inTelegram && tg && tg.initData) {
+      url += (url.includes("?") ? "&" : "?") + `init_data=${encodeURIComponent(tg.initData)}`;
+    }
+    return url;
+  }
+
+  function lbItems() {
+    if (lb.mode === "form") return state[lb.pk];
+    if (lb.files && lb.files.length) return lb.files;
+    return lb.urls || [];
+  }
   function isLightboxEditable() {
     return !!(lb && lb.mode === "entry" && lb.entry && lb.entry.synced && !lb.entry.pending &&
       (lb.section === "reys" || OBSHIY_SECTIONS.includes(lb.section)));
@@ -968,7 +989,7 @@
         ? `${e.code || "—"} · ${fmtKg(e.weight)} · karobka ${n(boxWeight)}`
         : `${e.code || "—"} · ${fmtKg(e.weight)}`;
     }
-    return { main, sub: `${fmtTs(e.ts / 1000)} · ${(e.files || []).length} rasm` };
+    return { main, sub: `${fmtTs(e.ts / 1000)} · ${entryPhotoCount(e)} rasm` };
   }
 
   function lbShow() {
@@ -978,9 +999,11 @@
     if (lbTempUrl) { URL.revokeObjectURL(lbTempUrl); lbTempUrl = null; }
     if (lb.mode === "form") {
       els.lightboxImg.src = items[lb.i].url;
-    } else {
+    } else if (items[lb.i] instanceof File || items[lb.i] instanceof Blob) {
       lbTempUrl = URL.createObjectURL(items[lb.i]);
       els.lightboxImg.src = lbTempUrl;
+    } else if (typeof items[lb.i] === "string") {
+      els.lightboxImg.src = items[lb.i];
     }
     const many = items.length > 1;
     const canPrev = lb.i > 0 || hasEntryNeighbor(-1);
@@ -1011,11 +1034,16 @@
 
   function viewEntryPhotos(entry, startIndex) {
     closeLightboxEdit(false);
+    const files = entry.files || [];
+    const urls = (!files.length && entry.id != null && entry.photo_idxs)
+      ? entry.photo_idxs.map((idx) => entryPhotoUrl(entry.id, idx))
+      : [];
     lb = {
       mode: "entry",
       section: viewerSection,
       entry,
-      files: entry.files || [],
+      files,
+      urls,
       caption: entryCaption(entry),
       i: startIndex || 0,
     };
@@ -1027,7 +1055,7 @@
   }
 
   function entryOrder(section) {
-    return (state.entries[section] || []).slice().reverse().filter((e) => (e.files || []).length);
+    return (state.entries[section] || []).slice().reverse().filter((e) => entryPhotoCount(e) > 0);
   }
 
   function hasEntryNeighbor(d) {
@@ -1039,10 +1067,16 @@
 
   function setLightboxEntry(entry, index) {
     closeLightboxEdit(false);
+    const files = entry.files || [];
+    const urls = (!files.length && entry.id != null && entry.photo_idxs)
+      ? entry.photo_idxs.map((idx) => entryPhotoUrl(entry.id, idx))
+      : [];
     lb.entry = entry;
-    lb.files = entry.files || [];
+    lb.files = files;
+    lb.urls = urls;
     lb.caption = entryCaption(entry);
-    lb.i = Math.min(Math.max(index || 0, 0), Math.max(lb.files.length - 1, 0));
+    const count = files.length || urls.length || 1;
+    lb.i = Math.min(Math.max(index || 0, 0), Math.max(count - 1, 0));
   }
 
   function lbNav(d) {
@@ -1056,8 +1090,8 @@
       const cur = order.indexOf(lb.entry);
       const next = order[cur + (d > 0 ? 1 : -1)];
       if (!next) return;
-      const nextFiles = next.files || [];
-      setLightboxEntry(next, d > 0 ? 0 : nextFiles.length - 1);
+      const count = next.files ? next.files.length : (next.photo_idxs ? next.photo_idxs.length : 1);
+      setLightboxEntry(next, d > 0 ? 0 : count - 1);
     } else {
       return;
     }
@@ -1962,7 +1996,7 @@
     if (status === "all") return true;
     if (status === "unsent") return canSendUnsent(e);
     if (status === "sent") return canResendSent(e);
-    if (status === "has_photos") return (e.files || []).length > 0;
+    if (status === "has_photos") return entryPhotoCount(e) > 0;
     return true;
   }
 
@@ -2111,6 +2145,14 @@
     }
 
     if (!totalCount) {
+      if (state.entriesLoading && state.entriesLoading[viewerSection]) {
+        const loadingBox = document.createElement("div");
+        loadingBox.className = "entries__loading";
+        loadingBox.innerHTML = '<div class="spinner"></div><p>Yozuvlar yuklanmoqda...</p>';
+        els.entriesList.appendChild(loadingBox);
+        els.entriesPager.hidden = true;
+        return;
+      }
       const p = document.createElement("p");
       p.className = "entries__empty";
       p.textContent = active
@@ -2314,9 +2356,10 @@
     const titleWrap = document.createElement("div");
     titleWrap.className = "entry-card__title";
     const coefTxt = e.type && e.boxWeight ? `karobka ${e.boxWeight}` : (e.type && e.coefficient ? `koef ${e.coefficient}` : "");
+    const photoCount = entryPhotoCount(e);
     const metaTop = document.createElement("div");
     metaTop.className = "entry-card__meta";
-    metaTop.textContent = [coefTxt, fmtTs(e.ts / 1000), `${files.length} rasm`].filter(Boolean).join(" · ");
+    metaTop.textContent = [coefTxt, fmtTs(e.ts / 1000), `${photoCount} rasm`].filter(Boolean).join(" · ");
     titleWrap.append(code, metaTop);
     const val = document.createElement("div");
     val.className = "entry-card__val";
@@ -2334,22 +2377,47 @@
     foot.className = "entry-card__foot";
     const thumbs = document.createElement("div");
     thumbs.className = "entry-card__thumbs";
-    files.slice(0, 5).forEach((f, idx) => {
-      const url = URL.createObjectURL(f);
-      entryUrls.push(url);
-      const img = document.createElement("img");
-      img.className = "entry-thumb";
-      img.src = url;
-      img.alt = "";
-      img.addEventListener("click", () => viewEntryPhotos(e, idx));
-      thumbs.appendChild(img);
-    });
-    if (files.length > 5) {
-      const more = document.createElement("span");
-      more.className = "entry-more";
-      more.textContent = `+${files.length - 5}`;
-      more.addEventListener("click", () => viewEntryPhotos(e, 5));
-      thumbs.appendChild(more);
+    if (files.length > 0) {
+      files.slice(0, 5).forEach((f, idx) => {
+        const url = URL.createObjectURL(f);
+        entryUrls.push(url);
+        const img = document.createElement("img");
+        img.className = "entry-thumb";
+        img.src = url;
+        img.alt = "";
+        img.addEventListener("click", () => viewEntryPhotos(e, idx));
+        thumbs.appendChild(img);
+      });
+      if (files.length > 5) {
+        const more = document.createElement("span");
+        more.className = "entry-more";
+        more.textContent = `+${files.length - 5}`;
+        more.addEventListener("click", () => viewEntryPhotos(e, 5));
+        thumbs.appendChild(more);
+      }
+    } else if (e.synced && e.id != null && e.photo_idxs && e.photo_idxs.length > 0) {
+      const displayIdxs = e.photo_idxs.slice(0, 5);
+      displayIdxs.forEach((photoIdx, slotIdx) => {
+        const img = document.createElement("img");
+        img.className = "entry-thumb is-loading";
+        img.loading = "lazy";
+        img.alt = "";
+        img.src = entryPhotoUrl(e.id, photoIdx);
+        img.onload = () => img.classList.remove("is-loading");
+        img.onerror = () => {
+          img.classList.remove("is-loading");
+          img.classList.add("is-error");
+        };
+        img.addEventListener("click", () => viewEntryPhotos(e, slotIdx));
+        thumbs.appendChild(img);
+      });
+      if (e.photo_idxs.length > 5) {
+        const more = document.createElement("span");
+        more.className = "entry-more";
+        more.textContent = `+${e.photo_idxs.length - 5}`;
+        more.addEventListener("click", () => viewEntryPhotos(e, 5));
+        thumbs.appendChild(more);
+      }
     }
     const badges = document.createElement("div");
     badges.className = "entry-card__badges";
@@ -2410,9 +2478,22 @@
     els.entryActBackdrop.hidden = true;
     syncBackButton();
   }
-  function startEditEntry(entry) {
-    if (viewerSection === "reys") { startEditReys(entry); return; }
-    if (viewerSection === "adjust") { startEditAdjust(entry); return; }
+  async function ensureEntryFiles(entry) {
+    if (!entry) return [];
+    if (entry.files && entry.files.length) return entry.files;
+    if (entry.id != null && entry.photo_idxs && entry.photo_idxs.length) {
+      showToast("Rasmlar yuklanmoqda...");
+      const files = await fetchEntryFiles(entry.id, entry.photo_idxs);
+      entry.files = files;
+      return files;
+    }
+    entry.files = [];
+    return [];
+  }
+
+  async function startEditEntry(entry) {
+    if (viewerSection === "reys") { await startEditReys(entry); return; }
+    if (viewerSection === "adjust") { await startEditAdjust(entry); return; }
     editingEntry = entry;
     resetTop(false); // clear the form (revokes any current form-photo URLs)
     // Numeric-only unless the saved code contains non-digits → unlock free text.
@@ -2424,7 +2505,8 @@
       els.topCodePencil.classList.add("is-on");
       els.topCode.inputMode = "text";
     }
-    (entry.files || []).forEach((f) => state.topPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    const files = await ensureEntryFiles(entry);
+    (files || []).forEach((f) => state.topPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
     renderPhotos("topPhotos");
     els.topCode.value = entry.code || "";
     const boxWeight = entry.boxWeight || entry.coefficient || 0;
@@ -2749,7 +2831,7 @@
 
   // Edit a saved reys entry: load it into tab 1; save PUTs to the backend
   // (inventory delta is compensated server-side).
-  function startEditReys(entry) {
+  async function startEditReys(entry) {
     if (saving) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
     if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
     rememberEditReturn(entry);
@@ -2760,7 +2842,8 @@
     setCoefUI(entry.boxWeight ? "box" : (entry.coefMode || "none"), entry.boxWeight || entry.coefficient || 0);
     els.weight.value = String(entry.weight);
     state.weightRaw = String(entry.weight);
-    (entry.files || []).forEach((f) => state.photos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    const files = await ensureEntryFiles(entry);
+    (files || []).forEach((f) => state.photos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
     renderPhotos("photos");
     els.saveBtn.textContent = "Yangilash";
     closeEntries();
@@ -2769,7 +2852,7 @@
 
   // Edit a saved transfer: load it into tab 2; save PUTs to the backend
   // (old transfer reversed, new one applied).
-  function startEditAdjust(entry) {
+  async function startEditAdjust(entry) {
     if (adjusting) { showToast("Avval joriy saqlash tugashini kuting", true); return; }
     if (entry.pending || !entry.synced || entry.id == null) { showToast("Avval yuklanish tugasin", true); return; }
     rememberEditReturn(entry);
@@ -2779,7 +2862,8 @@
     state.adjTo = entry.to;
     els.adjWeight.value = String(entry.weight);
     state.adjWeightRaw = String(entry.weight);
-    (entry.files || []).forEach((f) => state.adjPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
+    const files = await ensureEntryFiles(entry);
+    (files || []).forEach((f) => state.adjPhotos.push({ id: ++photoSeq, file: f, url: URL.createObjectURL(f) }));
     renderPhotos("adjPhotos");
     renderAdjust();
     closeEntries();
@@ -3375,10 +3459,16 @@
   }
 
   // ---- Load saved entries from the server (history survives a reload) ----
-  function serverEntry(kind, r, files) {
+  // ---- Load saved entries from the server (history survives a reload) ----
+  function serverEntry(kind, r, files = null) {
+    const photoIdxs = r.photo_idxs || [];
+    const photoUrls = r.photo_urls || [];
     const base = {
       id: r.id,
       files,
+      photo_idxs: photoIdxs,
+      photo_urls: photoUrls,
+      photoCount: files ? files.length : photoIdxs.length,
       ts: (r.ts || 0) * 1000,
       editedAt: r.edited_at ? r.edited_at * 1000 : null,
       sendStatus: r.send_status || null,
@@ -3426,15 +3516,21 @@
   }
   async function loadEntries(kind) {
     const rid = state.reportId;
+    if (state.entriesLoading) state.entriesLoading[kind] = true;
+    renderEntries();
     let rows = [];
     try {
       const res = await fetch(`/api/entries?report_id=${rid}&kind=${kind}`, { headers: authHeaders() });
       const json = await res.json().catch(() => ({}));
       rows = (res.ok && json.entries) || [];
-    } catch (_) { return; }
-    const loaded = await Promise.all(
-      rows.map(async (r) => serverEntry(kind, r, await fetchEntryFiles(r.id, r.photo_idxs || [])))
-    );
+    } catch (_) {
+      if (state.entriesLoading) state.entriesLoading[kind] = false;
+      renderEntries();
+      return;
+    }
+    if (state.entriesLoading) state.entriesLoading[kind] = false;
+    // Instant mapping: creates all entries in ~0ms without blocking on hundreds of photo downloads!
+    const loaded = rows.map((r) => serverEntry(kind, r));
     if (state.reportId !== rid) return; // report changed while loading → discard
     // Server rows are newest-first; store oldest-first (renderEntries reverses),
     // then append any still-pending outbox items for this report.
@@ -4399,8 +4495,18 @@
   });
   // ---- Saved-entries viewer ----
   els.entriesBackBtn.addEventListener("click", closeEntries);
-  els.entriesPrev.addEventListener("click", () => { entriesPage -= 1; renderEntries(); });
-  els.entriesNext.addEventListener("click", () => { entriesPage += 1; renderEntries(); });
+  els.entriesPrev.addEventListener("click", () => {
+    entriesPage -= 1;
+    renderEntries();
+    const s = entriesScroller();
+    if (s) s.scrollTop = 0;
+  });
+  els.entriesNext.addEventListener("click", () => {
+    entriesPage += 1;
+    renderEntries();
+    const s = entriesScroller();
+    if (s) s.scrollTop = 0;
+  });
   els.entriesSendUnsentBtn.addEventListener("click", () => sendEntriesBulk("unsent"));
   els.entriesResendSentBtn.addEventListener("click", () => sendEntriesBulk("sent"));
   els.entriesSendSelectedBtn.addEventListener("click", sendEntriesSelected);

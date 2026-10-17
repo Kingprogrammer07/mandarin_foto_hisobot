@@ -3152,6 +3152,20 @@ body.locked { overflow: hidden; }
   background: var(--fill);
   image-rendering: auto;
   display: block;
+  transition: opacity 0.2s ease;
+}
+.entry-thumb.is-loading {
+  opacity: 0.6;
+  background: color-mix(in srgb, var(--fill) 80%, var(--bg));
+  animation: pulseThumb 1.2s infinite ease-in-out;
+}
+.entry-thumb.is-error {
+  opacity: 0.4;
+  background: color-mix(in srgb, var(--destructive) 15%, var(--fill));
+}
+@keyframes pulseThumb {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
 }
 .entry-more { font-size: 12px; font-weight: 600; color: var(--hint); flex: none; }
 .entry-card__sub { font-size: 12px; color: var(--hint); min-width: 0; flex: 1; line-height: 1.35; }
@@ -3203,7 +3217,24 @@ body.locked { overflow: hidden; }
 }
 .act-item:active { background: color-mix(in srgb, var(--fill) 60%, var(--separator)); }
 .act-item .ic { width: 20px; height: 20px; }
-.act-item--danger { color: var(--destructive); }
+.entries__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 56px 16px;
+  color: var(--hint);
+  font-size: 14px;
+}
+.entries__loading .spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--fill);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 .entries__empty { text-align: center; color: var(--hint); padding: 48px 16px; font-size: 14px; }
 .pager {
   display: flex; align-items: center; justify-content: center; gap: 14px;

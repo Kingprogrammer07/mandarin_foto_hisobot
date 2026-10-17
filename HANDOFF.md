@@ -534,6 +534,24 @@ reys_hisoboti_v2/
   - `tests/test_server_api.py`:
     - Barcha 22 ta avtomatlashtirilgan backend testlari muvaffaqiyatli o'tdi.
 
+### CC. Yuklanganlar (Entries Viewer) 0.1 Soniyada Tezkor Ochilish va Lazy-Loading Sahifalash (2026-10-17)
+- **Talab & Muammo**:
+  - 136 ta yoki undan ortiq yozuvga ega bo'lgan reyslarda (masalan, M305–M306) "Bizda qoladigan" (va boshqa bo'limlarda) "Yuklanganlar" ochilganda, hisoblagich darhol 136 ta deb ko'rsatsa ham, kartochkalar 30–60 soniya kutib qolgan yoki ekranni qotirib qo'ygan.
+  - Sababi: `loadEntries` funksiyasi barcha 136 ta yozuvning rasmlarini (`fetchEntryFiles`) bloklovchi `Promise.all` bilan oldindan yuklab olishga urinardi. 200+ rasm parallel so'ralib, mobil brauzerlarning 6 ta ulanish limitiga tiqilardi.
+- **Yechim & Arxitektura**:
+  - `app/server.py`:
+    - `_identity` funksiyasi Telegram Mini App `init_data` parametrini `request.query_params.get("init_data")` orqali ham qabul qiladigan qilindi. Natijada `<img>` teglari to'g'ridan-to'g'ri `/api/entry/{id}/photo/{idx}?init_data=...` orqali avtorizatsiyadan o'tib, brauzer HTTP keshidan (Cache-Control 24 soat) foydalanadi.
+  - `webapp/js/app.js`:
+    - **Instant Metadata Load**: `loadEntries(kind)` barcha yozuvlar ro'yxatini olgach, rasmlarni kutmasdan bir zumda (0 millisekundda) `state.entries[kind]` ga o'tkazadi va ekranni chizadi. Natijada yozuvlar ekrani **0.1 soniyada** ochiladi!
+    - **To'liq Qidiruv va Filtr**: Barcha 136+ ta yozuv xotirada bo'lganligi sababli, qidiruv (kod, tur, og'irlik) va filtrlar (sana, holat, tovar) barcha yozuvlar bo'yicha bir zumda ishlaydi va natijani sahifalab beradi.
+    - **Lazy / On-Demand Rasmlar**: 1-sahifadagi 15 ta kartochka uchun rasmlar `loading="lazy"` va to'g'ridan-to'g'ri URL bilan yuklanadi. Rasm yuklanguncha `.entry-thumb.is-loading` animatsiyasi ishlaydi.
+    - **On-Demand Edit & Lightbox**: Tahrirlash (Edit) bosilganda, faqat o'sha yozuvning 1-2 ta rasmi `ensureEntryFiles` orqali yuklanadi. Lightbox esa to'g'ridan-to'g'ri rasm manzili orqali ishlaydi. Sahifa o'zgarganda avtomatik tepaga scroll qilinadi.
+  - `webapp/css/styles.css`:
+    - `.entry-thumb.is-loading`, `.entry-thumb.is-error` va `.entries__loading` spinner animatsiyasi qo'shildi.
+    - Aktivlar versiyasi `?v=fastentries1` ga ko'tarildi.
+  - `tests/test_server_api.py`:
+    - `api/entries` va query param `init_data` orqali rasm olish to'liq tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

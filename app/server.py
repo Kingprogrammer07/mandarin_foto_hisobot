@@ -359,7 +359,11 @@ def _identity(request: Request, init_data: str = "", state_changing: bool = True
     `X-Telegram-Init-Data` header (GET). The same-origin (CSRF) check applies
     only to cookie-authenticated state-changing requests.
     """
-    idata = init_data or request.headers.get("x-telegram-init-data", "")
+    idata = (
+        init_data
+        or request.headers.get("x-telegram-init-data", "")
+        or request.query_params.get("init_data", "")
+    )
     if idata:
         return f"tg:{authenticate_admin(idata).id}"  # raises on failure
     if state_changing and not _same_origin(request):

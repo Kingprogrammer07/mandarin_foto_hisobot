@@ -1,5 +1,9 @@
+import hashlib
+import hmac
 import io
+import json
 import time
+import urllib.parse
 import docx
 import httpx
 import pytest
@@ -54,6 +58,32 @@ async def test_api_routes():
             # 6. Fetch photo
             r = await client.get(f"/api/entry/{entry_id}/photo/0", cookies=cookies)
             assert r.status_code in (200, 307)
+
+            # 6b. Verify list entries metadata includes photo_idxs
+            r = await client.get(f"/api/entries?report_id={rid}&kind=reys", cookies=cookies)
+            assert r.status_code == 200
+            entries_list = r.json().get("entries", [])
+            assert len(entries_list) >= 1
+            assert entries_list[0]["photo_idxs"] == [0]
+
+            # 6c. Verify direct photo fetch via init_data query parameter (no cookies)
+            admin_id = list(config.ADMIN_IDS)[0] if config.ADMIN_IDS else 123456
+            if not config.ADMIN_IDS:
+                config.ADMIN_IDS.add(admin_id)
+            user_json = json.dumps({"id": admin_id, "first_name": "Admin", "username": "admin"})
+            auth_date = str(int(time.time()))
+            data_check = f"auth_date={auth_date}\nuser={user_json}"
+            bot_token = config.BOT_TOKEN or "test_token_123"
+            orig_token = config.BOT_TOKEN
+            config.BOT_TOKEN = bot_token
+            try:
+                secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+                h = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
+                valid_idata = f"auth_date={auth_date}&user={urllib.parse.quote(user_json)}&hash={h}"
+                r = await client.get(f"/api/entry/{entry_id}/photo/0?init_data={urllib.parse.quote(valid_idata)}")
+                assert r.status_code in (200, 307)
+            finally:
+                config.BOT_TOKEN = orig_token
 
             # 7. Check inventory
             r = await client.get(f"/api/inventory?report_id={rid}", cookies=cookies)
