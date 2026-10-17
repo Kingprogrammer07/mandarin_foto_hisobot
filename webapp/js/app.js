@@ -1409,13 +1409,105 @@
     return li;
   }
 
+  const UZ_MONTHS = [
+    "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
+    "Iyul", "Avgust", "Sentabr", "Oktyabr", "Noyabr", "Dekabr"
+  ];
+
+  let openArchiveMonths = new Set();
+  try {
+    const raw = localStorage.getItem("reys_open_archive_months");
+    if (raw) openArchiveMonths = new Set(JSON.parse(raw));
+  } catch (_) {}
+
+  function saveOpenArchiveMonths() {
+    try {
+      localStorage.setItem("reys_open_archive_months", JSON.stringify([...openArchiveMonths]));
+    } catch (_) {}
+  }
+
+  function groupReportsByYearMonth(reports) {
+    const map = new Map();
+    reports.forEach((rep) => {
+      const ts = (rep.created_at || (Date.now() / 1000)) * 1000;
+      const d = new Date(ts);
+      const year = d.getFullYear();
+      const monthIdx = d.getMonth();
+      const key = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          year,
+          monthIdx,
+          monthName: UZ_MONTHS[monthIdx] || "",
+          label: `${UZ_MONTHS[monthIdx]} ${year}`,
+          reports: [],
+        });
+      }
+      map.get(key).reports.push(rep);
+    });
+    return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }
+
+  function monthFolderItem(group, isOpen) {
+    const wrap = document.createElement("li");
+    wrap.className = "archive-folder" + (isOpen ? " is-open" : "");
+    wrap.dataset.folderKey = group.key;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "archive-folder__btn" + (isOpen ? " is-open" : "");
+    btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+
+    const icon = document.createElement("span");
+    icon.className = "archive-folder__icon";
+    icon.innerHTML = isOpen
+      ? '<svg viewBox="0 0 24 24" class="ic"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>'
+      : '<svg viewBox="0 0 24 24" class="ic"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+
+    const title = document.createElement("span");
+    title.className = "archive-folder__title";
+    title.textContent = group.label;
+
+    const badge = document.createElement("strong");
+    badge.className = "archive-folder__badge";
+    badge.textContent = `${group.reports.length} ta reys`;
+
+    const chevron = document.createElement("span");
+    chevron.className = "archive-folder__chevron";
+    chevron.innerHTML = '<svg viewBox="0 0 24 24" class="ic"><path d="m7 10 5 5 5-5z"/></svg>';
+
+    btn.append(icon, title, badge, chevron);
+
+    const body = document.createElement("div");
+    body.className = "archive-folder__body";
+    if (!isOpen) body.hidden = true;
+
+    const ul = document.createElement("ul");
+    ul.className = "report-list report-list--archive-month";
+    group.reports.forEach((rep) => ul.appendChild(reportItem(rep)));
+    body.appendChild(ul);
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = !openArchiveMonths.has(group.key);
+      if (willOpen) openArchiveMonths.add(group.key);
+      else openArchiveMonths.delete(group.key);
+      saveOpenArchiveMonths();
+      renderReports(homeReports, homeReportsMax, true);
+    });
+
+    wrap.append(btn, body);
+    return wrap;
+  }
+
   function archiveToggle(count) {
     const li = document.createElement("li");
     li.className = "report-archive";
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "report-archive__btn" + (homeArchiveOpen ? " is-open" : "");
-    btn.innerHTML = `<span>Arxiv</span><strong>${count}</strong><svg viewBox="0 0 24 24" class="ic"><path d="m7 10 5 5 5-5z"/></svg>`;
+    btn.innerHTML = `<span style="display:flex;align-items:center;gap:8px;"><svg viewBox="0 0 24 24" class="ic" style="width:18px;height:18px;"><path d="M20 2H4c-1.1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-.9-2-2-2zm-1 18H5V9h14v11zm1-13H4V4h16v3z"/><path d="M9 12h6v2H9z"/></svg> Arxiv</span><strong>${count} ta reys</strong><svg viewBox="0 0 24 24" class="ic"><path d="m7 10 5 5 5-5z"/></svg>`;
     btn.addEventListener("click", () => {
       homeArchiveOpen = !homeArchiveOpen;
       renderReports(homeReports, homeReportsMax, true);
@@ -1427,7 +1519,18 @@
   function updateHomeHint() {
     const q = (homeSearchQuery || "").trim().toLowerCase();
     if (q) {
-      const count = homeReports.filter((r) => (r.name || "").toLowerCase().includes(q)).length;
+      const count = homeReports.filter((r) => {
+        if ((r.name || "").toLowerCase().includes(q)) return true;
+        if (r.special_name && String(r.special_name).toLowerCase().includes(q)) return true;
+        const ts = (r.created_at || 0) * 1000;
+        if (ts) {
+          const d = new Date(ts);
+          const monthName = (UZ_MONTHS[d.getMonth()] || "").toLowerCase();
+          const yearStr = String(d.getFullYear());
+          if (monthName.includes(q) || `${monthName} ${yearStr}`.includes(q)) return true;
+        }
+        return false;
+      }).length;
       els.homeHint.textContent = `${count} ta hisobot topildi (${homeReports.length} tadan)`;
     } else {
       els.homeHint.textContent = homeReports.length
@@ -1442,6 +1545,7 @@
       ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at, r.special_name]),
       max,
       open: homeArchiveOpen,
+      openMonths: [...openArchiveMonths],
       q,
     });
     if (!force && key === homeRenderKey) return;
@@ -1450,10 +1554,18 @@
     const frag = document.createDocumentFragment();
 
     if (q) {
-      const filtered = reports.filter((r) =>
-        (r.name || "").toLowerCase().includes(q) ||
-        (r.special_name || "").toLowerCase().includes(q)
-      );
+      const filtered = reports.filter((r) => {
+        if ((r.name || "").toLowerCase().includes(q)) return true;
+        if (r.special_name && String(r.special_name).toLowerCase().includes(q)) return true;
+        const ts = (r.created_at || 0) * 1000;
+        if (ts) {
+          const d = new Date(ts);
+          const monthName = (UZ_MONTHS[d.getMonth()] || "").toLowerCase();
+          const yearStr = String(d.getFullYear());
+          if (monthName.includes(q) || `${monthName} ${yearStr}`.includes(q)) return true;
+        }
+        return false;
+      });
       if (!filtered.length) {
         const empty = document.createElement("li");
         empty.className = "report-empty";
@@ -1473,9 +1585,15 @@
       if (homeArchiveOpen) {
         const wrap = document.createElement("li");
         wrap.className = "report-archive__panel is-open";
+        const groups = groupReportsByYearMonth(archived);
+        if (openArchiveMonths.size === 0 && groups.length > 0) {
+          openArchiveMonths.add(groups[0].key);
+        }
         const ul = document.createElement("ul");
-        ul.className = "report-list report-list--archive";
-        archived.forEach((rep) => ul.appendChild(reportItem(rep)));
+        ul.className = "report-list report-list--archive-folders";
+        groups.forEach((grp) => {
+          ul.appendChild(monthFolderItem(grp, openArchiveMonths.has(grp.key)));
+        });
         wrap.appendChild(ul);
         frag.appendChild(wrap);
       }

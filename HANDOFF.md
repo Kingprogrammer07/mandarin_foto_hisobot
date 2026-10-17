@@ -552,6 +552,23 @@ reys_hisoboti_v2/
   - `tests/test_server_api.py`:
     - `api/entries` va query param `init_data` orqali rasm olish to'liq tekshirildi. Barcha 22 ta avtomatlashtirilgan test 100% muvaffaqiyatli o'tdi.
 
+### DD. Bosh Sahifada (#/reports) Arxivni Oyma-oy Papkalar (Monthly Folders) Bo'yicha Tashkil Qilish (2026-10-17)
+- **Talab & Maqsad**:
+  - `#/reports` bosh sahifasida oxirgi 3 ta hisobotdan tashqari barcha eski hisobotlar (4-dan 200 tagacha) ilgari bitta uzun tekis ro'yxat sifatida ochilar edi.
+  - Foydalanuvchi talabi: Arxivni yillar va oylar bo'yicha papkalarga (folders) bo'lish, masalan, Sentabr 2026, Avgust 2026 papkalari bo'lishi va ichiga kirilganda o'sha oydagi reyslar turishi.
+- **Yechim & Arxitektura**:
+  - `webapp/js/app.js`:
+    - `groupReportsByYearMonth(reports)`: Har bir hisobotning `created_at` vaqtidan Yil va Oyni ajratib olib, yangidan eskiga qarab saralangan guruhlarga (masalan: `2026-10`, `2026-09`, `2026-08`) ajratadi.
+    - `openArchiveMonths`: Ochiq papkalar holati `localStorage` (`reys_open_archive_months`) ga saqlanadi. Birinchi marta ochilganda foydalanuvchi qulayligi uchun eng oxirgi oy papkasi avtomatik ochiq turadi.
+    - `monthFolderItem(group, isOpen)`: Har bir oy uchun interaktiv papka kartochkasi: 📁 / 📂 ikonkasi, `Sentabr 2026` sarlavhasi, `${count} ta reys` nishoni va rotatsion chevron. Papka ichida shu oyga tegishli barcha `reportItem(rep)` kartalari (ochish, tahrirlash, Excel, 3 nuqta menyusi) to'liq ishlaydi.
+    - Qidiruv (`#homeSearchInput`): Reys nomi, maxsus nom yoki oy nomi (masalan: "Sentabr", "Avgust") yozilganda, barcha reyslar orasidan bir zumda topiladi.
+  - `webapp/css/styles.css`:
+    - `.archive-folder`, `.archive-folder__btn`, `.archive-folder__icon`, `.archive-folder__title`, `.archive-folder__badge`, `.archive-folder__chevron`, `.archive-folder__body` va `.report-list--archive-month` klasslari yaratildi.
+    - Papka ochilganda silliq `folderSlide` animatsiyasi va chap tomonda bolalar kartalarini birlashtiruvchi aksent chiziq dizayni berildi.
+    - Aktivlar versiyasi `?v=archivefolders1` ga ko'tarildi.
+  - `tests/test_server_api.py`:
+    - Barcha 22 ta avtomatlashtirilgan backend testlari muvaffaqiyatli o'tdi.
+
 ---
 
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar

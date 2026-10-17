@@ -2483,6 +2483,118 @@ body.locked { overflow: hidden; }
   to { opacity: 1; transform: none; }
 }
 
+/* Monthly Archive Folders */
+.report-list--archive-folders {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 0;
+  list-style: none;
+}
+.archive-folder {
+  list-style: none;
+  border-radius: 16px;
+  transition: all 0.2s var(--ease);
+}
+.archive-folder__btn {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid color-mix(in srgb, var(--separator) 40%, transparent);
+  border-radius: 14px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: color-mix(in srgb, var(--section-bg) 80%, transparent);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.12s;
+}
+.archive-folder__btn:active {
+  transform: scale(0.985);
+  background: color-mix(in srgb, var(--fill) 70%, var(--section-bg));
+}
+.archive-folder.is-open .archive-folder__btn {
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--separator));
+  background: color-mix(in srgb, var(--section-bg) 92%, var(--accent) 8%);
+}
+.archive-folder__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--fill));
+  color: var(--accent);
+  flex: none;
+  transition: all 0.2s var(--ease);
+}
+.archive-folder.is-open .archive-folder__icon {
+  background: var(--accent);
+  color: #fff;
+}
+.archive-folder__icon .ic {
+  width: 18px;
+  height: 18px;
+}
+.archive-folder__title {
+  flex: 1;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.archive-folder__badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.archive-folder__chevron {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--hint);
+  transition: transform 0.22s var(--ease);
+  flex: none;
+}
+.archive-folder.is-open .archive-folder__chevron {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+.archive-folder__body {
+  padding: 8px 0 4px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 25%, var(--separator));
+  margin-left: 14px;
+  margin-top: 6px;
+  animation: folderSlide 0.22s var(--ease);
+}
+.archive-folder__body[hidden] {
+  display: none;
+}
+.report-list--archive-month {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@keyframes folderSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* ---------- Report menu (sections inside a report) ---------- */
 .menu { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .menu-row { display: flex; gap: 10px; }
