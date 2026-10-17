@@ -1415,9 +1415,13 @@
   ];
 
   let openArchiveMonths = new Set();
+  let openArchiveMonthsInitialized = false;
   try {
     const raw = localStorage.getItem("reys_open_archive_months");
-    if (raw) openArchiveMonths = new Set(JSON.parse(raw));
+    if (raw !== null) {
+      openArchiveMonths = new Set(JSON.parse(raw));
+      openArchiveMonthsInitialized = true;
+    }
   } catch (_) {}
 
   function saveOpenArchiveMonths() {
@@ -1490,11 +1494,28 @@
 
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      openArchiveMonthsInitialized = true;
       const willOpen = !openArchiveMonths.has(group.key);
       if (willOpen) openArchiveMonths.add(group.key);
       else openArchiveMonths.delete(group.key);
       saveOpenArchiveMonths();
-      renderReports(homeReports, homeReportsMax, true);
+
+      wrap.classList.toggle("is-open", willOpen);
+      btn.classList.toggle("is-open", willOpen);
+      btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+      body.hidden = !willOpen;
+      icon.innerHTML = willOpen
+        ? '<svg viewBox="0 0 24 24" class="ic"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>'
+        : '<svg viewBox="0 0 24 24" class="ic"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+
+      const q = (homeSearchQuery || "").trim().toLowerCase();
+      homeRenderKey = JSON.stringify({
+        ids: homeReports.map((r) => [r.id, r.name, r.entries, r.created_at, r.special_name]),
+        max: homeReportsMax,
+        open: homeArchiveOpen,
+        openMonths: [...openArchiveMonths].sort(),
+        q,
+      });
     });
 
     wrap.append(btn, body);
@@ -1545,7 +1566,7 @@
       ids: reports.map((r) => [r.id, r.name, r.entries, r.created_at, r.special_name]),
       max,
       open: homeArchiveOpen,
-      openMonths: [...openArchiveMonths],
+      openMonths: [...openArchiveMonths].sort(),
       q,
     });
     if (!force && key === homeRenderKey) return;
@@ -1586,8 +1607,10 @@
         const wrap = document.createElement("li");
         wrap.className = "report-archive__panel is-open";
         const groups = groupReportsByYearMonth(archived);
-        if (openArchiveMonths.size === 0 && groups.length > 0) {
+        if (!openArchiveMonthsInitialized && groups.length > 0) {
           openArchiveMonths.add(groups[0].key);
+          openArchiveMonthsInitialized = true;
+          saveOpenArchiveMonths();
         }
         const ul = document.createElement("ul");
         ul.className = "archive-folders-list";

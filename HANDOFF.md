@@ -568,7 +568,8 @@ reys_hisoboti_v2/
     - `.archive-folders-list`: `display: flex !important; flex-direction: column !important; width: 100% !important;` orqali har bir oy papkasi 100% to'liq kenglikda vertikal akkordeon qilib joylashtirildi.
     - `.report-list--archive-month`: Desktopda keng 2 ustunli (`repeat(2, minmax(0, 1fr))`), mobilda 1 ustunli qilib sozlandi.
     - `.report-item__actions`: `display: flex; align-items: center; flex-wrap: wrap;` qilinib, `.report-item__edit, .report-item__xls, .report-item__del` tugmalariga `min-width: max-content; flex-shrink: 0; white-space: nowrap;` berildi. `.report-item__del` ga `margin-left: auto;` qo'shildi. Natijada yozuvlar hech qachon qisilib bir-birining ustiga tushib ketmaydi.
-    - Aktivlar versiyasi `?v=archivefolders2` ga ko'tarildi.
+    - Papkalarni yopish (Collapse/Accordion fix): ilgari `openArchiveMonths.size === 0` tekshiruvi sababli barcha papkalar yopilganda oxirgi oy avtomatik qayta ochilib qolayotgan edi. `openArchiveMonthsInitialized` holati kiritildi va papka tugmasi bosilganda DOM da in-place silliq yopiladi/ochiladi.
+    - Aktivlar versiyasi `?v=archivefolders3` ga ko'tarildi.
   - `tests/test_server_api.py`:
     - Barcha 22 ta avtomatlashtirilgan backend testlari muvaffaqiyatli o'tdi.
 
