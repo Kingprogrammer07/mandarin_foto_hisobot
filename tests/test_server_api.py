@@ -292,7 +292,7 @@ async def test_cross_report_filtered_export():
             ws_no_photo = wb_no_photo.active
             assert len(getattr(ws_no_photo, "_images", [])) == 0
 
-            # 2b. Add Obshiy "bizda" (Bizda qoladigan) entries and verify tovar_turi == "top" takes bizda weight!
+            # 2b. Add Obshiy "bizda" and "top" entries and verify "top" and "bizda" stay strictly separated!
             obshiy_files1 = [("photos", ("obshiy1.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
             obshiy_res1 = await client.post(
                 "/api/obshiy",
@@ -327,6 +327,42 @@ async def test_cross_report_filtered_export():
             )
             assert obshiy_res2.status_code == 200
 
+            # Add Obshiy "top" entries (distinct from bizda)
+            top_files1 = [("photos", ("top1.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            top_res1 = await client.post(
+                "/api/obshiy",
+                data={
+                    "report_id": str(rid1),
+                    "section": "top",
+                    "code": "T1",
+                    "weight": "60.0",
+                    "coefficient": "0",
+                    "box_weight": "0",
+                },
+                files=top_files1,
+                cookies=cookies,
+                headers=headers,
+            )
+            assert top_res1.status_code == 200
+
+            top_files2 = [("photos", ("top2.jpg", io.BytesIO(jpeg_bytes), "image/jpeg"))]
+            top_res2 = await client.post(
+                "/api/obshiy",
+                data={
+                    "report_id": str(rid2),
+                    "section": "top",
+                    "code": "T2",
+                    "weight": "40.0",
+                    "coefficient": "0",
+                    "box_weight": "0",
+                },
+                files=top_files2,
+                cookies=cookies,
+                headers=headers,
+            )
+            assert top_res2.status_code == 200
+
+            # Filter for TOP: must get top weights (60.0, 40.0), NOT bizda weights
             top_export_res = await client.post(
                 "/api/export/filtered",
                 json={
@@ -339,10 +375,28 @@ async def test_cross_report_filtered_export():
             assert top_export_res.status_code == 200
             top_wb = openpyxl.load_workbook(io.BytesIO(top_export_res.content))
             top_ws = top_wb.active
-            assert float(top_ws.cell(2, 2).value) == 55.0
-            assert float(top_ws.cell(3, 2).value) == 45.0
+            assert float(top_ws.cell(2, 2).value) == 60.0
+            assert float(top_ws.cell(3, 2).value) == 40.0
             assert top_ws.cell(4, 2).value == "=SUM(B2:B3)"
             assert top_ws.cell(4, 4).value == "=SUM(D2:D3)"
+
+            # Filter for BIZDA: must get bizda weights (55.0, 45.0), NOT top weights
+            bizda_export_res = await client.post(
+                "/api/export/filtered",
+                json={
+                    "report_ids": [rid1, rid2],
+                    "tovar_turi": "bizda",
+                },
+                cookies=cookies,
+                headers=headers,
+            )
+            assert bizda_export_res.status_code == 200
+            bizda_wb = openpyxl.load_workbook(io.BytesIO(bizda_export_res.content))
+            bizda_ws = bizda_wb.active
+            assert float(bizda_ws.cell(2, 2).value) == 55.0
+            assert float(bizda_ws.cell(3, 2).value) == 45.0
+            assert bizda_ws.cell(4, 2).value == "=SUM(B2:B3)"
+            assert bizda_ws.cell(4, 4).value == "=SUM(D2:D3)"
 
             # 2c. Add XABIB and X657 entries and verify they are strictly distinct (no mixing in filtered export)
             await db.add_reys(rid1, "tester", "XABIB", 50.0, 0.0, 50.0, 0)
@@ -450,6 +504,33 @@ async def test_cross_report_filtered_export():
                 )
                 assert xabib_send.status_code == 200
                 assert xabib_send.json()["count"] == 2
+
+                # 3d. Verify top and bizda isolation in Telegram sending
+                top_send = await client.post(
+                    "/api/send-filtered",
+                    json={
+                        "report_ids": [rid1, rid2],
+                        "tovar_turi": "top",
+                        "channel_id": "-1001234567890",
+                    },
+                    cookies=cookies,
+                    headers=headers,
+                )
+                assert top_send.status_code == 200
+                assert top_send.json()["count"] == 2
+
+                bizda_send = await client.post(
+                    "/api/send-filtered",
+                    json={
+                        "report_ids": [rid1, rid2],
+                        "tovar_turi": "bizda",
+                        "channel_id": "-1001234567890",
+                    },
+                    cookies=cookies,
+                    headers=headers,
+                )
+                assert bizda_send.status_code == 200
+                assert bizda_send.json()["count"] == 2
             finally:
                 outbox.set_bot(orig_bot)
 

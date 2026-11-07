@@ -4259,8 +4259,12 @@
     if (!els.reportsFilterSheet) return;
     if (els.filterExportError) els.filterExportError.hidden = true;
 
-    // 1. Populate product types
+    // 1. Populate product types (including BIZDA for Obshiy ves "Bizda qoladigan")
     const types = allTypes();
+    if (!types.some((t) => t.toUpperCase() === "BIZDA")) {
+      types.push("BIZDA");
+      types.sort((a, b) => a.localeCompare(b));
+    }
     if (els.filterTovarSelect) {
       els.filterTovarSelect.innerHTML = "";
       types.forEach((t) => {

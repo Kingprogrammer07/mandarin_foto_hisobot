@@ -575,6 +575,30 @@ reys_hisoboti_v2/
 
 ---
 
+### EE. Ko'p Reysli Filtrda TOP va BIZDA Tovar Turlarini To'liq Ajratish (2026-11-08)
+- **Talab & Maqsad**:
+  - Foydalanuvchi oylik/ko'p reysli hisobot yuklab olish oynasida (`#reportsFilterSheet`) `TOP` tovar turini tanlaganda, Obshiy ves dagi haqiqiy TOP kargo og'irligi (`top_total`) o'rniga "Bizda qoladiganlar" (`bizda_total`) og'irligi yuklanib berayotgani aniqlandi.
+  - Shuningdek, saralangan rasmlarni Telegram kanalga yuborishda ham (`POST /api/send-filtered`) `top` tanlanganda adashib `bizda` (O'zimizga qolgan) yozuvlari yuborilayotgan edi.
+  - Maqsad: TOP va BIZDA kargolarini hisob-kitobda ham, Excel eksportida ham, Telegram yuborishda ham 100% to'liq ajratish.
+- **Yechim & Amalga Oshirilgan Ishlar**:
+  - `app/excel_export.py`:
+    - `calculate_report_metrics(report_id)` funksiyasida `top_rows` va `top_total = round(sum(round(base + transfer, 4) for _, base, transfer in top_rows), 4)` hisoblandi.
+    - `metrics["top"]` ob'ektiga `weight: top_total if top_total > 0 else top_inventory` o'rnatildi.
+    - `metrics["bizda"]` ob'ektiga `weight: bizda_total` o'rnatildi.
+    - `build_filtered_cross_report_excel`: `target_key == 'top'` bo'lsa `metrics.get('top')`, `target_key == 'bizda'` bo'lsa `metrics.get('bizda')` qat'iy ajratildi.
+  - `app/db.py`:
+    - `get_report_type_photos`: `target_key == 'top'` bo'lganda faqat `action == 'top'`, `target_key == 'bizda'` bo'lganda esa faqat `action == 'bizda'` yozuvlarining rasmlari olinishi ta'minlandi.
+    - `get_matching_type_entries`: `target_key == 'top'` uchun faqat `action == 'top'`, `target_key == 'bizda'` uchun esa faqat `action == 'bizda'` yozuvlari qaytarilishi belgilandi.
+  - `webapp/js/app.js`:
+    - `openReportsFilter()` da `allTypes()` ro'yxatiga `BIZDA` tovar turi dinamik qo'shildi (`types.push("BIZDA")` va alfavit tartibida saralandi), shunda admin xohlasa "TOP", xohlasa "BIZDA" yuklarini alohida tanlab yuklab olishi mumkin bo'ldi.
+  - `webapp/index.html`:
+    - Aktivlar versiyasi keshni yangilash uchun `?v=topbizdafix1` ga oshirildi.
+  - `tests/test_server_api.py`:
+    - `test_cross_report_filtered_export` testida `top` (60.0 kg va 40.0 kg) hamda `bizda` (55.0 kg va 45.0 kg) ma'lumotlari kiritilib, Excel yuklab olishda va Telegram kanalga saralab yuborishda (`POST /api/send-filtered`) har ikkalasi alohida 2 tadan to'g'ri yozuvlarni olishi avtomatlashtirilgan test bilan tasdiqlandi.
+    - Barcha 22 ta avtomatlashtirilgan test muvaffaqiyatli o'tdi (`22 passed in 10.74s`).
+
+---
+
 ## 4. Yangilanishlar Bo'yicha Qat'iy Qoidalar
 
 1. Har qanday yangi endpoint yoki xususiyat qo'shilganda `HANDOFF.md`, `AGENTS.md` va `CLAUDE.md` birgalikda yangilanadi.

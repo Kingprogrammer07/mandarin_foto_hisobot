@@ -580,9 +580,16 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
     obshiy_entries = {}
     for action in OBSHIY_ACTION_ORDER:
         obshiy_entries[action] = list(reversed(await db.list_entries(report_id, action, limit=2000)))
+    top, top_order = _sum_obshiy_values_by_code(obshiy_entries["top"])
     topchiqgan, topchiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["topchiqgan"])
     bizda, bizda_order = _sum_obshiy_values_by_code(obshiy_entries["bizda"])
     chiqgan, chiqgan_order = _sum_obshiy_values_by_code(obshiy_entries["chiqgan"])
+    top_rows = _obshiy_rows(
+        top,
+        plus=chiqgan,
+        minus=topchiqgan,
+        order=_ordered_codes(top_order, chiqgan_order, topchiqgan_order),
+    )
     bizda_rows = _obshiy_rows(
         bizda,
         plus=topchiqgan,
@@ -590,6 +597,7 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
         order=_ordered_codes(bizda_order, topchiqgan_order, chiqgan_order),
     )
 
+    top_total = round(sum(round(base + transfer, 4) for _, base, transfer in top_rows), 4)
     bizda_total = round(sum(round(base + transfer, 4) for _, base, transfer in bizda_rows), 4)
     reys_entries = list(reversed(await db.list_entries(report_id, "reys", limit=2000)))
     box_weight_total = _summary_box_weight(obshiy_entries, reys_entries)
@@ -664,13 +672,14 @@ async def calculate_report_metrics(report_id: int) -> dict[str, dict[str, float]
             "total": box_weight_total,
         }
 
-    # "top" product type takes weight from "bizda qoladigan" in Obshiy ves
+    # "top" product type takes weight from "top" in Obshiy ves (or inventory if any)
     top_fix = kg_fix_totals.get("top", 0.0)
+    top_weight = top_total if top_total > 0 else top_inventory
     metrics["top"] = {
-        "weight": bizda_total,
+        "weight": top_weight,
         "box_weight": 0.0,
         "kg_fix": top_fix,
-        "total": round(bizda_total + top_fix, 4),
+        "total": round(top_weight + top_fix, 4),
     }
     bizda_fix = kg_fix_totals.get("bizda", 0.0)
     metrics["bizda"] = {
@@ -729,8 +738,10 @@ async def build_filtered_cross_report_excel(
         rname = await db.report_name(rid) or f"Reys #{rid}"
         metrics = await calculate_report_metrics(rid)
 
-        if target_key in ("top", "bizda"):
-            m = metrics.get("top") or metrics.get("bizda")
+        if target_key == "top":
+            m = metrics.get("top")
+        elif target_key == "bizda":
+            m = metrics.get("bizda")
         elif target_key == "mandarin":
             m = metrics.get("mandarin")
         elif target_key == "xabib":
